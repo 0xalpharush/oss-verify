@@ -1,8 +1,10 @@
 # Adapted from OSS Scanner's .github/workflows/build.yaml (https://github.com/anthropics/oss-scanner), Copyright 2026
-# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: builds with OSS Verifier's tools/check, maps its exit
-# codes, and accepts OSS Verifier's file names.
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: builds twice with OSS Verifier's tools/check, maps its
+# exit codes, and accepts OSS Verifier's file names.
 name: "Build"
-# Builds the project an enrollment pull request adds or changes, with tools/check. The output is in the run's log.
+# Builds the project an enrollment pull request adds or changes with tools/check --twice: everything is built a second
+# time from scratch, and the two builds must have the same bytes, as they must before we pin a binary. The output is in
+# the run's log.
 # This check is advisory, and a failure is not a verdict:
 #   - GitHub's runner may run out of disk or time on a build that works on a larger machine;
 #   - it cannot succeed until the newest toolchain image in infra/toolchains.tsv is public.
@@ -42,8 +44,8 @@ concurrency:
 jobs:
   project-builds:
     runs-on: ubuntu-latest
-    # tools/check has no time limit of its own: this one is the runner's.
-    timeout-minutes: 120
+    # tools/check has no time limit of its own: this one is the runner's, for two builds.
+    timeout-minutes: 240
     permissions:
       contents: read
       pull-requests: read
@@ -134,7 +136,7 @@ jobs:
           df -h /
           python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
 
-      - name: Build the project with tools/check
+      - name: Build the project twice with tools/check
         if: steps.project.outputs.name != ''
         env:
           NAME: ${{ steps.project.outputs.name }}
@@ -144,14 +146,14 @@ jobs:
           resume="$(openssl rand -hex 16)"
           echo "::stop-commands::$resume"
           code=0
-          python3 tools/check --no-shell "$NAME" < /dev/null || code=$?
+          python3 tools/check --no-shell --twice "$NAME" < /dev/null || code=$?
           echo "::$resume::"
 
           case $code in
-            0) result="builds" ;;
+            0) result="builds, and a second build from scratch has the same bytes" ;;
             1) result="does not build (the log says which step failed)" ;;
             2) result="breaks the enrollment rules (the log lists them)" ;;
-            3) result="builds, but its bytes differ from what they were checked against (the log says which)" ;;
+            3) result="builds, but a second build from scratch has different bytes (the log says which)" ;;
             *) result="could not be checked: tools/check exited $code" ;;
           esac
           echo "\`projects/$NAME/\` at \`${SHA:0:7}\` $result." >> "$GITHUB_STEP_SUMMARY"
