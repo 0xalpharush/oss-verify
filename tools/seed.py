@@ -33,7 +33,8 @@ Every file is checked with tools/validate.py before it is written.
 --branch makes draft-generic-oss-fuzz-<name> from the current main: main's tree plus projects/<name>/ (its project.yaml,
 and the build files in tools/seeds/<name>/ if there are any; those are kept there only once tools/check has built
 them and reproduced the release's binaries), with README.md's projects table regenerated, as one commit whose parent
-is main. The commit message says how the project builds, from tools/seeds/builds.tsv (what tools/verify_ports.py found
+is main (and whose second parent is the draft as it was pushed to origin, if it was, so that pushing the new one is a
+fast-forward, never a force-push). The commit message says how the project builds, from tools/seeds/builds.tsv (what tools/verify_ports.py found
 when it ported the release's build and checked it). It uses git plumbing and leaves the working tree and the index
 alone; running it again replaces the branch. --trailer adds a line to the end of the commit message.
 
@@ -63,6 +64,7 @@ SEEDS = ROOT / "tools" / "seeds"
 BUILDS = SEEDS / "builds.tsv"
 RELEASE = "2026.10.0-rc.2"
 BRANCH = "draft-generic-oss-fuzz-{name}"
+REMOTE = "origin"  # where drafts are pushed
 HEADER = (
     "# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's\n"
     "# maintainers: provisional (STATUS.md). To adopt it, set primary_contact and remove these lines.\n"
@@ -555,8 +557,17 @@ def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS, builds=None):
     message = f"Draft: seed projects/{name} from oss-fuzz-theorems {RELEASE}\n\n{textwrap.fill(status, 72)}\n"
     if trailers:
         message += "\n" + "\n".join(trailers) + "\n"
-    commit = git("commit-tree", tree, "-p", main, "-F", "-", root=root, data=message).strip()
     branch = BRANCH.format(name=name)
+    parents = ["-p", main]
+    # A draft already pushed to origin is the second parent of the new one, so that pushing it is not a force-push.
+    pushed = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"refs/remotes/{REMOTE}/{branch}"],
+                            capture_output=True, text=True).stdout.strip()
+    if pushed and git("rev-parse", f"{pushed}^{{tree}}", f"{pushed}^1", root=root).split() == [tree, main]:
+        commit = pushed  # what was pushed is this draft already
+    else:
+        if pushed and subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", pushed, main]).returncode:
+            parents += ["-p", pushed]
+        commit = git("commit-tree", tree, *parents, "-F", "-", root=root, data=message).strip()
     git("update-ref", f"refs/heads/{branch}", commit, root=root)
     return branch, commit
 
