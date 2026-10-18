@@ -1,12 +1,27 @@
 # Disclosure
 
-Working on a proof sometimes finds a bug instead: an input on which a fuzz target crashes, hangs, fails an assertion or trips its sanitizer. This page says what we do with it.
+This page tells what we do with a finding. It is for maintainers and for security readers.
 
-* **It goes to you, privately.** A finding is sent to `primary_contact` and every address in `auto_ccs`. With `pgp` set, it is encrypted to that key and goes to `primary_contact` only. It includes the input, the build and binary it was found in, how to reproduce it, and, where we have one, a proposed patch written the way your `patch_style.md` asks.
-* **There is no disclosure deadline.** We do not set a date by which a finding becomes public.
-* **We do not publish findings.** Making a finding public, and when, is up to you.
-* **Nothing we publish gives it away.** Until a finding is public, the statements it affects are held back, and no file name, comment, patch or statement we publish describes it ([publishing.md](publishing.md)).
+When we work on a proof, we can find a failure instead. An example is an input on which a fuzz target crashes, hangs, fails an assertion or fails a sanitizer check. We call this failure a finding.
 
-A project we seeded ourselves, which no maintainer has adopted yet (`primary_contact: n/a`), is different: it is published only because it has no findings. A finding for such a project is sent nowhere. Nothing goes to the project, its security contact or anyone else automatically, and there is no deadline; the finding stays with us unless someone hands it over by hand. While it stands, the project's statements and proofs are not published.
+## Our rules
 
-To report a vulnerability in this repository or its tools, see [SECURITY.md](../SECURITY.md).
+* **We send the finding to you privately.** We send it to `primary_contact` and to each address in `auto_ccs`. If you set `pgp`, we encrypt the finding to your key and send it to `primary_contact` only.
+* **There is no disclosure deadline.** We do not set a date on which a finding becomes public.
+* **We do not publish findings.** You decide if and when a finding becomes public.
+* **What we publish does not show the finding.** Until the finding is public, we hold back the statements that it affects. No file name, comment, patch or statement that we publish describes it ([publishing.md](publishing.md)).
+
+Each finding contains the input, the build and the binary, the steps to reproduce it, and a patch if you want one ([patches.md](patches.md)).
+
+## Seeded projects
+
+A seeded project has `primary_contact: n/a`, because no maintainer has adopted it yet. We publish a seeded project only because it has no findings.
+
+* We send a finding for a seeded project to no one. Nothing goes automatically to the project, to its security contact or to another person.
+* There is no deadline.
+* The finding stays with us until a person gives it to the project by hand.
+* While the finding stands, we do not publish the project's statements and proofs.
+
+## A vulnerability in this repository
+
+To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).

@@ -17,7 +17,8 @@ token is enough. The token goes to api.github.com alone, and no other host is co
 the enrolled repository or the proofs index reaches the comment only through code(), so it cannot inject Markdown.
 
 Not ported from OSS Scanner's triage: the row that ranks the repository's packages among the most downloaded on
-PyPI, npm and crates.io. The projects enrolled here are C and C++ libraries, which those registries do not carry.
+PyPI, npm and crates.io. The builder builds only the languages docs/project-yaml.md lists, whose libraries those
+registries do not carry today.
 
 Requires PyYAML, as tools/validate.py does.
 """

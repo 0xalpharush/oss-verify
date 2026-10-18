@@ -1,57 +1,108 @@
 # What gets proven
 
-This repository says how to build a project's fuzz targets. The statements about them, and their proofs, are in [oss-verifier-proofs](https://github.com/theorem-labs/oss-verifier-proofs): one branch per project, holding Rocq statements about that project's binaries, their proofs, and the lock that pins the binaries. This page summarises what the statements say; the Rocq definitions there are what counts.
+This page tells what our statements say, what a proof covers and what it does not, and how memory enters a statement. It is for maintainers and for reviewers of our claims.
 
-## About binaries, in a model of Linux
+This repository tells how to build the fuzz targets of a project. The statements and their proofs are in [oss-verifier-proofs](https://github.com/theorem-labs/oss-verifier-proofs): one branch for each project, with its statements, its proofs and its lock. This page gives a summary. The Rocq definitions in the proofs repository are the authority.
 
-A statement is about the exact bytes of one fuzz target's binary in one build, `out/<target>/<target>.<build>`, pinned by its SHA-256 in the lock. It is stated over [linux-process-semantics](https://github.com/theorem-labs/linux-process-semantics), a formal model of a riscv64 Linux process, and it quantifies over every input the process could be given: the input file and its contents (or its absence), the arguments, the environment, and the rest of the process's world as the model defines it.
+## The statements
 
-## The two main statements
+A statement is about the exact bytes of one binary: one fuzz target in one build, pinned by its SHA-256 in the lock. We state it in [linux-process-semantics](https://github.com/theorem-labs/linux-process-semantics), a formal model of a riscv64 Linux process. A statement is about each input that the process can get:
 
-* **Halts.** On every input on which the build stays within its memory budget ([memory-policy.md](memory-policy.md)), every execution exits with an accepted status, 0 or 2 ([exit-codes.md](exit-codes.md)). So it does not crash, fail an assertion, hang, or trip its sanitizer, on any such input.
-* **Agrees.** On every input on which the plain build stays within its budget, neither the plain build nor the sanitizer build reaches an error, and the two have the same observable behaviour: the same bytes written and the same exit status. A sanitizer report aborts or traps, so this rules out every error that build's sanitizer checks.
+* the input file and its contents, or no file;
+* the arguments and the environment;
+* the rest of the process's world, as the model defines it.
 
-Each project's branch in the proofs repository lists the statements for each fuzz target and build, and which are proved.
+There are two main statements:
 
-## Everything the fuzz target would catch, with a short list of exceptions
+* **Halts.** On each input that stays in the build's memory budget, each run exits with status 0 or 2 ([exit-codes.md](exit-codes.md#what-a-statement-accepts)). Thus the binary does not crash, fail an assertion, hang, or fail a sanitizer check on such an input.
+* **Agrees.** On each input on which the plain build stays in its budget, the plain build and a sanitizer build both reach no error. They also have the same behaviour: they write the same bytes and exit with the same status. A sanitizer detection stops the program, so this statement excludes each error that the sanitizer checks.
 
-The statements catch everything the fuzz target would catch when OSS-Fuzz runs it, a crash, a hang, a failed assertion or a sanitizer report, on every input instead of the inputs a fuzzer happens to try. There are exceptions, and this is the whole list. Each is a limit of how the fuzz target is run here that cannot be lifted in these builds; none is a choice made per project.
+The project's branch in the proofs repository lists the statements of each fuzz target and build, and the proofs that are done.
 
-* **Leaks.** Leak detection is off in the AddressSanitizer builds (`detect_leaks=0`): LeakSanitizer's check at exit cannot run in the sealed static runtime. A leak, which OSS-Fuzz reports, is not an error here.
-* **Three UndefinedBehaviorSanitizer checks.** The UBSan builds trap on a failed check, with no runtime, and make clang's `undefined` checks ([build-contract.md](build-contract.md#the-builds)). OSS-Fuzz's UBSan builds also check `function`, which needs type metadata the trap mode does not keep, `vptr`, which needs a runtime, and `unsigned-integer-overflow`, which is not undefined behaviour and which correct code relies on. These builds do not.
-* **No MemorySanitizer.** There is no MemorySanitizer build, so a read of uninitialised memory is not checked; OSS-Fuzz runs one for some projects. MemorySanitizer needs every library in the program, the C and C++ libraries included, built with it, which this static riscv64 toolchain does not provide.
-* **One thread.** The process model runs a single thread. A fuzz target that starts a thread leaves the model, and its statements cannot be proved until the model covers threads.
-* **Inputs below 64 MiB.** The driver refuses an input file of 64 MiB or more with status 2, so larger inputs are not covered.
-* **The AddressSanitizer allocator's size classes.** On riscv64 the AddressSanitizer allocator refuses a request once the request's size class holds 3.5 GiB, less than the 16 GiB the plain build may use. An input that needs more of one size class is refused memory in the AddressSanitizer builds while the plain build is not, which is why their budgets differ ([memory-policy.md](memory-policy.md)).
+## What the statements catch
 
-*Draft, to be audited against the toolchain and the process model.*
+The statements catch each failure that the fuzz target would catch in OSS-Fuzz: a crash, a hang, a failed assertion or a sanitizer detection. They catch it on each input, not only on the inputs that a fuzzer tries.
 
-## Say what "correct" means in the fuzz target
+There are exceptions, and this is the full list. Each exception is a limit of how we run the fuzz target, which these builds cannot remove. No exception is a choice that a project makes.
 
-A statement covers what the fuzz target checks. A fuzz target that only feeds its input to the library proves only that the library does not crash, hang or trip a sanitizer on it. A fuzz target that checks a property, such as `decompress(compress(x)) == x` with `assert`, makes a proof of its halts statement a proof of that property for every input it covers. So whatever can be said in the fuzz target should be: the Rocq side keeps only what a fuzz target cannot express.
+* **Leaks.** Leak detection is off in the AddressSanitizer builds (`detect_leaks=0`). The leak check of LeakSanitizer at exit cannot run in the sealed static runtime. Thus a leak, which OSS-Fuzz reports, is not an error here.
+* **Three UndefinedBehaviorSanitizer checks.** The UBSan builds trap, with no runtime, and make the checks of clang's `undefined` group ([build-contract.md](build-contract.md#the-builds)). OSS-Fuzz also checks `function`, `vptr` and `unsigned-integer-overflow`. Our builds do not. `function` needs type data that trap mode does not keep. `vptr` needs a runtime. An unsigned overflow is not undefined behaviour, and correct code uses it.
+* **No MemorySanitizer.** There is no MemorySanitizer build, so we do not check reads of uninitialized memory. OSS-Fuzz runs MemorySanitizer for some projects. MemorySanitizer needs each library in the program built with it, the C and C++ libraries included. This static riscv64 toolchain does not supply them.
+* **One thread.** The process model runs one thread. A fuzz target that starts a thread leaves the model. We cannot prove its statements until the model includes threads.
+* **Inputs smaller than 64 MiB.** The driver refuses an input file of 64 MiB or more, with status 2. Thus no statement is about a larger input.
+* **The size classes of the AddressSanitizer allocator.** On riscv64, this allocator refuses a request when the size class of the request holds 3.5 GiB. The plain build can use up to 16 GiB. Thus an AddressSanitizer build can refuse memory to an input that the plain build accepts. For this cause, their budgets are different ([below](#memory-budgets)).
 
-There are three kinds of fuzz target:
+*This list is a draft. We will audit it against the toolchain and the process model.*
 
-* the project's own, from its repository;
-* OSS-Fuzz's, from the project's OSS-Fuzz directory;
-* ones we write with the project, kept in `projects/<name>/`, including drivers that call the library's API in sequences the input describes. Anything that needs a different sanitizer runtime configuration becomes a fuzz target of its own.
+## Memory budgets
 
-## What a proof covers, and what it does not
+A program can run out of memory, and a statement must tell what happens then. The statements obey these rules:
 
-A proof covers:
+* **Exhaustion is part of the statement.** The process model refuses a memory request only when the build has used its budget. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
+* **Refusals at start do not count.** A statement is not about a program that gets no memory before it gets to the fuzz target.
+* **No allocation fails at random.** No statement lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
 
-* the binary's own bytes: the library, the fuzz target and the driver as compiled for that build;
-* every input within the budget, including every input file up to 64 MiB (the driver refuses larger ones with status 2);
-* in a sanitizer build, every check that build makes ([build-contract.md](build-contract.md#the-builds)).
+A budget is a quantity of memory that a build can allocate. It is a condition of the statement: an input that needs more memory is not in the statement. It is not a failure. These are the defaults, which oss-fuzz-theorems 2026.10.0-rc.2 uses:
 
-It does not cover:
+```yaml
+budgets:
+  halts: 16GiB               # each build that runs alone
+  agrees:                    # for each sanitizer: [plain side, sanitizer side]
+    address: [2GiB, 512GiB]  # also for asan-ubsan
+    undefined: [16GiB, 512GiB]
+```
 
-* the library's source in general: another compiler, other flags, another architecture, or OSS-Fuzz's own x86-64 builds;
-* the exceptions above, and errors no sanitizer checks, here or in OSS-Fuzz, such as an access through another live object;
-* code no sanitizer instruments: the C library, the compiler's runtime libraries and the sanitizer runtime itself, which a sanitizer statement covers only as uninstrumented code, as OSS-Fuzz's builds leave them uninstrumented too;
+* `halts` is the budget of each build in its halts statement.
+* `agrees.<sanitizer>` gives the two budgets of the agrees statement: the plain build's budget, which is the condition, and the sanitizer build's budget. The sanitizer build's budget is large, because a sanitizer needs memory of its own. `address` applies to the `asan` and `asan-ubsan` builds, and `undefined` to the `ubsan` build.
+* The plain side of `address` is 2 GiB, because the AddressSanitizer allocator limits each size class to 3.5 GiB on riscv64. The address space that the AddressSanitizer runtime reserves at start, more than 100 GiB, is not part of a budget.
+
+A project can set its own budgets in `project.yaml` ([project-yaml.md](project-yaml.md#budgets)).
+
+**Not decided yet:** maybe the `asan` and `asan-ubsan` builds need a smaller `halts` budget. Their allocator can refuse memory to an input that is in the 16 GiB budget.
+
+## Allocation failure
+
+The halts statement does not ask a program to survive a refused allocation. A project that wants its library to survive refused allocations adds an allocation-failure fuzz target. In this fuzz target, allocations fail as the input tells them to ([exit-codes.md](exit-codes.md#allocation-failure)). The other fuzz targets do not get refused allocations.
+
+## Write "correct" into the fuzz target
+
+A statement covers what the fuzz target checks. Thus the fuzz target is the place to say what "correct" means.
+
+* A fuzz target that only gives its input to the library shows only that the library does not crash, hang or fail a sanitizer check.
+* A fuzz target that asserts a property makes the halts proof a proof of that property for each input. An example is `assert(decompress(compress(x)) == x)`.
+
+Put each property that a fuzz target can express into the fuzz target. The Rocq statements keep only what a fuzz target cannot express.
+
+A project can use three types of fuzz target:
+
+* its own fuzz targets, from its repository;
+* its OSS-Fuzz fuzz targets;
+* fuzz targets that we write with the project, in the project directory. These include drivers that call the library's API in sequences that the input selects.
+
+A fuzz target that needs a different sanitizer configuration is a separate fuzz target.
+
+## What a proof covers
+
+A proof covers these items:
+
+* the bytes of the binary: the library, the fuzz target and the driver, as compiled for that build;
+* each input in the budget, which includes each input file smaller than 64 MiB;
+* in a sanitizer build, each check that the build makes ([build-contract.md](build-contract.md#the-builds)).
+
+A proof does not cover these items:
+
+* the source of the library in general: another compiler, other flags, another architecture, or the x86-64 builds of OSS-Fuzz;
+* the exceptions above, and errors that no sanitizer checks, here or in OSS-Fuzz, for example an access through another live object;
+* code that no sanitizer instruments: the C library, the compiler's runtime libraries and the sanitizer runtime. OSS-Fuzz does not instrument them either;
 * inputs that need more memory than the budget;
-* what the process model leaves out. The model's documentation says where it is narrower than Linux.
+* what the process model leaves out. The model's documentation tells where it is narrower than Linux.
 
 ## Where the claims come from
 
-Every public claim traces back to three pinned inputs: the project's source commit, the commit of this repository that holds the build recipe, and the digest of the toolchain image. A published proof checks against the released process model, that recipe and the project's upstream source as it is, with no patch that changes the library ([publishing.md](publishing.md)).
+Each public claim rests on three pinned inputs:
+
+* the commit of the project's source;
+* the commit of this repository that holds the build files;
+* the digest of the toolchain image.
+
+A published proof uses the released process model, these build files and the project's source as it is. It uses no patch that changes the library ([publishing.md](publishing.md)).

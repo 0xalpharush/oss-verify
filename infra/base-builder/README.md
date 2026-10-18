@@ -18,4 +18,4 @@ The toolchain image provides clang 20.1.8 for `riscv64-linux-musl`, lld, the mus
 
 `tools/check` builds this image locally, tagged `oss-verifier-base-builder:<hash of this directory>-<toolchain digest>`. It is not published yet, so a project's Dockerfile names it by that local tag, which `tools/check` passes as `BASE_BUILDER`.
 
-`driver/`, `toolchain.sh`, `recipes.sh`, `release-target.sh` and the order of a fuzz target's link come from the build recipe of oss-fuzz-theorems release 2026.10.0-rc.2; each file says what it keeps and what it leaves out. With them, the cjson pilot reproduces that release's four cjson binaries byte for byte ([STATUS.md](../../STATUS.md)).
+`driver/`, `toolchain.sh`, `recipes.sh`, `release-target.sh` and the order of a fuzz target's link come from the build recipe of oss-fuzz-theorems release 2026.10.0-rc.2; each file says what it keeps and what it leaves out. With them, the builder makes that release's binaries again, byte for byte.

@@ -1,61 +1,99 @@
 ---
 name: add-project
-description: Enroll an open-source C or C++ project in OSS Verifier with its maintainer. Use when a maintainer asks to add, enroll or sign up their project for formal verification, to write fuzz targets that say what "correct" means for their library, or to port their OSS-Fuzz build to the OSS Verifier builder. Produces projects/<name>/ (project.yaml, Dockerfile, build.sh, fuzz targets) and a pull request the maintainer opens.
+description: Enroll an open-source project in OSS Verifier with its maintainer. Use when a maintainer asks to add, enroll or sign up a project for formal verification. Also use it to write fuzz targets that say what "correct" means for a library, or to choose which patches OSS Verifier sends. Also use it to port an OSS-Fuzz build to the OSS Verifier builder. Makes projects/<name>/ (project.yaml, Dockerfile, build.sh, fuzz targets) and a pull request that the maintainer opens.
 ---
 
-# Add a project to OSS Verifier
+# Enroll a project in OSS Verifier
 
-You are helping a project's maintainer enroll it. The result is one directory, `projects/<name>/`, and a pull request that adds it. Theorem then proves theorems about the binaries those files build (docs/what-gets-proven.md). Everything the maintainer tells you about what "correct" means ends up in the fuzz targets' code and comments: there is no separate document for it.
+This skill is for a coding agent that helps a maintainer enroll a project. It gives the steps, the questions to ask and the checks to run.
 
-Read docs/enrollment.md, docs/build-contract.md and docs/exit-codes.md before you start. Work only in `projects/<name>/`.
+The result is one directory, `projects/<name>/`, and a pull request that the maintainer opens. Theorem then proves theorems about the binaries that these files build. Each answer about what "correct" means goes into the code and comments of the fuzz targets. No separate document holds it.
+
+Before you start, read these documents: `docs/enrollment.md`, `docs/project-yaml.md`, `docs/build-contract.md`, `docs/exit-codes.md` and `docs/patches.md`. Work only in `projects/<name>/`.
 
 ## 1. Ask what "correct" means
 
-Ask the maintainer, and do not guess:
+Ask the maintainer each question. Do not guess an answer.
 
-1. **Untrusted input.** Which functions take input an attacker controls (a parser, a decoder, a protocol handler)? Which are trusted (configuration, the API's own callers)?
-2. **Input size.** How large can a real input be? The driver refuses input files of 64 MiB or more.
-3. **Intended exits.** Which outcomes are expected and fine: an error code for malformed input, a size limit, a rejected option? Each must become `return 0` in the fuzz target. A statement accepts only exit statuses 0 and 2, so a fuzz target that returns 1, calls `exit()`, or aborts on an expected outcome makes its statement false.
-4. **Out of memory.** Must the library survive allocation failure? If so, it needs a separate allocation-failure fuzz target (docs/memory-policy.md). Tell the maintainer that the builder does not provide that target's driver yet, and record the wish in the pull request's context note.
-5. **Properties beyond not crashing.** What should always hold? A round trip (`decode(encode(x)) == x`), an invariant of a data structure, agreement between two APIs, a bound on output size.
+1. **Untrusted input.** Which functions get input that an attacker controls, for example a parser, a decoder or a protocol handler? Which inputs are trusted, for example the configuration?
+2. **Input size.** How large can a real input be? The driver refuses an input file of 64 MiB or more.
+3. **Expected outcomes.** Which outcomes are expected, for example an error code for malformed input, a size limit or a refused option? Each one must end as `return 0`. A statement accepts only the exit statuses 0 and 2.
+4. **Refused allocations.** Must the library survive a refused allocation? If yes, add an allocation-failure fuzz target (`docs/exit-codes.md`, "Allocation failure").
+5. **Properties.** Which properties must always be true, apart from "no crash"? Examples are a round trip (`decode(encode(x)) == x`), an invariant of a data structure, agreement between two APIs, and a limit on the size of an output.
 
-## 2. Write the fuzz targets
+## 2. Ask which patches to send
 
-Start from the project's existing fuzz targets: its own and its OSS-Fuzz directory's. A target is a C or C++ file defining `int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)`. Then write the ones the answers above call for, as files in `projects/<name>/` (`*.c`, `*.cc`, `*.cpp`, `*.h`, `*.hh`, `*.hpp`):
+Ask each question. Write each answer into `project.yaml` (`docs/patches.md`). Leave out a key if the maintainer accepts its default.
 
-- **An API driver** reads the input as a small program: each byte or field picks the next call and its arguments, so that one fuzz target explores sequences of API calls. Keep the decoding total: every input means some sequence, and running out of input ends it.
-- **Encode each property as an `assert`** (or an explicit check followed by `abort()`) after the calls, with a comment above it saying, in the maintainer's terms, what it checks and why it must hold. A proof that the fuzz target halts with status 0 or 2 is then a proof of every such property for every input.
-- **Turn expected outcomes into `return 0`**, narrowly: check the library's error code or catch the one exception type the API documents. Never a catch-all, never a signal handler, never `_exit`.
-- One fuzz target per property group or API area is better than one that does everything: each gets its own statements.
-- Anything that needs a different sanitizer configuration is a fuzz target of its own.
+1. Do you want findings without patches? If yes, set `disable_remediation: true`. Then skip the other questions in this step.
+2. `findings`: patches only for failures that a fuzz target can cause (`fuzz_failures`), or also for bugs that we find while we prove (`all`)?
+3. `out_of_scope`: a fuzz target gets to behaviour that you do not support. Make the fuzz target narrower (`harness`), or change the library (`library`)?
+4. `allocation_failure`: the same choice for a refused allocation (`harness` or `library`).
+5. `documentation`: also patches that change only the documentation (`true` or `false`)?
+6. `refactoring`: changes that make the code easier to verify. None (`none`), only changes that keep the behaviour (`equivalent`), or also changes to behaviour that looks like a bug (`minor`)?
+7. `equivalence_proof`: send a refactoring patch only with a proof that the behaviour does not change (`required`), or also without one (`not_required`)?
+8. Does the project have a contribution policy, for example about AI-generated patches? Our agents obey it. Record a link to it in `patch_style.md`.
+9. Which code style, tests and commit format must a patch have? Write the answer in `patch_style.md`, as free text.
 
-Give each file a header saying what it is and under which licence; a file copied from the project's repository keeps the project's licence and says so.
+Do not repeat in `patch_style.md` a choice that a field in `project.yaml` gives.
 
-## 3. Port the build
+## 3. Write the fuzz targets
 
-Copy templates/Dockerfile and templates/build.sh into `projects/<name>/` and port the project's build (docs/build-contract.md):
+Start from the project's existing fuzz targets: its own, and those in its OSS-Fuzz directory. A fuzz target defines `int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)`. Then write the fuzz targets that the answers to step 1 need. Put each one in `projects/<name>/` (`*.c`, `*.cc`, `*.cpp`, `*.h`, `*.hh`, `*.hpp`).
 
-- The `Dockerfile` starts `FROM ${BASE_BUILDER}`, declares `ARG REPO` and `ARG COMMIT`, runs `fetch-commit $SRC/<name>` (with `--submodules` if needed), fetches dependencies at fixed versions, and copies `build.sh` and the fuzz targets' sources into `$SRC`. Never write a commit id into it.
-- `build.sh` builds the library statically with `$CC`, `$CXX`, `$CFLAGS`, `$CXXFLAGS` (CMake finds `$CMAKE_TOOLCHAIN_FILE` by itself), compiles each fuzz target, and links it into `$OUT` with `$LIB_FUZZING_ENGINE` through `$CC` or `$CXX`.
-- The targets are static riscv64 Linux programs, cross-compiled with clang 20 and musl: no shared libraries, no running what you compiled, no network in `build.sh`, no stripping after the link.
-- If a dependency needs a patch to build, keep it build-only, beside `project.yaml`, listed in `series`. A patch that fixes a bug in the project goes to the maintainer, never here.
+- **API driver.** Read the input as a small program. Let each byte or field select the next call and its arguments. Thus one fuzz target explores sequences of API calls. Make the decoding total: each input means a sequence, and the end of the input ends the sequence.
+- **Properties.** Write each property as an `assert`, or as a check followed by `abort()`, after the calls. Above it, write a comment that tells, in the maintainer's words, what it checks and why it must be true. A proof that the fuzz target halts with status 0 or 2 is then a proof of each property, for each input.
+- **Expected outcomes.** Change each expected outcome into `return 0`, narrowly. Examine the library's error code, or catch the one exception type that the API documents.
+- **One area for each fuzz target.** Write one fuzz target for each group of properties or each API area. Each fuzz target gets its own statements.
+- **Sanitizer configuration.** Put code that needs a different sanitizer configuration in a separate fuzz target.
 
-## 4. Write project.yaml
+> **WARNING:** Do not catch all exceptions, install a signal handler or call `_exit`. Such code hides the failures that the statements must show.
 
-From templates/project.yaml (docs/project-yaml.md): `repo` with `#<tag or branch>`, `primary_contact` (the security contact; it is public), `language` (`c` or `c++`), `fuzz_targets` (every target you wrote or kept), and anything else the maintainer wants (`auto_ccs`, `pgp`, `patch_style`, `publish`). Ask about `publish`: `after_fixes` (the default), `eager` or `never` (docs/publishing.md).
+Give each file a header that tells what it is and its licence. A file copied from the project's repository keeps the project's licence and tells so.
 
-## 5. Check
+## 4. Port the build
 
-Run, and fix everything they report:
+Copy `templates/Dockerfile` and `templates/build.sh` into `projects/<name>/`. Port the project's build (`docs/build-contract.md`).
 
-    tools/validate.py projects/<name>
-    tools/check --no-shell <name>
-    tools/check --no-shell --twice <name>
+- In the `Dockerfile`, start with `FROM ${BASE_BUILDER}`.
+- Declare `ARG REPO` and `ARG COMMIT`.
+- Run `fetch-commit $SRC/<name>`. Add `--submodules` if the repository has submodules.
+- In the `Dockerfile`, get each dependency at a fixed version. Copy `build.sh` and the fuzz target sources into `$SRC`.
+- Never write a commit id in the `Dockerfile`.
+- In `build.sh`, build the library statically with `$CC`, `$CXX`, `$CFLAGS` and `$CXXFLAGS`. CMake finds `$CMAKE_TOOLCHAIN_FILE` without help.
+- In `build.sh`, compile each fuzz target. Link it into `$OUT` with `$LIB_FUZZING_ENGINE`, through `$CC` or `$CXX`.
+- Make static riscv64 Linux programs. Do not use shared libraries, run a compiled program, use the network in `build.sh`, or strip a binary after the link.
 
-`tools/check` lists the fuzz targets it found in each build: they must be the ones in `fuzz_targets`. It runs the Dockerfile with network access; say so before running it on a project you have not read.
+If a dependency needs a patch to build, make it a build patch in `projects/<name>/`. List it in `series`. A change that fixes a bug in the project is not a build patch. It never goes in the project directory.
 
-## 6. The pull request
+## 5. Write project.yaml
 
-Prepare a branch with only `projects/<name>/` changed and a pull request description from .github/PULL_REQUEST_TEMPLATE.md. Show both to the maintainer and let them open it: opening a pull request is theirs to do, and only they can tick "I am a core maintainer" and "I accept the OSS Verifier terms". In the context note, summarise what each fuzz target checks, in a few lines.
+Start from `templates/project.yaml` (`docs/project-yaml.md`). Fill in these fields:
 
-When you finish, the only files you have created are in `projects/<name>/`.
+- `repo`, with `#<tag or branch>`;
+- `primary_contact`, the security contact, which is public;
+- `language`, from the list in `docs/project-yaml.md`;
+- `fuzz_targets`, each fuzz target that you wrote or kept;
+- the answers to step 2: `disable_remediation` and `patches`;
+- each other field that the maintainer wants, for example `auto_ccs`, `pgp`, `patch_style` and `publish`.
+
+Ask about `publish`: `after_fixes` (the default), `eager` or `never` (`docs/publishing.md`).
+
+## 6. Check
+
+> **WARNING:** `tools/check` builds the `Dockerfile` with network access. Read the `Dockerfile` before you run `tools/check`.
+
+1. Run `tools/validate.py projects/<name>`. Correct each problem.
+2. Run `tools/check --no-shell --twice <name>`. Correct each problem.
+3. Make sure that the fuzz targets that `tools/check` finds in each build are those in `fuzz_targets`.
+4. Make sure that `tools/check` tells you that the second build has the same bytes.
+
+## 7. Prepare the pull request
+
+1. Make a branch that changes only `projects/<name>/`.
+2. Write the pull request description from `.github/PULL_REQUEST_TEMPLATE.md`.
+3. In the context note, give a summary of what each fuzz target checks, in a few lines.
+4. Show the branch and the description to the maintainer.
+5. Let the maintainer open the pull request. Only the maintainer can confirm "I am a core maintainer" and "I accept the OSS Verifier terms".
+
+When you finish, each file that you made is in `projects/<name>/`.

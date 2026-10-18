@@ -1,148 +1,197 @@
 # The build contract
 
-A project's `Dockerfile` and `build.sh` follow OSS-Fuzz's conventions, on our builder image instead of OSS-Fuzz's. This page says what the builder provides, what the two files must do, and how `tools/check` turns them into binaries. `tools/check` builds exactly as we do.
+This page tells what the builder gives a build, and what a project's `Dockerfile` and `build.sh` must do. It is for the person who ports a project's build to OSS Verifier.
 
-An OSS-Fuzz `Dockerfile` and `build.sh` do not run here unchanged, and we do not promise that they will. They assume OSS-Fuzz's x86-64 base image, packages installed with apt, a native clang and often shared libraries; ours is a cross-compiler for static riscv64 Linux programs. Every build is ported. The port is usually short: the cmake or configure call, the fuzz targets' compile and link lines, and where the dependencies come from.
+The `Dockerfile` and `build.sh` follow the conventions of OSS-Fuzz, on our builder in place of OSS-Fuzz's base image. `tools/check` builds a project exactly as we do.
+
+An OSS-Fuzz `Dockerfile` and `build.sh` do not run here without changes. They expect an x86-64 base image, apt packages, a native clang and often shared libraries. Our builder is a cross-compiler for static riscv64 Linux programs. Thus you must port each build. The port is usually short: the `cmake` or `configure` command, the compile and link commands of the fuzz targets, and the sources of the dependencies.
 
 ## The steps
 
-1. **The builder image** ([infra/base-builder/](../infra/base-builder/)) is built `FROM` a toolchain image: the one the project's lock names, or the newest ([Toolchains](#toolchains)).
-2. **The project image** is built from the project's `Dockerfile`, `FROM` the builder, with `--build-arg COMMIT=<full commit id>` (the commit `repo#ref` resolved to), `REPO` and `BASE_BUILDER`. This is the only step with network access.
-3. **Each build** runs `compile` in a fresh container of the project image with no network (`docker run --network=none`): once for each of `plain`, `ubsan`, `asan` and `asan-ubsan` that `project.yaml` asks for. `compile` sets up that build's compilers and flags and runs `$SRC/build.sh`, which builds every fuzz target into `$OUT`.
-4. **The fuzz targets** are found in each build's `$OUT`, and their binaries collected as `out/<target>/<target>.<build>`, with a manifest of their SHA-256s.
+`tools/check`, and our own builds, do these steps:
+
+1. Make the builder image from [infra/base-builder/](../infra/base-builder/), from a toolchain image ([below](#toolchains)).
+2. Build the project image from the project's `Dockerfile`, on the builder. `tools/check` gives the build arguments `COMMIT` (the full commit that `repo#ref` names), `REPO` and `BASE_BUILDER`. Only this step has network access.
+3. Run `compile` in a new container of the project image, with no network (`docker run --network=none`). Do this once for each build that `project.yaml` asks for: `plain`, `ubsan`, `asan` and `asan-ubsan`. `compile` sets the compilers and flags of the build and runs `$SRC/build.sh`.
+4. Find the fuzz targets in the `$OUT` of each build. Copy each binary to `out/<target>/<target>.<build>`. Write the manifest, with the SHA-256 of each binary.
 
 ## The builder
 
-The toolchain image is the one oss-fuzz-theorems 2026.10.0-rc.2 built its binaries in, `ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816865c7ec61801ae0fcab6d9c81a599ffcb20616576a9c668abd8b0a7b`. It provides clang 20.1.8 for `riscv64-linux-musl`, lld, the musl sysroot at `/opt/musl-sysroot` (with static builds of common libraries a project may link), and a sealed static AddressSanitizer runtime, on Alpine Linux with CMake, Meson, Ninja, the autotools and git. The builder adds OSS-Fuzz's interface. Its driver, compiler wrappers and flags come from that release's build recipe, and with them the builder reproduces that release's binaries byte for byte ([STATUS.md](../STATUS.md) lists the projects checked).
+The default toolchain image is the one that oss-fuzz-theorems 2026.10.0-rc.2 built its binaries in: `ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816865c7ec61801ae0fcab6d9c81a599ffcb20616576a9c668abd8b0a7b`. It contains these items:
 
-Every binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp64d`), linked with lld against musl.
+* clang 20.1.8 for `riscv64-linux-musl`, and lld;
+* the musl sysroot at `/opt/musl-sysroot`, with static builds of common libraries that a project can link;
+* a sealed static AddressSanitizer runtime;
+* Alpine Linux with CMake, Meson, Ninja, the autotools and git.
+
+The builder adds the interface of OSS-Fuzz. Its driver, compiler wrappers and flags come from the build recipe of that release. With them, the builder makes the release's binaries again, byte for byte.
+
+Each binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp64d`), linked with lld against musl.
 
 ## Toolchains
 
-A newer toolchain image changes the bytes of every binary built with it, and a proof is about particular bytes. So a project is built with one of several toolchain images, its vintage:
+A new toolchain image changes the bytes of each binary that it builds, and a proof is about specified bytes. Thus each project is built with one toolchain image, its vintage.
 
-* [infra/toolchains.tsv](../infra/toolchains.tsv) lists the published toolchain images, oldest first. Today there is one, the toolchain above. A newer one is added only once it is published.
-* The builder takes the toolchain image as a build argument (`--build-arg TOOLCHAIN=<image>`); its `Dockerfile` defaults to the toolchain above.
-* `tools/check --lock` builds with the toolchain the lock names: a manifest's `builder.toolchain`, or, for an oss-fuzz-theorems `harness.yaml`, the `build.builder` of its `project.yaml`. Several locks must name the same one. Without a lock, `tools/check` builds with the newest toolchain. `--toolchain <image>` overrides both.
-* A project's vintage is pinned by its lock, in the proofs repository: a project whose proofs are published stays on the toolchain its lock names, and its binaries keep their bytes. A project with no lock, such as a draft with statements only, is built with the newest toolchain.
-* The manifest records the toolchain image a build used, so a lock written from it pins the vintage.
+* [infra/toolchains.tsv](../infra/toolchains.tsv) lists the published toolchain images, oldest first. Today it lists one image, the default above. We add a new image only after its publication.
+* The builder gets the toolchain image as a build argument (`--build-arg TOOLCHAIN=<image>`). Its `Dockerfile` uses the default above.
+* `tools/check --lock` builds with the toolchain that the lock names. For a manifest, this is `builder.toolchain`. For a `harness.yaml` of oss-fuzz-theorems, it is the `build.builder` field of the `project.yaml` two directories above.
+* If you give more than one lock, the locks must name the same toolchain.
+* Without a lock, `tools/check` builds with the newest toolchain. `--toolchain <image>` overrides the lock and the newest toolchain.
+* The lock of a project pins its vintage. A project with published proofs stays on the toolchain that its lock names, so its binaries keep their bytes. A project with no lock, for example a draft branch, uses the newest toolchain.
 
-Builds ported from oss-fuzz-theorems are checked against the release's binaries on the release's toolchain, which their `harness.yaml` locks name.
+We check builds ported from oss-fuzz-theorems against the release's binaries, on the release's toolchain. Their `harness.yaml` locks name it.
 
-## What build.sh is given
+## What build.sh gets
 
 | variable | value |
 |---|---|
-| `$SRC`, `$WORK`, `$OUT` | `/src` (the sources and `build.sh`), `/work` (scratch), `/out` (where the fuzz targets go), as in OSS-Fuzz |
-| `$CC`, `$CXX` | clang and clang++ for this build: cross-compilers for `riscv64-linux-musl` with this build's sanitizer runtime. A link that names `$LIB_FUZZING_ENGINE` is a fuzz target's link (below) |
-| `$CFLAGS` | the common flags, this build's sanitizer flags, `-Wno-unused-command-line-argument` and `-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION` |
+| `$SRC`, `$WORK`, `$OUT` | `/src` (the sources and `build.sh`), `/work` (temporary files) and `/out` (the fuzz targets), as in OSS-Fuzz |
+| `$CC`, `$CXX` | clang and clang++ for this build: cross-compilers for `riscv64-linux-musl`, with the sanitizer runtime of this build |
+| `$CFLAGS` | the common flags, the sanitizer flags of this build, `-Wno-unused-command-line-argument` and `-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION` |
 | `$CXXFLAGS` | `$CFLAGS -stdlib=libc++` |
-| `$LIB_FUZZING_ENGINE` | the driver, which takes libFuzzer's place in every fuzz target ([exit-codes.md](exit-codes.md)) |
-| `$LIB_ALLOCATION_FAILURE_ENGINE` | the driver of an allocation-failure fuzz target, in which allocations fail as the input says ([exit-codes.md](exit-codes.md#allocation-failure)) |
-| `$LIB_ALLOCATION_COUNTING_ENGINE` | the same, with counting mode on, for sweep and test builds that are never published |
+| `$LIB_FUZZING_ENGINE` | the driver, which takes the place of libFuzzer in each fuzz target ([exit-codes.md](exit-codes.md)) |
+| `$LIB_ALLOCATION_FAILURE_ENGINE` | the driver of an allocation-failure fuzz target ([exit-codes.md](exit-codes.md#allocation-failure)) |
+| `$LIB_ALLOCATION_COUNTING_ENGINE` | the same, with counting mode on, for sweep and test builds that we never publish |
 | `$SANITIZER` | `none`, `undefined`, `address` or `address-undefined` |
-| `$ARCHITECTURE`, `$FUZZING_ENGINE` | `riscv64`; `none` (OSS-Fuzz's name for a driver that runs inputs from files) |
-| `$CMAKE_TOOLCHAIN_FILE` | a CMake toolchain file for this build, which CMake 3.21 and later pick up by themselves |
-| `$AR`, `$NM`, `$RANLIB`, `$STRIP`, `$OBJCOPY` | the LLVM tools, as `riscv64-linux-musl-ar` and so on (also on `PATH`) |
-| `$SOURCE_DATE_EPOCH` | `1756684800`, for anything that stamps a date |
+| `$ARCHITECTURE`, `$FUZZING_ENGINE` | `riscv64`; `none`, the OSS-Fuzz name for a driver that runs inputs from files |
+| `$CMAKE_TOOLCHAIN_FILE` | a CMake toolchain file for this build. CMake 3.21 and later find it without help. |
+| `$AR`, `$NM`, `$RANLIB`, `$STRIP`, `$OBJCOPY` | the LLVM tools, as `riscv64-linux-musl-ar` and the other names, which are also on `PATH` |
+| `$SOURCE_DATE_EPOCH` | `1756684800`, for each tool that writes a date |
 
-`build.sh` runs with `bash -eux`, from the Dockerfile's `WORKDIR`.
+`compile` runs `build.sh` with `bash -eux`, from the `WORKDIR` of the `Dockerfile`.
 
 ## The builds
 
-The common compile flags are
+These are the common compile flags:
 
     -march=rv64g -mabi=lp64d -Os -g -ffunction-sections -fdata-sections -fno-stack-protector -Wdate-time
     -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-reallocarray -fno-builtin-free
     -fno-builtin-aligned_alloc -fno-builtin-posix_memalign -fno-builtin-memalign -fno-builtin-valloc
     -fno-builtin-strdup -fno-builtin-strndup
 
-The `-fno-builtin-*` flags keep every allocation an ordinary call in all four builds, so that the optimiser cannot remove or merge an allocation in one build and keep it in another.
+The `-fno-builtin-*` flags keep each allocation an ordinary call in all four builds. Thus the optimizer cannot remove or merge an allocation in one build and keep it in a different build.
 
 | build | `$SANITIZER` | sanitizer flags | a detected error |
 |---|---|---|---|
 | `plain` | `none` | none | none |
-| `ubsan` | `undefined` | `-fsanitize=undefined -fno-sanitize-recover=all -fsanitize-trap=all -fno-sanitize=function` | `SIGILL` (status 132), nothing printed |
-| `asan` | `address` | `-fsanitize=address`, with the sealed static runtime | `abort()` (status 134), nothing printed |
+| `ubsan` | `undefined` | `-fsanitize=undefined -fno-sanitize-recover=all -fsanitize-trap=all -fno-sanitize=function` | `SIGILL` (status 132), with no output |
+| `asan` | `address` | `-fsanitize=address`, with the sealed static runtime | `abort()` (status 134), with no output |
 | `asan-ubsan` | `address-undefined` | both | either |
 
-The UBSan builds trap, with no runtime. With these flags clang 20 checks, as oss-fuzz-theorems measured for the same compiler and flags, `alignment`, `array-bounds`, `bool`, `builtin`, `enum`, `float-cast-overflow`, `integer-divide-by-zero`, `nonnull-attribute`, `null`, `object-size`, `pointer-overflow`, `return`, `returns-nonnull-attribute`, `shift-base`, `shift-exponent`, `signed-integer-overflow`, `unreachable` and `vla-bound`. It does not check `function` (turned off), `vptr` (it needs a runtime), or what clang leaves out of `undefined` by default: unsigned overflow, implicit conversions, `local-bounds`, float division by zero, nullability.
+The UBSan builds trap, with no runtime. oss-fuzz-theorems measured the checks that clang 20 makes with these flags:
 
-As that release's documentation describes it, the sealed AddressSanitizer runtime reads no environment variable, so `ASAN_OPTIONS` has no effect. The driver sets `allocator_may_return_null=1`, so `malloc` returns NULL when memory is refused, as in the plain build. A detection aborts without printing a report. Leak detection is off, the runtime installs no signal handlers, and at start-up it reserves well over 100 GiB of address space; under a shell limit such as `ulimit -v` that reservation fails and the program waits forever.
+    alignment, array-bounds, bool, builtin, enum, float-cast-overflow, integer-divide-by-zero, nonnull-attribute,
+    null, object-size, pointer-overflow, return, returns-nonnull-attribute, shift-base, shift-exponent,
+    signed-integer-overflow, unreachable, vla-bound
 
-The driver is compiled without sanitizer flags in every build; the library and the fuzz targets get the build's flags. In every build `getenv()` returns NULL, `getpid()` and `getppid()` return 1, and `mkstemp()` and its relatives use a fixed name in the current directory, so that a program depends only on its input file.
+The UBSan builds do not make these checks:
+
+* `function`, which is off;
+* `vptr`, which needs a runtime;
+* the checks that clang leaves out of `undefined` by default: unsigned overflow, implicit conversions, `local-bounds`, float division by zero and nullability.
+
+The sealed AddressSanitizer runtime has these properties, as the documentation of that release describes:
+
+* It reads no environment variable, so `ASAN_OPTIONS` has no effect.
+* The driver sets `allocator_may_return_null=1`. Thus `malloc` returns NULL when the runtime refuses memory, as in the plain build.
+* A detection aborts and writes no report.
+* Leak detection is off.
+* The runtime installs no signal handlers.
+* At start, it reserves more than 100 GiB of address space. Under a limit such as `ulimit -v`, the reservation fails and the program waits forever.
+
+The driver is compiled with no sanitizer flags in each build. The library and the fuzz targets get the flags of the build. In each build, `getenv()` returns NULL, `getpid()` and `getppid()` return 1, and `mkstemp()` and the related functions use a fixed name in the current directory. Thus a program depends only on its input file.
 
 ## What the Dockerfile must do
 
-Start from [templates/Dockerfile](../templates/Dockerfile).
+Start from [templates/Dockerfile](../templates/Dockerfile). Obey these rules:
 
-* `FROM ${BASE_BUILDER}`, with `ARG BASE_BUILDER=oss-verifier-base-builder`. `tools/check` passes the builder it built.
-* Declare `ARG REPO` and `ARG COMMIT`, and fetch the source at exactly that commit: `RUN fetch-commit $SRC/<name>` (with `--submodules` if it has any). Never write a commit id into the Dockerfile: `tools/check` supplies it, and the proofs repository's lock records it.
-* Fetch and build anything else the build needs: dependencies, at fixed versions. Dependencies a sanitizer build should instrument are built by `build.sh` with each build's flags; libraries from the sysroot are linked as they are, uninstrumented. `tools/check` records the commit of every git checkout under `$SRC` in its manifest.
-* `COPY build.sh $SRC/`, and any harness sources and patches from `projects/<name>/`. Patches are applied in the order `series` lists.
+1. Start with `FROM ${BASE_BUILDER}`, after `ARG BASE_BUILDER=oss-verifier-base-builder`. `tools/check` gives the builder that it made.
+2. Declare `ARG REPO` and `ARG COMMIT`.
+3. Get the source at exactly that commit: `RUN fetch-commit $SRC/<name>`. Add `--submodules` if the repository has submodules.
+4. Do not write a commit id in the `Dockerfile`. `tools/check` gives the commit, and the lock records it.
+5. Get each dependency at a fixed version.
+6. Copy `build.sh`, your fuzz target sources and your build patches to `$SRC`. Apply the build patches in the order that `series` gives.
 
-When the Dockerfile lives in the project's own repository (`dockerfile:` in `project.yaml`), the build context is that repository at the commit being built: `COPY . $SRC/<name>` takes the source from it.
+`build.sh` builds the dependencies that a sanitizer build must instrument, with the flags of each build. The libraries of the sysroot are linked as they are, with no instrumentation. `tools/check` records the commit of each git checkout under `$SRC` in its manifest.
+
+If the `Dockerfile` is in the project's repository (`dockerfile` in `project.yaml`), the build context is that repository at the commit that we build. Use `COPY . $SRC/<name>` to get the source.
 
 ## What build.sh must do
 
-Start from [templates/build.sh](../templates/build.sh).
+Start from [templates/build.sh](../templates/build.sh). Obey these rules:
 
-* Build the library statically with `$CC`, `$CXX`, `$CFLAGS` and `$CXXFLAGS`. CMake picks up `$CMAKE_TOOLCHAIN_FILE` by itself. Another build system needs the same things, the cross-compilers, the sysroot and static libraries, said its own way. A `build.sh` written by hand has so far been tried with CMake only; the builds ported from oss-fuzz-theorems (below) also cover Meson, autotools, Makefile and header-only builds, with that release's recipes ([STATUS.md](../STATUS.md)).
-* Compile each fuzz target, and link it into `$OUT` through `$CC` or `$CXX` with `$LIB_FUZZING_ENGINE`:
+1. Build the library as a static library, with `$CC`, `$CXX`, `$CFLAGS` and `$CXXFLAGS`. CMake finds `$CMAKE_TOOLCHAIN_FILE` without help. Give each other build system the cross-compilers, the sysroot and static linking in its own way.
+2. Compile each fuzz target.
+3. Link each fuzz target into `$OUT` through `$CC` or `$CXX`, with `$LIB_FUZZING_ENGINE`:
 
-      $CC $CFLAGS -c fuzz/example_fuzzer.c -o "$WORK/example_fuzzer.o"
-      $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer" $LIB_FUZZING_ENGINE libexample.a
+        $CC $CFLAGS -c fuzz/example_fuzzer.c -o "$WORK/example_fuzzer.o"
+        $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer" $LIB_FUZZING_ENGINE libexample.a
 
-* Do not run what it compiles. The programs are for riscv64, and a build that runs one works only on a machine that runs riscv64 programs transparently (some do, through binfmt_misc and qemu), so its result would depend on the machine.
-* Do not change a fuzz target after linking it (no `strip`, no `objcopy`): its published bytes are made at link time.
-* Be deterministic: no dates (`$SOURCE_DATE_EPOCH` is set, and `-Wdate-time` warns about `__DATE__` and `__TIME__`), and no version strings derived from the git history, which differs between a full and a shallow clone.
+4. Do not run a program that the build compiled. The programs are for riscv64. A build that runs one works only on a machine that runs riscv64 programs, for example through binfmt_misc and qemu. Its result then depends on the machine.
+5. Do not change a fuzz target after the link: no `strip` and no `objcopy`. The link makes the published bytes.
+6. Make the build deterministic. Do not write dates: `$SOURCE_DATE_EPOCH` is set, and `-Wdate-time` warns about `__DATE__` and `__TIME__`. Do not make version strings from the git history, which is different in a full clone and a shallow clone.
+
+A `build.sh` written by hand has had tests with CMake only. The builds that we ported from oss-fuzz-theorems ([below](#builds-ported-from-oss-fuzz-theorems)) also include Meson, autotools, Makefile and header-only builds.
 
 ## How a fuzz target is linked
 
-A link through `$CC` or `$CXX` that names `$LIB_FUZZING_ENGINE` is made the way the release recipe makes it ([link-fuzz-target](../infra/base-builder/link-fuzz-target)):
+A link through `$CC` or `$CXX` that names `$LIB_FUZZING_ENGINE` goes to [link-fuzz-target](../infra/base-builder/link-fuzz-target). It makes the link as the release's build recipe does:
 
     <compiler> -static -no-pie -Wl,--gc-sections <driver> [<silent reports>] <the link's own arguments> <seals>
 
-The driver's objects come first, wherever the link named `$LIB_FUZZING_ENGINE`, and the getenv, getpid and mkstemp seals come last; in the AddressSanitizer builds, `-Wl,--defsym=__sanitizer_silent_reports=1` makes a detection abort without a report. The link is made twice. The file `build.sh` asked for keeps its symbols, so that the fuzz target can be found by its symbol table. A second link adds `-Wl,--strip-all`, and its output is the published binary: `compile` saves it as `$OUT/.stripped/<sha256 of the first>`.
+* The driver's objects come first, in the position where the link named `$LIB_FUZZING_ENGINE`.
+* The seals for getenv, getpid and mkstemp come last.
+* In the AddressSanitizer builds, `-Wl,--defsym=__sanitizer_silent_reports=1` makes a detection abort without a report.
+
+`link-fuzz-target` links two times. The first link makes the file that `build.sh` asked for, with its symbols, so that we can find the fuzz target by its symbol table. The second link adds `-Wl,--strip-all`, and its output is the published binary. `compile` keeps it as `$OUT/.stripped/<sha256 of the first>`.
 
 ## The fuzz targets
 
-A fuzz target is an executable in a build's `$OUT` whose ELF symbol table defines `LLVMFuzzerTestOneInput`. That is OSS-Fuzz's rule, except that it reads the symbol table instead of searching the file's bytes. A fuzz target must be in every build. `fuzz_targets` in `project.yaml` names the ones to verify; without it, every one found is verified. `tools/check` collects each one's published binary as `out/<target>/<target>.<build>`. Anything else in `$OUT` is ignored.
+A fuzz target is an executable in the `$OUT` of a build whose ELF symbol table defines `LLVMFuzzerTestOneInput`. This is the OSS-Fuzz rule, but we read the symbol table in place of the bytes of the file. A fuzz target must be in each build.
+
+`fuzz_targets` in `project.yaml` names the fuzz targets to verify. Without it, we verify each fuzz target that we find. `tools/check` copies the published binary of each fuzz target to `out/<target>/<target>.<build>`. It ignores each other file in `$OUT`.
 
 ## The manifest
 
-`tools/check` writes `manifest.yaml` beside `out/`, marked as generated:
+`tools/check` writes `manifest.yaml` next to `out/`, with a mark that a tool made it. It contains these items:
 
-* `repo`, `ref` and `commit`: the repository, the ref `project.yaml` names, and the full commit it resolved to;
-* `oss_verifier`: this repository's commit, and whether `tools/`, `infra/` or the project's directory differed from it;
-* `builder`: the toolchain image the builder was built `FROM` ([Toolchains](#toolchains)), and the local ids of the builder and project images;
-* `sources`: every git checkout under `$SRC` in the project image, and the commit it is at;
-* `builds` and `fuzz_targets`: what was built, with "every fuzz target" resolved to a list;
-* `targets.<target>.builds.<build>`: `file`, `bytes` and `sha256` of each binary, the shape of the `builds:` section of an oss-fuzz-theorems `harness.yaml`.
+* `repo`, `ref` and `commit`: the repository, the ref in `project.yaml`, and the full commit that the ref named;
+* `oss_verifier`: the commit of this repository, and whether `tools/`, `infra/` or the project directory had changes;
+* `builder`: the toolchain image of the builder ([Toolchains](#toolchains)), and the local ids of the builder and project images;
+* `sources`: each git checkout under `$SRC` in the project image, with its commit;
+* `builds` and `fuzz_targets`: what we built, with "each fuzz target" written as a list;
+* `targets.<target>.builds.<build>`: the `file`, `bytes` and `sha256` of each binary, in the format of the `builds:` section of an oss-fuzz-theorems `harness.yaml`.
 
-The lock in the proofs repository is to be written from the manifest, and it is the only place the resolved commit is kept. `tools/check --lock <file>` builds the commit a lock names and compares every binary with it; the lock may be a manifest, or an oss-fuzz-theorems `harness.yaml`.
+We will write the lock in the proofs repository from the manifest. The lock is the only place that records the commit. `tools/check --lock <file>` builds the commit that a lock names, and compares each binary with the lock ([reproducing.md](reproducing.md)). The lock can be a manifest or an oss-fuzz-theorems `harness.yaml`.
 
 ## Reproducibility
 
-`tools/check --twice` builds everything a second time from scratch (`docker build --no-cache`, a fresh fetch, every build compiled again) and fails if any byte differs. These decide the bytes, as we found in reproducing the release's binaries:
+`tools/check --twice` builds everything a second time from the start, with `docker build --no-cache`, a new fetch and a new compile of each build. It fails if a byte is different. We found that these items decide the bytes:
 
-* **The source paths.** An AddressSanitizer build records the path of every source file it instruments, so a file compiled at `/src/a/x.c` and at `/src/b/x.c` makes different binaries. The plain and UBSan builds do not depend on it.
-* **The order of the link.** The driver first and the seals last, as `$LIB_FUZZING_ENGINE` arranges.
-* **The layout of the archives.** Linking the fuzz target's object before the library's archives, as OSS-Fuzz does, can lay out the program differently from linking one archive that holds the library and the fuzz target, as the release did. A port that must match the release's bytes links the way it did.
-* **Stripping at link time.** Stripping the binary afterwards gives different bytes from `-Wl,--strip-all`.
+* **The source paths.** An AddressSanitizer build records the path of each source file that it instruments. A file compiled at `/src/a/x.c` and at `/src/b/x.c` makes different binaries. The plain and UBSan builds do not depend on the path.
+* **The order of the link.** The driver comes first and the seals come last. `$LIB_FUZZING_ENGINE` arranges this.
+* **The layout of the archives.** OSS-Fuzz links the object of the fuzz target before the archives of the library. The release linked one archive that holds the library and the fuzz target. The two layouts can make different programs. A port that must match the release's bytes links as the release did.
+* **Stripping at the link.** A strip after the link gives bytes that are different from `-Wl,--strip-all`.
 
 ## Builds ported from oss-fuzz-theorems
 
-A project seeded from oss-fuzz-theorems 2026.10.0-rc.2 can have its build ported from that release's recipe by `tools/port.py`, which writes three generated files beside `project.yaml`:
+`tools/port.py` can port the build of a project that we seeded from oss-fuzz-theorems 2026.10.0-rc.2, from the release's build recipe. It writes three files next to `project.yaml`:
 
-* `Dockerfile`: fetches the project at `COMMIT` into `$SRC/upstream/<name>`, then runs `lay-out-sources` on `sources`.
-* `sources`: where each source tree goes, as the release's source manifest says: a copy of the checkout per release target, any other tree or file pinned by commit or sha256, the release's own files for a target, and its build-only patches. It is the only place a dependency's pin is kept; a Dockerfile never holds one.
-* `build.sh`: for each fuzz target, the release's pin for it (its `build_lib`, `LIB_ARCHIVE` and helpers), run by [release-target.sh](../infra/base-builder/release-target.sh) with the release's recipes ([recipes.sh](../infra/base-builder/recipes.sh)), under `sh -e` as the release ran it.
+* `Dockerfile`: gets the project at `COMMIT` into `$SRC/upstream/<name>`, then runs `lay-out-sources` on `sources`.
+* `sources`: tells where each source tree goes, as the release's source manifest tells. It names a copy of the checkout for each release target, and each other tree or file, pinned by commit or SHA-256. It also names the release's own files for a target, and its build patches. It is the only place that records the pin of a dependency. A `Dockerfile` never holds one.
+* `build.sh`: for each fuzz target, the release's pin for it (its `build_lib`, `LIB_ARCHIVE` and helpers). [release-target.sh](../infra/base-builder/release-target.sh) runs each pin with the release's recipes ([recipes.sh](../infra/base-builder/recipes.sh)), under `sh -e`, as the release ran it.
 
-`release-target.sh` gives each target the layout the release built in: its tree in `/work/ext/<target>/src`, its build directory in `/work/build/lib/<build>/<target>`, the release's files for it in `/work/targets/<target>`, and compiler wrappers that give the compiler the neutral `/src/...` paths a binary records. The internal paths matter as well as the neutral ones: the source locations of UBSan's checks keep the internal path, so in an `asan-ubsan` build a header that both uses `__FILE__` and holds a UBSan check makes one string literal more, which the AddressSanitizer build instruments, than the same build at the neutral path. With that layout, a ported build reproduces the release's binaries.
+`release-target.sh` gives each target the layout that the release built in:
 
-`tools/verify_ports.py` ports each project and checks the port with `tools/check --lock`, against every `harness.yaml` of the release for its fuzz targets. [tools/seeds/builds.tsv](../tools/seeds/builds.tsv) holds its result for each project, and [docs/seeded-projects.tsv](seeded-projects.tsv) and [STATUS.md](../STATUS.md) repeat it. A draft keeps its port in `tools/seeds/<name>/` only if every binary is the release's.
+* the tree of the target in `/work/ext/<target>/src`;
+* its build directory in `/work/build/lib/<build>/<target>`;
+* the release's files for it in `/work/targets/<target>`;
+* compiler wrappers that give the compiler the neutral `/src/...` paths that a binary records.
 
-## Patches
+The internal paths matter too. The source locations of the UBSan checks keep the internal path. In an `asan-ubsan` build, a header that uses `__FILE__` and holds a UBSan check thus makes one more string literal, which AddressSanitizer instruments. With the release's layout, a ported build makes the release's binaries again.
 
-A patch beside `project.yaml` may only change how the project builds: static linking, cross-compilation, a version stamp, a generated file. `series` lists the patches in the order they are applied. A patch that fixes a bug never goes here: it goes to the project ([disclosure.md](disclosure.md)).
+`tools/verify_ports.py` ports each project and checks the port with `tools/check --lock`, against each `harness.yaml` of the release for its fuzz targets. [tools/seeds/builds.tsv](../tools/seeds/builds.tsv) holds the result for each project, and [seeded-projects.tsv](seeded-projects.tsv) repeats it. A draft branch gets the port in `tools/seeds/<name>/` only if each binary is the release's.
+
+## Build patches
+
+A build patch in the project directory can only change how the project builds: static linking, cross-compilation, a version stamp or a generated file. `series` lists the build patches in the order of application. A change that fixes a bug is not a build patch. It never goes in the project directory. We send it to the project as a patch ([patches.md](patches.md)).

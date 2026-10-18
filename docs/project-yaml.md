@@ -1,83 +1,170 @@
 # project.yaml
 
-`projects/<name>/project.yaml` says who maintains a project, where its source is, and what to build. Start from [templates/project.yaml](../templates/project.yaml). `tools/validate.py` checks every rule on this page, and we apply the same rules when we import a project.
+This page describes each field of `projects/<name>/project.yaml` and each file in the project directory. It is for a maintainer, or a coding agent, who writes a project directory.
 
-The field names are OSS Scanner's where it has the field, then OSS-Fuzz's, and ours only for what neither has.
+Start from [templates/project.yaml](../templates/project.yaml). `tools/validate.py` checks each rule on this page. We use the same rules when we import a project.
 
-| field | required | meaning | default |
-|---|---|---|---|
-| `repo` | yes | One git repository, as an `https://` URL. Add `#<ref>`: a branch or tag to follow, or a full commit id to verify exactly that commit. | the default branch |
-| `primary_contact` | yes | The one address findings and build problems go to. It is public. | |
-| `language` | yes | `c` or `c++`: the language of the code we build. | |
-| `dockerfile` | unless a `Dockerfile` is beside `project.yaml` | The Dockerfile's path in your repository. A project we seeded may have no build files yet. | |
-| `auto_ccs` | no | Addresses we copy on every report. Not with `pgp`. | none |
-| `homepage` | no | The project's home page. | |
-| `pgp` | no | Your armored OpenPGP public key. Reports are then encrypted to it and go to `primary_contact` only. | |
-| `disabled` | no | `true` pauses the project without removing it. | `false` |
-| `sanitizers` | no | The sanitizer builds besides the plain one: a subset of `[address, undefined]`. | `[address, undefined]` |
-| `fuzz_targets` | no | The fuzz targets to verify. | every fuzz target the build produces |
-| `patch_style` | no | The path of your `patch_style.md` in your repository, if it is not beside `project.yaml`. | |
-| `budgets` | no | Memory budgets ([memory-policy.md](memory-policy.md)). | today's values |
-| `proofs` | no | Where the proofs are published: `repo` and `path` ([publishing.md](publishing.md)). | `repo: https://github.com/theorem-labs/oss-verifier-proofs#<name>`, `path: projects/<name>` |
-| `publish` | no | When the proofs are published: `eager`, `after_fixes` or `never` ([publishing.md](publishing.md)). | `after_fixes` |
-
-No other field is allowed. Some settings are the operators' to make, never a pull request's; there are none yet, and `tools/validate.py` will refuse any that are added later.
+The field names come from OSS Scanner if it has the field, then from OSS-Fuzz. We made new names only for fields that neither has.
 
 ## The fields
 
-**`repo`.** Exactly one repository, cloned anonymously over https. A branch or tag after `#` is what updates follow: each build resolves it to the commit it names at that moment. A full commit id (40 or, for a SHA-256 repository, 64 hex digits) means "verify exactly this commit". The commit a build used is recorded with its binaries in the lock in the proofs repository, which is the only place it is kept. `tools/validate.py` warns about a ref that looks like a shortened commit id.
+| field | required | value | default |
+|---|---|---|---|
+| `repo` | yes | the git repository, with an optional `#<ref>` | the default branch |
+| `primary_contact` | yes | the one email address that gets findings and build problems | |
+| `language` | yes | the language of the code that we build ([below](#language)) | |
+| `dockerfile` | if no `Dockerfile` is in the project directory | the path of the `Dockerfile` in your repository | |
+| `auto_ccs` | no | more email addresses, copied on each report | none |
+| `homepage` | no | the project's home page | |
+| `pgp` | no | your armored OpenPGP public key | |
+| `disabled` | no | `true` pauses the project | `false` |
+| `sanitizers` | no | the sanitizer builds in addition to `plain` | `[address, undefined]` |
+| `fuzz_targets` | no | the fuzz targets to verify | each fuzz target that the build makes |
+| `patch_style` | no | the path of your `patch_style.md` in your repository | |
+| `disable_remediation` | no | `true`: send findings without patches | `false` |
+| `patches` | no | which patches our agents write ([below](#patches)) | the defaults in [patches.md](patches.md) |
+| `budgets` | no | the memory budgets of the statements | today's values |
+| `proofs` | no | where we publish the proofs | the proofs repository |
+| `publish` | no | when we publish the proofs: `eager`, `after_fixes` or `never` | `after_fixes` |
 
-**`primary_contact`, `auto_ccs`, `pgp`.** As in OSS Scanner. Use a security alias you are happy to see published. A project we seeded ourselves says `primary_contact: n/a` until a maintainer adopts it; `tools/validate.py` warns about it, and the triage comment on a pull request flags it.
+`tools/validate.py` refuses each field that is not in this table.
 
-**`language`.** `c` or `c++`, the language of the library and its fuzz targets as we build them.
+### repo
 
-**`dockerfile`.** Leave it out when the `Dockerfile` and `build.sh` sit beside `project.yaml`: the build context is then `projects/<name>/`, and the Dockerfile fetches your source. Set it when they live in your repository (we suggest `.oss-verifier/Dockerfile`): the build context is then your repository at the commit being built, and `build.sh` is expected beside the Dockerfile, unless the Dockerfile creates `$SRC/build.sh` itself. In that case harness sources, patches and a `sources` file belong in your repository too, and nothing but `project.yaml` and `patch_style.md` may sit here.
+Give exactly one git repository, as an `https://` URL. We clone it anonymously.
 
-A project we seeded ourselves (`primary_contact: n/a`) may have no build files yet: we add a `Dockerfile` and a `build.sh` only once they have been checked to build. `tools/validate.py` warns about such a project, and `tools/check` cannot build it. [STATUS.md](../STATUS.md) lists them.
+After `#`, give one of these:
 
-**`sanitizers`.** Each build is a separate set of binaries with its own statements:
+* A branch or a tag. Each build uses the commit that the branch or tag names at that time.
+* A full commit id: 40 hexadecimal digits, or 64 for a SHA-256 repository. Each build then uses exactly that commit.
 
-| build | made when | sanitizer flags |
+The lock in the proofs repository records the commit of each build. It is the only place that records it. `tools/validate.py` warns you about a ref that looks like a shortened commit id.
+
+### primary_contact, auto_ccs and pgp
+
+These fields work as they do in OSS Scanner.
+
+* `primary_contact` gets each finding and each build problem.
+* `auto_ccs` lists more addresses. Each report goes to them too.
+* `pgp` holds your armored OpenPGP public key. We then encrypt each report to this key, and send it to `primary_contact` only. Thus you cannot use `pgp` with `auto_ccs`.
+
+The addresses are public. Use an address that you are glad to publish, such as a security alias.
+
+A seeded project has `primary_contact: n/a` until a maintainer adopts it. `tools/validate.py` warns about it, and the triage comment on a pull request shows it.
+
+### language
+
+Give the language of the code that we build: the library and its fuzz targets.
+
+Today the builder builds these languages:
+
+| `language` | the code |
+|---|---|
+| `c` | C |
+| `c++` | C++, or C and C++ together |
+
+<!-- PENDING: the other languages that the toolchain supports. Add a row for each one here, and nowhere else. -->
+**Other languages: pending.** We are making sure which other languages the toolchain supports. This table will list them.
+
+This table is the only list of languages in these documents.
+
+### dockerfile
+
+Use `dockerfile` only if the `Dockerfile` is in your repository. We recommend the path `.oss-verifier/Dockerfile`.
+
+* If the `Dockerfile` and `build.sh` are in the project directory, do not set `dockerfile`. The build context is then the project directory.
+* If you set `dockerfile`, the build context is your repository at the commit that we build. Put `build.sh` next to the `Dockerfile`, unless the `Dockerfile` makes `$SRC/build.sh`. Then put your harness sources, patches and `sources` file in your repository too. Only `project.yaml` and `patch_style.md` can then be in the project directory.
+
+A seeded project can have no build files yet. `tools/validate.py` warns about it, and `tools/check` cannot build it.
+
+### sanitizers
+
+Each build makes a different set of binaries, with its own statements.
+
+| build | we make it when | sanitizer |
 |---|---|---|
 | `plain` | always | none |
-| `ubsan` | `undefined` is listed | `-fsanitize=undefined`, trapping |
-| `asan` | `address` is listed | `-fsanitize=address`, with the sealed static runtime |
-| `asan-ubsan` | both are listed | both |
+| `ubsan` | `sanitizers` contains `undefined` | UndefinedBehaviorSanitizer |
+| `asan` | `sanitizers` contains `address` | AddressSanitizer |
+| `asan-ubsan` | `sanitizers` contains both | both |
 
-[build-contract.md](build-contract.md) gives the flags in full.
+[build-contract.md](build-contract.md#the-builds) gives the flags of each build.
 
-**`fuzz_targets`.** The names of fuzz targets as `build.sh` writes them into `$OUT`. Left out, it means every fuzz target the build produces: an executable in `$OUT` whose symbol table defines `LLVMFuzzerTestOneInput`, present in every build. Either way the list a build resolved to is written into its manifest and the lock, so "every fuzz target" never silently changes what a proof covers. A target named here that a build does not produce fails the build.
+### fuzz_targets
 
-**`patch_style`.** Where your `patch_style.md` is in your repository. Like `dockerfile`, it is one place or the other: in your repository, or beside `project.yaml`.
+Give the names of the fuzz targets that `build.sh` puts in `$OUT`. If you do not give this field, we verify each fuzz target that the build makes. A fuzz target is an executable in `$OUT` whose symbol table defines `LLVMFuzzerTestOneInput`. It must be in each build.
 
-**`budgets`.** The memory budgets the statements use ([memory-policy.md](memory-policy.md)). The default, today's values, is:
+The manifest and the lock record the list that a build used. Thus "each fuzz target" cannot change what a proof is about without a record. A build that does not make a fuzz target in this list fails.
+
+### patch_style
+
+Give the path of your `patch_style.md` in your repository. Do not use this field if `patch_style.md` is in the project directory. `patch_style.md` holds free text about how you want patches: code style, tests and commit format ([patches.md](patches.md#patch-style)).
+
+### disable_remediation
+
+Set `disable_remediation: true` to get findings without patches. OSS-Fuzz uses the same name. If you do not give this field, we send a patch with each finding when we have one.
+
+### patches
+
+This block tells our agents which patches to write. Each key is optional. [patches.md](patches.md) tells how to choose.
+
+```yaml
+patches:
+  findings: fuzz_failures       # or all
+  out_of_scope: harness         # or library
+  allocation_failure: harness   # or library
+  documentation: false          # or true
+  refactoring: none             # or equivalent, or minor
+  equivalence_proof: required   # or not_required
+```
+
+The values in this example are the defaults. `tools/validate.py` refuses an unknown key or value. It warns you if you give `patches` with `disable_remediation: true`.
+
+### budgets
+
+The memory budgets of the statements ([what-gets-proven.md](what-gets-proven.md#memory-budgets)). These are the defaults:
 
 ```yaml
 budgets:
-  halts: 16GiB               # each build run alone
-  agrees:                    # per sanitizer: [plain side, sanitizer side]
-    address: [2GiB, 512GiB]  # also used for asan-ubsan
+  halts: 16GiB               # each build that runs alone
+  agrees:                    # for each sanitizer: [plain side, sanitizer side]
+    address: [2GiB, 512GiB]  # also for asan-ubsan
     undefined: [16GiB, 512GiB]
 ```
 
-A size is a positive number of bytes, or a number followed by `KiB`, `MiB`, `GiB` or `TiB`. A budget under `agrees` must be for one of the project's sanitizers. Set only what you want to change.
+Give a size as a positive number of bytes, or as a number followed by `KiB`, `MiB`, `GiB` or `TiB`. Give a budget under `agrees` only for a sanitizer that the project uses. Give only the values that you want to change.
 
-**`proofs`.** Where the proofs about the project are pushed: `repo`, an https URL with `#<branch>`, and `path`, a directory in that repository. Most projects leave it out.
+### proofs
 
-**`publish`.** When the proofs are pushed to `proofs.repo` ([publishing.md](publishing.md)).
+Give the place where we publish the proofs: `repo`, an `https://` URL with `#<branch>`, and `path`, a directory in that repository. Most projects do not use this field. [publishing.md](publishing.md) gives the default.
 
-## Files beside project.yaml
+### publish
+
+Tell us when to publish the proofs ([publishing.md](publishing.md)).
+
+## The files in the project directory
 
 | file | when |
 |---|---|
-| `Dockerfile` | unless `dockerfile:` is set |
-| `build.sh` | with a `Dockerfile` beside `project.yaml` |
-| `patch_style.md` | optional, unless `patch_style:` is set |
-| `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp` | optional: harness sources of your own, such as a fuzz target that checks a property |
-| `*.patch` and `series` | optional: patches that change only how the project builds |
-| `sources` | optional: the project's other source trees and files, each pinned by commit or sha256, for the Dockerfile to lay out with `lay-out-sources` ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
-| a file `sources` copies | optional: a file the build needs that `sources` copies into place, under any name |
+| `Dockerfile` | if `dockerfile` is not set |
+| `build.sh` | with a `Dockerfile` in the project directory |
+| `patch_style.md` | optional, if `patch_style` is not set |
+| `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp` | optional: your own fuzz targets and their helpers |
+| `*.patch` and `series` | optional: build patches |
+| `sources` | optional: other source trees and files of the build, each pinned by commit or SHA-256 ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
+| a file that `sources` copies | optional: a file that the build needs, under any name |
 
-`series` lists the patches, one file name per line, in the order they are applied; blank lines and lines starting with `#` are ignored. Every patch must be listed exactly once. A patch here may make the build static, cross-compile, fix a version stamp or generate a file; a patch that fixes a bug never goes here.
+`series` lists the build patches, one file name on each line, in the order in which we apply them. We ignore empty lines and lines that start with `#`. List each patch exactly once.
 
-Every file must be a regular file (no symbolic links, no subdirectories) with a plain name (`A-Z a-z 0-9 . _ -`, starting with a letter or digit), UTF-8 text, and at most 128 KiB for `project.yaml`, 256 KiB for `build.sh`, a harness source or a patch, and 64 KiB for anything else. A project's directory holds at most 64 files. Its name is `a-z 0-9 . _ -`, starting with a letter or digit, at most 63 characters.
+A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the project directory ([patches.md](patches.md)).
+
+Each file must obey these rules:
+
+* It is a regular file. Symbolic links and subdirectories are not permitted.
+* Its name uses only `A-Z a-z 0-9 . _ -` and starts with a letter or digit.
+* It is UTF-8 text.
+* Its size is at most 128 KiB for `project.yaml`.
+* Its size is at most 256 KiB for `build.sh`, a harness source or a patch.
+* Its size is at most 64 KiB for each other file.
+
+The project directory holds at most 64 files. Its name uses only `a-z 0-9 . _ -`, starts with a letter or digit, and has at most 63 characters.

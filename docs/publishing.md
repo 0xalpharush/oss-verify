@@ -1,20 +1,25 @@
 # Publishing proofs
 
-The statements and proofs about a project are pushed to the repository and directory its `project.yaml` names, when its `publish` field says.
+This page tells when and where we publish the statements and proofs about a project, and what we publish. It is for maintainers.
 
 ## When: `publish`
 
-| value | the proofs are pushed |
+The `publish` field in `project.yaml` tells us when to publish:
+
+| value | we publish the proofs |
 |---|---|
-| `after_fixes` (the default) | once every patch we sent you is public or upstreamed |
-| `eager` | as the proofs progress |
+| `after_fixes` (the default) | when each patch that we sent you is public or in your project |
+| `eager` | while we work on them |
 | `never` | never outside Theorem |
 
-Whatever `publish` says, we publish nothing that describes a finding that is not public yet ([disclosure.md](disclosure.md)): the statements a finding affects are held back until it is, and nothing published says why. A project we seeded ourselves (`primary_contact: n/a`) is published only while it has no findings at all.
+Each value obeys these rules:
+
+* We publish nothing that shows a finding that is not public yet ([disclosure.md](disclosure.md)). We hold back the statements that the finding affects until it is public. What we publish does not tell why.
+* We publish a seeded project only while it has no findings.
 
 ## Where: `proofs`
 
-By default, the branch named after the project in [oss-verifier-proofs](https://github.com/theorem-labs/oss-verifier-proofs), directory `projects/<name>`:
+By default, we publish to the branch with the project's name in [oss-verifier-proofs](https://github.com/theorem-labs/oss-verifier-proofs), in the directory `projects/<name>`:
 
 ```yaml
 proofs:
@@ -22,10 +27,22 @@ proofs:
   path: projects/<name>
 ```
 
-Most projects leave it out.
+Most projects do not set this field.
 
-## What is published, and what it rests on
+## What we publish
 
-The project's statements, their proofs, and the lock: the SHA-256 of every binary they are about, with the commit it was built from. The lock is the only place that commit is recorded. It is to be written from the manifest `tools/check` produces ([build-contract.md](build-contract.md#the-manifest)), so anyone can rebuild the binaries and compare.
+We publish three items:
 
-A published proof checks against stock inputs: the released process model, the build recipe in this repository at a published commit, and the project's upstream source as it is. A patch that changes the library is never part of a published build; only build-only patches are ([project-yaml.md](project-yaml.md#files-beside-projectyaml)).
+* the statements about the project's binaries;
+* the proofs of these statements;
+* the lock: the SHA-256 of each binary, the commit that we built it from, and the toolchain.
+
+We write the lock from the manifest of `tools/check` ([build-contract.md](build-contract.md#the-manifest)). Thus you can rebuild each binary and compare it with the lock ([reproducing.md](reproducing.md)).
+
+A published proof rests on public inputs only:
+
+* the released process model;
+* the build files in this repository, at a published commit;
+* your project's source as it is.
+
+A published build never contains a patch that changes your library. It can contain build patches only ([project-yaml.md](project-yaml.md#the-files-in-the-project-directory)).

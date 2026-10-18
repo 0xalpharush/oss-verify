@@ -1,16 +1,17 @@
-<!-- Adapted from OSS Scanner's .github/PULL_REQUEST_TEMPLATE.md (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, under the Apache License 2.0. Modified 2026 by Theorem Labs, PBC: OSS Verifier's checklist (terms, tools/check, build files, patch style). -->
+<!-- Adapted from OSS Scanner's .github/PULL_REQUEST_TEMPLATE.md (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, under the Apache License 2.0. Modified 2026 by Theorem Labs, PBC: OSS Verifier's checklist (terms, tools/check --twice, build files, patches, patch style). -->
 ## Enroll `projects/<name>`
 
-I have verified each of the following before submitting this project:
+Before I opened this pull request, I made sure of each point:
 
 - [ ] I am a core maintainer of this project.
 - [ ] I accept the [OSS Verifier terms](https://theorem.dev/oss-verifier/terms/).
-- [ ] `project.yaml` follows the README (one project per PR; `tools/validate.py` passes locally).
-- [ ] `tools/check <name>` builds every fuzz target I want verified.
-- [ ] `primary_contact` is the email address of the primary security contact.
-- [ ] A `Dockerfile` and a `build.sh` are present, in one of two places: next to `project.yaml` in this repo, or in the project's repository, with `dockerfile:` naming the Dockerfile's path and `build.sh` beside it.
-- [ ] `patch_style.md` is written for this project (optional), placed in the same way: next to `project.yaml` in this repo, or in the repository at the path `patch_style:` names.
+- [ ] This pull request changes only `projects/<name>/`, for one project, and `tools/validate.py` finds no problem in it.
+- [ ] `tools/check --twice <name>` builds each fuzz target that I want verified, and the second build has the same bytes.
+- [ ] `primary_contact` is the email address of the project's security contact.
+- [ ] A `Dockerfile` and a `build.sh` are next to `project.yaml`. Or they are in one directory of the project's repository, and `dockerfile:` gives the path of the `Dockerfile`.
+- [ ] I chose which patches to get: `disable_remediation` and `patches` in `project.yaml`, or their defaults (docs/patches.md).
+- [ ] `patch_style.md` (optional) tells how a patch must look. It is next to `project.yaml`, or in the project's repository at the path that `patch_style:` gives.
 
-To change an enrollment, edit `projects/<name>/`; to pause the project, set `disabled: true`; to withdraw it, remove `projects/<name>/`.
+To change the enrollment, edit `projects/<name>/`. To pause the project, set `disabled: true`. To leave, remove `projects/<name>/`.
 
-Context (optional): anything about the project or its build that a reviewer should know, such as which fuzz targets matter most to you.
+Context (optional): what a reviewer must know about the project or its build, for example which fuzz targets matter most to you.

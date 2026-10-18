@@ -1,6 +1,8 @@
-# Status
+# Status (internal engineering status)
 
-This repository is being prepared and is not open for enrollment yet. This page says what works today, how it was checked, and what does not work yet.
+**Internal.** This page is the engineering status of the repository, for the people who build it. It is not documentation for maintainers. It moves out of the repository before the repository becomes public.
+
+The repository is not open for enrollment yet. This page tells what works today, how we checked it, and what does not work yet.
 
 ## Works, and how it was checked
 
@@ -70,4 +72,4 @@ One for each of the other 302 projects `tools/seed.py` can seed: `draft-generic-
 ## Not decided yet
 
 * The launch set on main.
-* Whether the `asan` and `asan-ubsan` builds should have a smaller `halts` budget ([docs/memory-policy.md](docs/memory-policy.md)).
+* Whether the `asan` and `asan-ubsan` builds should have a smaller `halts` budget ([docs/what-gets-proven.md](docs/what-gets-proven.md#memory-budgets)).

@@ -1,5 +1,14 @@
-# Notes for coding agents
+# Instructions for coding agents
 
-To enroll a project in OSS Verifier, or to help its maintainer write fuzz targets or port its build, follow [.claude/skills/add-project/SKILL.md](.claude/skills/add-project/SKILL.md). It works only in `projects/<name>/`.
+This file is for coding agents. It tells an agent how to enroll a project in OSS Verifier with the project's maintainer.
 
-This repository accepts pull requests that change one `projects/<name>/` and nothing else ([CONTRIBUTING.md](CONTRIBUTING.md)). The rules for that directory are in [docs/project-yaml.md](docs/project-yaml.md), and the build it describes in [docs/build-contract.md](docs/build-contract.md).
+Follow the skill [.claude/skills/add-project/SKILL.md](.claude/skills/add-project/SKILL.md). It gives each step, the questions to ask the maintainer and the checks to run.
+
+Obey these rules:
+
+1. Change only `projects/<name>/`. This repository accepts no other change ([CONTRIBUTING.md](CONTRIBUTING.md)).
+2. Ask the maintainer each question in the skill. Do not guess an answer.
+3. Follow the rules for the project directory in [docs/project-yaml.md](docs/project-yaml.md).
+4. Follow the rules for the build in [docs/build-contract.md](docs/build-contract.md).
+5. Read the project's `Dockerfile` before you run `tools/check` on it.
+6. Do not open the pull request. Give it to the maintainer, who opens it and accepts the terms.
