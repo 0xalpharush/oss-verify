@@ -224,7 +224,9 @@ def write_manifest(path, data):
 def load_lock(path):
     """Read a lock: a manifest from tools/check, or an oss-fuzz-theorems harness.yaml.
 
-    Return (commit or None, {(target, build): {"file", "bytes", "sha256"}}). Raise LockError if it is neither.
+    Return (commit or None, {(target, build): {"file", "bytes", "sha256"}}, toolchain image or None). A manifest names
+    its toolchain; a harness.yaml's is the builder its project.yaml, two directories up, names. Raise LockError if it
+    is neither.
     """
     try:
         data = yaml.safe_load(pathlib.Path(path).read_text(encoding="utf-8"))
@@ -232,22 +234,30 @@ def load_lock(path):
         raise LockError(f"cannot read {path}: {error}") from None
     if not isinstance(data, dict):
         raise LockError(f"{path} is not a mapping")
-    pins = {}
+    pins, toolchain = {}, None
     if data.get("schema") == MANIFEST_SCHEMA or isinstance(data.get("targets"), dict):
         for target, entry in (data.get("targets") or {}).items():
             for build, pin in ((entry or {}).get("builds") or {}).items():
                 pins[(str(target), str(build))] = pin
         commit = data.get("commit")
+        toolchain = (data.get("builder") or {}).get("toolchain") if isinstance(data.get("builder"), dict) else None
     elif data.get("schema") == HARNESS_SCHEMA or (isinstance(data.get("builds"), dict) and data.get("harness")):
         for build, pin in (data.get("builds") or {}).items():
             pins[(str(data["harness"]), str(build))] = pin
         commit = (data.get("library") or {}).get("commit")
+        project_file = pathlib.Path(path).resolve().parent.parent / "project.yaml"
+        try:
+            project = yaml.safe_load(project_file.read_text(encoding="utf-8")) if project_file.is_file() else None
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            project = None
+        if isinstance(project, dict) and isinstance(project.get("build"), dict):
+            toolchain = project["build"].get("builder")
     else:
         raise LockError(f"{path} is neither a tools/check manifest nor an oss-fuzz-theorems harness.yaml")
     for key, pin in pins.items():
         if not (isinstance(pin, dict) and isinstance(pin.get("sha256"), str)):
             raise LockError(f"{path}: the pin of {key[0]}.{key[1]} has no sha256")
-    return (commit if isinstance(commit, str) else None), pins
+    return (commit if isinstance(commit, str) else None), pins, (toolchain if isinstance(toolchain, str) else None)
 
 
 def compare(entries, pins, builds):

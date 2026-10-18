@@ -6,7 +6,7 @@ An OSS-Fuzz `Dockerfile` and `build.sh` do not run here unchanged, and we do not
 
 ## The steps
 
-1. **The builder image** ([infra/base-builder/](../infra/base-builder/)) is built `FROM` the pinned toolchain image.
+1. **The builder image** ([infra/base-builder/](../infra/base-builder/)) is built `FROM` a toolchain image: the one the project's lock names, or the newest ([Toolchains](#toolchains)).
 2. **The project image** is built from the project's `Dockerfile`, `FROM` the builder, with `--build-arg COMMIT=<full commit id>` (the commit `repo#ref` resolved to), `REPO` and `BASE_BUILDER`. This is the only step with network access.
 3. **Each build** runs `compile` in a fresh container of the project image with no network (`docker run --network=none`): once for each of `plain`, `ubsan`, `asan` and `asan-ubsan` that `project.yaml` asks for. `compile` sets up that build's compilers and flags and runs `$SRC/build.sh`, which builds every fuzz target into `$OUT`.
 4. **The fuzz targets** are found in each build's `$OUT`, and their binaries collected as `out/<target>/<target>.<build>`, with a manifest of their SHA-256s.
@@ -16,6 +16,18 @@ An OSS-Fuzz `Dockerfile` and `build.sh` do not run here unchanged, and we do not
 The toolchain image is the one oss-fuzz-theorems 2026.10.0-rc.2 built its binaries in, `ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816865c7ec61801ae0fcab6d9c81a599ffcb20616576a9c668abd8b0a7b`. It provides clang 20.1.8 for `riscv64-linux-musl`, lld, the musl sysroot at `/opt/musl-sysroot` (with static builds of common libraries a project may link), and a sealed static AddressSanitizer runtime, on Alpine Linux with CMake, Meson, Ninja, the autotools and git. The builder adds OSS-Fuzz's interface. Its driver, compiler wrappers and flags come from that release's build recipe, and with them the builder reproduces that release's binaries byte for byte ([STATUS.md](../STATUS.md) lists the projects checked).
 
 Every binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp64d`), linked with lld against musl.
+
+## Toolchains
+
+A newer toolchain image changes the bytes of every binary built with it, and a proof is about particular bytes. So a project is built with one of several toolchain images, its vintage:
+
+* [infra/toolchains.tsv](../infra/toolchains.tsv) lists the published toolchain images, oldest first. Today there is one, the toolchain above. A newer one is added only once it is published.
+* The builder takes the toolchain image as a build argument (`--build-arg TOOLCHAIN=<image>`); its `Dockerfile` defaults to the toolchain above.
+* `tools/check --lock` builds with the toolchain the lock names: a manifest's `builder.toolchain`, or, for an oss-fuzz-theorems `harness.yaml`, the `build.builder` of its `project.yaml`. Several locks must name the same one. Without a lock, `tools/check` builds with the newest toolchain. `--toolchain <image>` overrides both.
+* A project's vintage is pinned by its lock, in the proofs repository: a project whose proofs are published stays on the toolchain its lock names, and its binaries keep their bytes. A project with no lock, such as a draft with statements only, is built with the newest toolchain.
+* The manifest records the toolchain image a build used, so a lock written from it pins the vintage.
+
+Builds ported from oss-fuzz-theorems are checked against the release's binaries on the release's toolchain, which their `harness.yaml` locks name.
 
 ## What build.sh is given
 
@@ -102,7 +114,7 @@ A fuzz target is an executable in a build's `$OUT` whose ELF symbol table define
 
 * `repo`, `ref` and `commit`: the repository, the ref `project.yaml` names, and the full commit it resolved to;
 * `oss_verifier`: this repository's commit, and whether `tools/`, `infra/` or the project's directory differed from it;
-* `builder`: the toolchain image's digest, and the local ids of the builder and project images;
+* `builder`: the toolchain image the builder was built `FROM` ([Toolchains](#toolchains)), and the local ids of the builder and project images;
 * `sources`: every git checkout under `$SRC` in the project image, and the commit it is at;
 * `builds` and `fuzz_targets`: what was built, with "every fuzz target" resolved to a list;
 * `targets.<target>.builds.<build>`: `file`, `bytes` and `sha256` of each binary, the shape of the `builds:` section of an oss-fuzz-theorems `harness.yaml`.

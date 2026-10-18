@@ -5,7 +5,7 @@ name: "Build"
 # Builds the project an enrollment pull request adds or changes, with tools/check. The output is in the run's log.
 # This check is advisory, and a failure is not a verdict:
 #   - GitHub's runner may run out of disk or time on a build that works on a larger machine;
-#   - it cannot succeed until the toolchain image that infra/base-builder/Dockerfile pins is public.
+#   - it cannot succeed until the newest toolchain image in infra/toolchains.tsv is public.
 #
 # pull_request_target, not pull_request, so the pull request cannot edit this workflow or tools/check:
 #   - The checkout is the base branch, never the pull request.

@@ -25,6 +25,7 @@ BUILDER_DIR = ROOT / "infra" / "base-builder"
 CACHE = pathlib.Path(os.environ.get("XDG_CACHE_HOME") or "~/.cache").expanduser() / "oss-verifier-check"
 FULL_COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 TOOLCHAIN_ARG = re.compile(r"^ARG TOOLCHAIN=(\S+)$", re.M)
+TOOLCHAINS = ROOT / "infra" / "toolchains.tsv"
 # The git checkouts under $SRC in a project image, and their commits, for the manifest.
 LIST_SOURCES = (
     'find "$SRC" -maxdepth 4 -name .git 2>/dev/null | sort | while read -r g; do d=${g%/.git}; '
@@ -156,11 +157,31 @@ def tree_hash(directory):
 
 
 def toolchain():
-    """The toolchain image the builder is built FROM, as infra/base-builder/Dockerfile pins it."""
+    """The toolchain image infra/base-builder/Dockerfile builds FROM when given none (its ARG TOOLCHAIN default)."""
     match = TOOLCHAIN_ARG.search((BUILDER_DIR / "Dockerfile").read_text(encoding="utf-8"))
     if not match:
         raise Failed("infra/base-builder/Dockerfile pins no toolchain (ARG TOOLCHAIN=...)")
     return match.group(1)
+
+
+def toolchains():
+    """The toolchain images a project can be built with, oldest first (infra/toolchains.tsv): [(name, image)]."""
+    rows = [line.split("\t") for line in TOOLCHAINS.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")]
+    if not rows or any(len(row) < 2 for row in rows):
+        raise Failed(f"{TOOLCHAINS} lists no toolchain, or a row has no image")
+    return [(row[0], row[1]) for row in rows]
+
+
+def newest_toolchain():
+    """The newest toolchain image: the last row of infra/toolchains.tsv."""
+    return toolchains()[-1][1]
+
+
+def toolchain_id(image):
+    """A short name for a toolchain image, for a builder's tag: the start of its digest, or its name made tag-safe."""
+    digest = image.partition("@sha256:")[2]
+    return digest[:12] if digest else re.sub(r"[^A-Za-z0-9_.-]", "-", image)[-40:]
 
 
 def image_id(tag):
@@ -168,12 +189,15 @@ def image_id(tag):
     return output("docker", "image", "inspect", "--format", "{{.Id}}", tag).strip()
 
 
-def build_builder(suffix="", no_cache=False):
-    """Build the builder image from infra/base-builder. Return its tag."""
-    tag = f"oss-verifier-base-builder:{tree_hash(BUILDER_DIR)[:16]}{suffix}"
-    step(f"docker build: the builder ({tag}), FROM {toolchain()}")
+def build_builder(image=None, suffix="", no_cache=False):
+    """Build the builder image from infra/base-builder, FROM the toolchain `image` (the newest if None). Return its
+    tag."""
+    image = image or newest_toolchain()
+    tag = f"oss-verifier-base-builder:{tree_hash(BUILDER_DIR)[:16]}-{toolchain_id(image)}{suffix}"
+    step(f"docker build: the builder ({tag}), FROM {image}")
     cache = ["--no-cache"] if no_cache else []
-    if run("docker", "build", "--progress=plain", *cache, "-t", tag, str(BUILDER_DIR)) != 0:
+    if run("docker", "build", "--progress=plain", *cache, "--build-arg", f"TOOLCHAIN={image}", "-t", tag,
+           str(BUILDER_DIR)) != 0:
         raise Failed("the builder image does not build (is the toolchain image available?)")
     return tag
 

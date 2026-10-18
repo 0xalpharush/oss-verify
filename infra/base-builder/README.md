@@ -1,6 +1,6 @@
 # The builder image
 
-Every project's `Dockerfile` starts `FROM` this image. It is the toolchain image that oss-fuzz-theorems 2026.10.0-rc.2 built its binaries in, pinned by digest (`ARG TOOLCHAIN` in the [Dockerfile](Dockerfile)), plus OSS-Fuzz's interface. [docs/build-contract.md](../../docs/build-contract.md) is the contract a project builds against; this page says what is where.
+Every project's `Dockerfile` starts `FROM` this image. It is a toolchain image plus OSS-Fuzz's interface: by default the one oss-fuzz-theorems 2026.10.0-rc.2 built its binaries in, pinned by digest (`ARG TOOLCHAIN` in the [Dockerfile](Dockerfile)); `tools/check` passes the toolchain a project's lock names, or the newest in [infra/toolchains.tsv](../toolchains.tsv) ([docs/build-contract.md](../../docs/build-contract.md#toolchains)). [docs/build-contract.md](../../docs/build-contract.md) is the contract a project builds against; this page says what is where.
 
 | path in the image | what it is |
 |---|---|
@@ -16,6 +16,6 @@ Every project's `Dockerfile` starts `FROM` this image. It is the toolchain image
 
 The toolchain image provides clang 20.1.8 for `riscv64-linux-musl`, lld, the musl sysroot (`/opt/musl-sysroot`, with static libraries a project may link) and the sealed static AddressSanitizer runtime, on Alpine Linux with CMake, Meson, Ninja, the autotools and git.
 
-`tools/check` builds this image locally, tagged `oss-verifier-base-builder:<hash of this directory>`. It is not published yet, so a project's Dockerfile names it by that local tag, which `tools/check` passes as `BASE_BUILDER`.
+`tools/check` builds this image locally, tagged `oss-verifier-base-builder:<hash of this directory>-<toolchain digest>`. It is not published yet, so a project's Dockerfile names it by that local tag, which `tools/check` passes as `BASE_BUILDER`.
 
 `driver/`, `toolchain.sh`, `recipes.sh`, `release-target.sh` and the order of a fuzz target's link come from the build recipe of oss-fuzz-theorems release 2026.10.0-rc.2; each file says what it keeps and what it leaves out. With them, the cjson pilot reproduces that release's four cjson binaries byte for byte ([STATUS.md](../../STATUS.md)).
