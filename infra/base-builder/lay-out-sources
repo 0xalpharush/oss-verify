@@ -112,17 +112,16 @@ def git(path, url, commit, *how):
     if how not in ((), ("archive",)):
         raise Failed(f"git {url}: unknown option {how}")
     fresh(path, placeholder=True)
-    with tempfile.TemporaryDirectory() as scratch:
+    with tempfile.TemporaryDirectory() as parent:
+        scratch = os.path.join(parent, "tree")
         run = lambda *args: subprocess.run([*GIT, "-C", scratch, *args], check=True, stdin=subprocess.DEVNULL)
-        run("init", "-q")
+        subprocess.run([*GIT, "init", "-q", scratch], check=True, stdin=subprocess.DEVNULL)
         if subprocess.run([*GIT, "-C", scratch, "fetch", "-q", "--depth", "1", "--", url, commit],
                           stdin=subprocess.DEVNULL).returncode != 0:
-            # A server that will not serve a commit by its id: fetch its default branch, and if the commit is not on
-            # it, its branches and tags.
-            subprocess.run([*GIT, "-C", scratch, "fetch", "-q", "--", url, "HEAD"], stdin=subprocess.DEVNULL)
-            if subprocess.run([*GIT, "-C", scratch, "cat-file", "-e", f"{commit}^{{commit}}"],
-                              stdin=subprocess.DEVNULL, capture_output=True).returncode != 0:
-                run("fetch", "-q", "--tags", "--", url, "+refs/heads/*:refs/remotes/origin/*")
+            # A server that will not serve one commit by its id, as a "dumb" HTTP server cannot: clone all of it.
+            shutil.rmtree(scratch)
+            subprocess.run([*GIT, "clone", "-q", "--no-checkout", "--", url, scratch], check=True,
+                           stdin=subprocess.DEVNULL)
             run("checkout", "-q", "--detach", commit)
         else:
             run("checkout", "-q", "--detach", "FETCH_HEAD")
