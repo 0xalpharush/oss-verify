@@ -23,8 +23,8 @@ budgets:
 
 * `halts` is the budget of each build run on its own, in the statement that it halts with an accepted status.
 * `agrees.<sanitizer>` is the pair of budgets in the statement that a sanitizer build behaves as the plain build does: the plain build's, which is the premise, and the sanitizer build's, which is generous because a sanitizer needs memory of its own. `address` applies to the `asan` and `asan-ubsan` builds, and `undefined` to `ubsan`.
-* The plain side of `address` is 2 GiB because the sealed AddressSanitizer allocator caps each size class well below 16 GiB. The address space the AddressSanitizer runtime reserves at start-up, well over 100 GiB, is not charged to any budget.
+* The plain side of `address` is 2 GiB because the sealed AddressSanitizer allocator caps each size class, at 3.5 GiB on riscv64, well below 16 GiB. The address space the AddressSanitizer runtime reserves at start-up, well over 100 GiB, is not charged to any budget.
 
 These are the values oss-fuzz-theorems 2026.10.0-rc.2 uses, and the defaults. A project may set its own in `project.yaml` ([project-yaml.md](project-yaml.md)): a size is a positive number of bytes, or a number with `KiB`, `MiB`, `GiB` or `TiB`. Set only what you want to change.
 
-**Not decided yet:** whether the `asan` and `asan-ubsan` builds should have a smaller `halts` budget. Their allocator refuses a request once one size class holds a few GiB, which is less than 16 GiB, so an input could be refused memory in those builds while still within the budget. [STATUS.md](../STATUS.md) tracks the open questions.
+**Not decided yet:** whether the `asan` and `asan-ubsan` builds should have a smaller `halts` budget. Their allocator refuses a request once one size class holds 3.5 GiB, which is less than 16 GiB, so an input could be refused memory in those builds while still within the budget. [STATUS.md](../STATUS.md) tracks the open questions.
