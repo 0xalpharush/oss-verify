@@ -305,8 +305,9 @@ def plan(name, release):
     executable = set()
     for target in order:
         for file_name, path in target_files(release, target).items():
-            # A project directory is flat: a file in a subdirectory of the recipe's is stored under a dotted name.
-            stored = f"{target}.{file_name.replace('/', '.')}"
+            # A project directory is flat: a file in a subdirectory of the recipe's is stored under a dotted name, with
+            # any character a project's file name may not have made an underscore. sources copies it to its own name.
+            stored = re.sub(r"[^A-Za-z0-9._-]", "_", f"{target}.{file_name.replace('/', '.')}")
             if not validate.FILE_NAME.fullmatch(stored) or stored in files:
                 raise Unsupported(f"{target}: its file {file_name} cannot be stored as {stored}")
             files[stored] = path.read_bytes()

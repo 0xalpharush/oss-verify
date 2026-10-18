@@ -157,6 +157,10 @@ class Port(unittest.TestCase):
         self.assertIn("demo.oft-stub.xml2-config", files)
         self.assertIn("demo.oft-stub.xml2-config", executable)
         self.assertIn("copy\ttargets/demo/oft-stub/xml2-config\tdemo.oft-stub.xml2-config", files["sources"])
+        write(self.fixture.recipe / "targets/demo/stub/bits/c++config.h", "#define X 1\n")
+        files, _ = port.plan("demo", self.release)
+        self.assertIn("copy\ttargets/demo/stub/bits/c++config.h\tdemo.stub.bits.c__config.h", files["sources"])
+        self.assertEqual(files["demo.stub.bits.c__config.h"], b"#define X 1\n")
 
     def test_the_port_passes_the_rules(self):
         files, executable = port.plan("demo", self.release)
