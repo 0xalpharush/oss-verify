@@ -202,11 +202,14 @@ def target_of(project, harness, source, recipe_targets):
     """The release's build target for one harness, or None if it cannot be told."""
     if f"{project}-{harness}" in recipe_targets:
         return f"{project}-{harness}"
-    if not source:
-        return None
-    # The release named some targets after the project alone (its first harness), or after the harness less a suffix.
-    candidates = [target for target, files in recipe_targets.items()
-                  if (target == project or target.startswith(f"{project}-")) and source in files]
+    # The release named some targets after the project alone (its first harness), or after the harness less a suffix:
+    # the harness's source file tells which. Where the release records no source, the file named after the harness.
+    ours = [target for target in recipe_targets if target == project or target.startswith(f"{project}-")]
+    if source:
+        candidates = [target for target in ours if source in recipe_targets[target]]
+    else:
+        candidates = [target for target in ours
+                      if any(pathlib.PurePosixPath(file).stem == harness for file in recipe_targets[target])]
     return candidates[0] if len(candidates) == 1 else None
 
 

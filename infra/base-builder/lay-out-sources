@@ -11,33 +11,45 @@ trees out under /work, where the release's build had them.
 
     tree     <path>  <checkout>               a copy of a checkout ($SRC/<checkout>), without its .git
     link     <path>  <path laid out before>   a symbolic link to it
-    git      <path>  <url>  <commit>          that commit of a git repository, without its .git
+    git      <path>  <url>  <commit>  [archive]
+                                              that commit of a git repository, without its .git: its checkout, or
+                                              with `archive` what git archive makes of it. <path> may be the empty
+                                              directory a checkout leaves for a submodule
     file     <path>  <url>  <sha256>          one file, downloaded over https and checked
-    archive  <path>  <url>  <sha256>  <strip> [<pattern> ...]
-                                              a tar archive, downloaded and checked, unpacked into <path> less its
-                                              first <strip> path components; a pattern !<name> leaves out a top-level
-                                              member of that name
+    archive  <path>  <url>  <sha256>  <strip>  [<pattern> ...]
+                                              the regular files and links of a tar or zip archive, downloaded and
+                                              checked, placed under <path> (which may exist) less their first <strip>
+                                              path components. A pattern keeps only matching members (a path prefix,
+                                              or an fnmatch pattern if it holds * ? or [); !NAME leaves out every member
+                                              with a path component matching NAME; !DIR/ leaves out that subtree. A
+                                              member already present must have exactly its bytes
     copy     <path>  <project file>           one of the project's files, under another name
     patch    <path>  <project file>           a build-only patch, applied to the tree at <path> with git apply
 
 The directives run in order, and the patches in the order the project's series file lists them, which must be the
 order they appear here. A commit and a sha256 are the pins of a project's dependencies: this file is their only home
-(a Dockerfile never holds one).
+(a Dockerfile never holds one). The archive rules are those the oss-fuzz-theorems release laid its vendored trees out
+by.
 
 Only https is used. A checksum or commit that does not match stops the build.
 """
+import fnmatch
 import hashlib
+import io
 import os
 import pathlib
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import urllib.request
+import zipfile
 
 SRC = pathlib.Path(os.environ.get("SRC", "/src"))
 GIT = ["git", "-c", "credential.helper=", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always"]
+DOWNLOADS = {}
 
 
 class Failed(Exception):
@@ -52,23 +64,28 @@ def under(root, text):
     return root / path
 
 
-def fresh(path):
-    """Make sure nothing is at `path`, and that its parent exists."""
+def fresh(path, placeholder=False):
+    """Make sure nothing is at `path` (or, with `placeholder`, at most an empty directory), and that its parent
+    exists."""
+    if placeholder and path.is_dir() and not path.is_symlink() and not any(path.iterdir()):
+        path.rmdir()
     if path.exists() or path.is_symlink():
         raise Failed(f"{path} is laid out twice")
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def download(url, sha256):
-    """The bytes at an https URL, checked against their sha256."""
+    """The bytes at an https URL, checked against their sha256. Each is fetched once."""
     if not url.startswith("https://"):
         raise Failed(f"{url}: only https is used")
-    with urllib.request.urlopen(url, timeout=300) as response:
-        data = response.read()
-    got = hashlib.sha256(data).hexdigest()
-    if got != sha256:
-        raise Failed(f"{url}: sha256 {got}, expected {sha256}")
-    return data
+    if sha256 not in DOWNLOADS:
+        with urllib.request.urlopen(url, timeout=600) as response:
+            data = response.read()
+        got = hashlib.sha256(data).hexdigest()
+        if got != sha256:
+            raise Failed(f"{url}: sha256 {got}, expected {sha256}")
+        DOWNLOADS[sha256] = data
+    return DOWNLOADS[sha256]
 
 
 def without_git(source, destination):
@@ -89,11 +106,13 @@ def link(path, target, root):
     path.symlink_to(target)
 
 
-def git(path, url, commit):
+def git(path, url, commit, *how):
     if not url.startswith("https://"):
         raise Failed(f"{url}: only https is used")
-    fresh(path)
-    with tempfile.TemporaryDirectory(dir=SRC) as scratch:
+    if how not in ((), ("archive",)):
+        raise Failed(f"git {url}: unknown option {how}")
+    fresh(path, placeholder=True)
+    with tempfile.TemporaryDirectory() as scratch:
         run = lambda *args: subprocess.run([*GIT, "-C", scratch, *args], check=True, stdin=subprocess.DEVNULL)
         run("init", "-q")
         if subprocess.run([*GIT, "-C", scratch, "fetch", "-q", "--depth", "1", "--", url, commit],
@@ -107,36 +126,99 @@ def git(path, url, commit):
                               check=True).stdout.strip()
         if head != commit:
             raise Failed(f"{url}: checked out {head}, not {commit}")
-        without_git(scratch, path)
+        if how == ("archive",):
+            made = subprocess.run([*GIT, "-C", scratch, "archive", "--format=tar", "HEAD"], capture_output=True,
+                                  check=True).stdout
+            path.mkdir()
+            with tarfile.open(fileobj=io.BytesIO(made)) as tar:
+                tar.extractall(path, filter="tar")
+        else:
+            without_git(scratch, path)
 
 
 def file(path, url, sha256):
+    data = download(url, sha256)
+    if path.exists() and not path.is_symlink() and path.read_bytes() == data:
+        return
     fresh(path)
-    path.write_bytes(download(url, sha256))
+    path.write_bytes(data)
+
+
+def members(data, strip, patterns):
+    """[(path, "file" or "link", bytes or link target, executable)] of an archive's regular files and links, after
+    stripping `strip` path components and keeping what `patterns` keep."""
+    includes = [pattern for pattern in patterns if not pattern.startswith("!")]
+    excludes = [pattern[1:] for pattern in patterns if pattern.startswith("!")]
+
+    def keep(name):
+        parts = [part for part in name.split("/") if part not in ("", ".")]
+        if len(parts) <= strip:
+            return None
+        rel = "/".join(parts[strip:])
+        if ".." in rel.split("/"):
+            raise Failed(f"member {name!r} would land outside the tree")
+        if includes and not any(
+                fnmatch.fnmatchcase(rel, p) if any(ch in p for ch in "*?[") else
+                (rel == p.rstrip("/") or rel.startswith(p if p.endswith("/") else p + "/"))
+                for p in includes):
+            return None
+        for x in excludes:
+            if "/" in x:
+                if rel == x.rstrip("/") or rel.startswith(x if x.endswith("/") else x + "/"):
+                    return None
+            elif any(fnmatch.fnmatchcase(component, x) for component in rel.split("/")):
+                return None
+        return rel
+
+    found = []
+    if zipfile.is_zipfile(io.BytesIO(data)):
+        with zipfile.ZipFile(io.BytesIO(data)) as archive_file:
+            for info in archive_file.infolist():
+                rel = None if info.is_dir() else keep(info.filename)
+                if rel is None:
+                    continue
+                mode = (info.external_attr >> 16) & 0o177777
+                content = archive_file.read(info)
+                if stat.S_ISLNK(mode):
+                    found.append((rel, "link", content.decode(), False))
+                else:
+                    found.append((rel, "file", content, bool(mode & 0o111)))
+        return found
+    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+        for member in tar:
+            rel = None if member.isdir() else keep(member.name)
+            if rel is None:
+                continue
+            if member.issym():
+                found.append((rel, "link", member.linkname, False))
+            elif member.isfile():
+                found.append((rel, "file", tar.extractfile(member).read(), bool(member.mode & 0o111)))
+            elif member.islnk():
+                if keep(member.linkname) is None:
+                    raise Failed(f"hard link {member.name!r} points outside what is taken")
+                content = tar.extractfile(tar.getmember(member.linkname)).read()
+                found.append((rel, "file", content, bool(member.mode & 0o111)))
+    return found
 
 
 def archive(path, url, sha256, strip, *patterns):
-    strip, left_out = int(strip), {pattern[1:] for pattern in patterns if pattern.startswith("!")}
-    unknown = [pattern for pattern in patterns if not pattern.startswith("!")]
-    if unknown:
-        raise Failed(f"{url}: patterns other than !<name> are not supported: {unknown}")
-    fresh(path)
-    path.mkdir()
-    with tempfile.TemporaryFile() as handle:
-        handle.write(download(url, sha256))
-        handle.seek(0)
-        with tarfile.open(fileobj=handle) as tar:
-            for member in tar.getmembers():
-                parts = pathlib.PurePosixPath(member.name).parts[strip:]
-                if not parts or parts[0] in left_out:
-                    continue
-                if member.issym() or member.islnk():
-                    if pathlib.PurePosixPath(member.linkname).is_absolute() or ".." in pathlib.PurePosixPath(member.linkname).parts:
-                        raise Failed(f"{url}: {member.name} links outside the archive")
-                member.name = str(pathlib.PurePosixPath(*parts))
-                if member.islnk():
-                    member.linkname = str(pathlib.PurePosixPath(*pathlib.PurePosixPath(member.linkname).parts[strip:]))
-                tar.extract(member, path, filter="tar")
+    taken = members(download(url, sha256), int(strip), patterns)
+    if not taken:
+        raise Failed(f"{url}: places nothing under {path}")
+    for rel, kind, content, executable in taken:
+        target = path / rel
+        if os.path.lexists(target):
+            same = (os.path.islink(target) and os.readlink(target) == content) if kind == "link" else \
+                (not os.path.islink(target) and target.is_file() and target.read_bytes() == content)
+            if not same:
+                raise Failed(f"{url}: {target} is already there, with other bytes")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if kind == "link":
+            os.symlink(content, target)
+        else:
+            target.write_bytes(content)
+            os.chmod(target, 0o755 if executable else 0o644)
 
 
 def copy(path, name, files):
@@ -170,11 +252,11 @@ def main():
                 tree(destination, *args)
             elif kind == "link" and len(args) == 1:
                 link(destination, args[0], root)
-            elif kind == "git" and len(args) == 2:
+            elif kind == "git" and len(args) in (2, 3):
                 git(destination, *args)
             elif kind == "file" and len(args) == 2:
                 file(destination, *args)
-            elif kind == "archive" and len(args) >= 2:
+            elif kind == "archive" and len(args) >= 3:
                 archive(destination, *args)
             elif kind == "copy" and len(args) == 1:
                 copy(destination, args[0], files)
@@ -183,7 +265,7 @@ def main():
                 patch(destination, args[0], files)
             else:
                 raise Failed(f"not a directive this tool knows, with these fields: {line!r}")
-        except (Failed, OSError, subprocess.CalledProcessError, tarfile.TarError) as error:
+        except (Failed, OSError, ValueError, subprocess.CalledProcessError, tarfile.TarError, zipfile.BadZipFile) as error:
             sys.exit(f"lay-out-sources: {sources}:{number}: {error}")
         print(f"lay-out-sources: {kind} {where}")
     if patches != order:

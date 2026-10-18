@@ -22,6 +22,7 @@ Exit codes: 0 if every NAME was ported; 1 otherwise.
 """
 import argparse
 import json
+import os
 import pathlib
 import re
 import sys
@@ -76,16 +77,18 @@ class Release:
 
 
 def target_files(release, target):
-    """The files of the release's own in the target's recipe directory, other than its pin and plugin: {name: path}.
-    Upstream files the build reads there are not in the recipe; recipe_files() finds those."""
+    """The files of the release's own in the target's recipe directory, other than its pin and plugin, at any depth:
+    {path relative to that directory: path}. Upstream files the build reads there are not in the recipe;
+    recipe_files() finds those."""
     directory = release.recipe / "targets" / target
     files = {}
-    for path in sorted(directory.iterdir()):
-        if path.name in ("pin", "plugin.c"):
+    for path in sorted(directory.rglob("*")):
+        relative = path.relative_to(directory).as_posix()
+        if relative in ("pin", "plugin.c") or (path.is_dir() and not path.is_symlink()):
             continue
-        if path.is_dir() or path.is_symlink():
-            raise Unsupported(f"{target}: the recipe has a directory or link of its own files ({path.name})")
-        files[path.name] = path
+        if path.is_symlink() or not path.is_file():
+            raise Unsupported(f"{target}: the recipe has a link or special file of its own ({relative})")
+        files[relative] = path
     return files
 
 
@@ -144,8 +147,78 @@ def map_targets(name, seeded, release):
     return mapped
 
 
+def placement(where, target):
+    """The path of a placement under ext/<target>/, or Unsupported."""
+    prefix = f"ext/{target}/"
+    if not where.startswith(prefix) or ".." in where.split("/"):
+        raise Unsupported(f"{target}: the release laid a tree out at {where}")
+    return where[len(prefix):]
+
+
+def https(url, what):
+    if not url.startswith("https://"):
+        raise Unsupported(f"{what} is fetched from {url}, not over https")
+    return url
+
+
+def layouts(name, seeded, rows, order):
+    """For each release target, how its tree is laid out: (main, items), where main is the directive that makes
+    ext/<target>/src and items are (path under ext/<target>/, directive fields) for everything else placed there."""
+    main, items = {}, {target: [] for target in order}
+    for row in rows:
+        detail = json.loads(row.get("detail") or "{}")
+        materialise = detail.get("materialise", [])
+        placed = {}
+        for pin in row.get("pins", "").split(","):
+            target, _, where = pin.partition("=")
+            if target in order:
+                placed[target] = where
+        kind = row["kind"]
+        if kind == "gitlink" or (kind == "git-subtree" and set(materialise) <= {"provenance", "recipe-file"}):
+            continue  # a submodule's commit (its tree is a row of its own), or OSS-Fuzz's directory
+        if kind == "git" and row["id"] == seeded.commit and materialise == ["checkout"]:
+            for target, where in placed.items():
+                if placement(where, target) != "src":
+                    raise Unsupported(f"{target}: the release laid its tree out at {where}")
+                main[target] = ("tree", f"upstream/{name}")
+            continue
+        if kind == "git" and materialise in (["checkout"], ["git-archive"]):
+            url = https(row["source"], f"the tree at {row['id'][:12]}")
+            for target, where in placed.items():
+                extra = ("archive",) if materialise == ["git-archive"] else ()
+                items[target].append((placement(where, target), ("git", url, row["id"], *extra)))
+            continue
+        if kind == "vendor-file":
+            url = https(row["source"], "a vendored file")
+            for target, where in placed.items():
+                items[target].append((placement(where, target), ("file", url, row["id"].removeprefix("sha256:"))))
+            continue
+        if kind in ("vendor-tree", "tarball"):
+            url = https(row["source"], f"a {kind}")
+            digest = row["id"].removeprefix("sha256:")
+            for key, how in detail.get("placements", {}).items():
+                target, _, kept = key.partition("=")
+                if target not in order:
+                    continue
+                items[target].append((placement(kept, target), ("file", url, digest)))
+                if kind == "tarball":
+                    if not str(how.get("unpack", "")).startswith("src (one top directory stripped"):
+                        raise Unsupported(f"{target}: the release unpacked {url} as {how.get('unpack')}")
+                    main[target] = ("archive", url, digest, "1")
+                else:
+                    items[target].append((placement(how["members_to"], target),
+                                          ("archive", url, digest, str(how.get("strip", 1)), *how.get("select", []))))
+            continue
+        raise Unsupported(f"a source tree of kind {kind} ({', '.join(materialise) or 'no materialise'}) "
+                          "is not laid out by this tool yet")
+    missing = [target for target in order if target not in main]
+    if missing:
+        raise Unsupported(f"no source tree in the manifest for {', '.join(missing)}")
+    return main, items
+
+
 def plan(name, release):
-    """Everything the port of one project writes: {file name: text or bytes}, and notes."""
+    """Everything the port of one project writes: ({file name: text or bytes}, {names of executable files})."""
     seeded = seed.assess(name, release.checkout, (release.patches, release.harnesses))
     if seeded.reason:
         raise Unsupported(f"not seedable: {seeded.reason}")
@@ -158,57 +231,49 @@ def plan(name, release):
             if needed not in order:
                 order.append(needed)
 
+    main, items = layouts(name, seeded, release.manifest(name), order)
     tree_id = seed.series_of(seeded.repo, seeded.commit)
-    rows = release.manifest(name)
-    sources, files, notes, series = [], {}, [], []
-    main_targets = set()
-    for row in rows:
-        detail = json.loads(row.get("detail") or "{}")
-        materialise = detail.get("materialise", [])
-        placed = {}
-        for pin in row.get("pins", "").split(","):
-            target, _, where = pin.partition("=")
-            if target in order:
-                placed[target] = where
-        if not placed:
-            continue
-        if row["kind"] == "git-subtree" and set(materialise) <= {"provenance", "recipe-file"}:
-            continue  # OSS-Fuzz's directory: provenance; its files the build reads are recipe files (below)
-        if row["kind"] == "git" and row["id"] == seeded.commit and materialise == ["checkout"]:
-            for target, where in placed.items():
-                if where != f"ext/{target}/src":
-                    raise Unsupported(f"{target}: the release laid its tree out at {where}")
-                main_targets.add(target)
-            continue
-        raise Unsupported(f"a source tree of kind {row['kind']} ({', '.join(materialise) or 'no materialise'}) "
-                          "is not laid out by this tool yet")
-    missing = [target for target in order if target not in main_targets]
-    if missing:
-        raise Unsupported(f"no source tree in the manifest for {', '.join(missing)}")
-
-    # Targets whose trees are patched differently need trees of their own; the others share the first one.
     patched = {target: tuple(patch for _, patch, applies in patches_for(release, tree_id, order) if target in applies)
                for target in order}
-    first_by_patches = {}
     for target in order:
-        key = patched[target]
-        if key in first_by_patches:
-            sources.append(f"link\text/{target}/src\text/{first_by_patches[key]}/src")
+        for path, directive in items[target]:
+            if directive[0] == "git" and patches_for(release, seed.series_of(directive[1], directive[2]), [target]):
+                raise Unsupported(f"{target}: the release patched a tree other than the project's own")
+
+    # Targets whose trees are laid out alike share the first one's; the others get trees of their own.
+    sources, files, series = [], {}, []
+    shared = {}
+    for target in order:
+        inside = tuple(sorted((path, directive) for path, directive in items[target] if path.split("/")[0] == "src"))
+        key = (main[target], inside, patched[target])
+        if key in shared:
+            sources.append(f"link\text/{target}/src\text/{shared[key]}/src")
         else:
-            first_by_patches[key] = target
-            sources.append(f"tree\text/{target}/src\tupstream/{name}")
-            for patch in key:
+            shared[key] = target
+            kind, *rest = main[target]
+            sources.append("\t".join([kind, f"ext/{target}/src", *rest]) if kind == "tree"
+                           else "\t".join(["archive", f"ext/{target}/src", *rest]))
+            for path, directive in inside:
+                sources.append("\t".join([directive[0], f"ext/{target}/{path}", *directive[1:]]))
+            for patch in patched[target]:
                 text = (release.recipe / "patches" / tree_id_dir(release, tree_id) / patch).read_bytes()
-                stored = f"{target}.{patch}" if len(first_by_patches) > 1 else patch
+                stored = f"{target}.{patch}" if len(shared) > 1 or len(order) > 1 else patch
                 files[stored] = text
                 series.append(stored)
                 sources.append(f"patch\text/{target}/src\t{stored}")
+        for path, directive in sorted(items[target]):
+            if path.split("/")[0] != "src":
+                sources.append("\t".join([directive[0], f"ext/{target}/{path}", *directive[1:]]))
+    executable = set()
     for target in order:
         for file_name, path in target_files(release, target).items():
-            stored = f"{target}.{file_name}"
-            if not validate.FILE_NAME.fullmatch(stored) or not stored.endswith(validate.SOURCE_SUFFIXES):
-                raise Unsupported(f"{target}: its file {file_name} is not one a project directory can hold")
+            # A project directory is flat: a file in a subdirectory of the recipe's is stored under a dotted name.
+            stored = f"{target}.{file_name.replace('/', '.')}"
+            if not validate.FILE_NAME.fullmatch(stored) or stored in files:
+                raise Unsupported(f"{target}: its file {file_name} cannot be stored as {stored}")
             files[stored] = path.read_bytes()
+            if os.access(path, os.X_OK):
+                executable.add(stored)
             sources.append(f"copy\ttargets/{target}/{file_name}\t{stored}")
         for file_name, url, sha256 in recipe_files(release, target):
             sources.append(f"file\ttargets/{target}/{file_name}\t{url}\t{sha256}")
@@ -217,7 +282,8 @@ def plan(name, release):
     files["sources"] = (f"# {GENERATED}\n# kind\tpath\targuments: see lay-out-sources\n" + "\n".join(sources) + "\n")
     files["Dockerfile"] = dockerfile(name)
     files["build.sh"] = build_script(name, mapped, dependencies, release)
-    return files, notes
+    executable.add("build.sh")
+    return files, executable
 
 
 def tree_id_dir(release, tree_id):
@@ -268,7 +334,7 @@ def build_script(name, mapped, dependencies, release):
     )
 
 
-def write(directory, files):
+def write(directory, files, executable=("build.sh",)):
     """Write a port's files into `directory`, which must not hold any other build file."""
     directory.mkdir(parents=True, exist_ok=True)
     for stale in directory.iterdir():
@@ -277,8 +343,7 @@ def write(directory, files):
     for file_name, data in files.items():
         path = directory / file_name
         path.write_bytes(data if isinstance(data, bytes) else data.encode())
-        if file_name == "build.sh":
-            path.chmod(0o755)
+        path.chmod(0o755 if file_name in executable else 0o644)
 
 
 def main():
@@ -294,15 +359,13 @@ def main():
     failed = 0
     for name in options.names:
         try:
-            files, notes = plan(name, release)
+            files, executable = plan(name, release)
         except Unsupported as error:
             print(validate.printable(f"{name}: not ported: {error}"), file=sys.stderr)
             failed += 1
             continue
-        write(options.out / name, files)
+        write(options.out / name, files, executable)
         print(f"{name}: {options.out / name}")
-        for note in notes:
-            print(validate.printable(f"  {name}: {note}"))
     return 1 if failed else 0
 
 

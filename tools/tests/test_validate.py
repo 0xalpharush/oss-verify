@@ -90,6 +90,14 @@ class ValidProjects(unittest.TestCase):
         self.assertTrue(any("no build files yet" in warning for warning in warnings))
         self.assertIn("Dockerfile: none yet", summary)
 
+    def test_files_the_sources_file_copies_may_have_any_name(self):
+        files = {"Dockerfile": "FROM x\n", "build.sh": "#!/bin/sh\n", "list.sha256": "00  x\n",
+                 "sources": "copy\ttargets/t/list.sha256\tlist.sha256\n"}
+        problems, _, _ = check(MINIMAL, files)
+        self.assertEqual(problems, [])
+        problems, _, _ = check(MINIMAL, {**files, "sources": "# copies nothing\n"})
+        self.assertTrue(any("list.sha256: only project.yaml" in problem for problem in problems), problems)
+
     def test_dockerfile_without_build_sh_warns(self):
         problems, warnings, _ = check(MINIMAL, {"Dockerfile": "FROM x\n"})
         self.assertEqual(problems, [])

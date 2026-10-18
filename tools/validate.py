@@ -299,6 +299,15 @@ def series_entries(text):
     return [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
 
 
+def copied_by_sources(files):
+    """The project files the sources file copies into place (its `copy` directives), which may have any name."""
+    text = files.get(SOURCES)
+    if not text:
+        return set()
+    return {fields[2] for line in text.splitlines() if not line.startswith("#")
+            for fields in [line.split("\t")] if len(fields) == 3 and fields[0] == "copy"}
+
+
 def check_files(config, files):
     """Yield problems with the files next to project.yaml, and with the keys that point into the repository instead.
 
@@ -322,16 +331,17 @@ def check_files(config, files):
         yield f"at most {MAX_FILES} files may sit in a project's directory (there are {len(files)})"
 
     patches = sorted(name for name in files if name.endswith(PATCH_SUFFIX))
+    copied = copied_by_sources(files)
     for name, text in files.items():
-        is_source = name.endswith(SOURCE_SUFFIXES)
+        is_source = name.endswith(SOURCE_SUFFIXES) or name in copied
         if not FILE_NAME.fullmatch(name):
             yield f"{name}: a file name may use only A-Z a-z 0-9 . _ - (starting with a letter or digit)"
             continue
         if name not in (*FILE_KEYS, "build.sh", SERIES, SOURCES) and not is_source and name not in patches:
             yield (
                 f"{name}: only project.yaml, Dockerfile, build.sh, sources, patch_style.md, harness sources "
-                f"({' '.join('*' + suffix for suffix in SOURCE_SUFFIXES)}), *.patch and series may sit in a "
-                "project's directory"
+                f"({' '.join('*' + suffix for suffix in SOURCE_SUFFIXES)}), *.patch, series and the files sources "
+                "copies may sit in a project's directory"
             )
             continue
         limit = MAX_SOURCE_BYTES if is_source or name in patches or name == "build.sh" else MAX_FILE_BYTES
@@ -459,6 +469,8 @@ def check_project(directory):
         return [str(error)], [], None
 
     files = {path.name: read_text(path, limit_for(path.name)) for path in beside}
+    for name in copied_by_sources(files) & set(files):
+        files[name] = read_text(directory / name, MAX_SOURCE_BYTES)
     problems = check_config(config, files)
     if problems:
         return problems, [], None

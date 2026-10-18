@@ -76,6 +76,7 @@ A size is a positive number of bytes, or a number followed by `KiB`, `MiB`, `GiB
 | `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp` | optional: harness sources of your own, such as a fuzz target that checks a property |
 | `*.patch` and `series` | optional: patches that change only how the project builds |
 | `sources` | optional: the project's other source trees and files, each pinned by commit or sha256, for the Dockerfile to lay out with `lay-out-sources` ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
+| a file `sources` copies | optional: a file the build needs that `sources` copies into place, under any name |
 
 `series` lists the patches, one file name per line, in the order they are applied; blank lines and lines starting with `#` are ignored. Every patch must be listed exactly once. A patch here may make the build static, cross-compile, fix a version stamp or generate a file; a patch that fixes a bug never goes here.
 
