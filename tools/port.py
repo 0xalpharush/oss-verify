@@ -37,6 +37,12 @@ DROPPED = re.compile(r"^(URL|COMMIT|BUILD_IMAGE)=|^\. /work/tools/ossfuzz/recipe
 GITHUB = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?")
 GITLAB = re.compile(r"https://gitlab\.com/((?:[\w.-]+/)+[\w.-]+?)(?:\.git)?/?")
 DELIMITER = "OV_PIN_END"
+# What autoreconf -fi writes (configure, Makefile.in, aclocal.m4, config.h.in, build-aux/, libtool's m4 files), and what
+# it reads (configure.ac, Makefile.am, the other m4 files).
+AUTOTOOLS_OUTPUT = re.compile(r"(?:^|/)(?:configure|Makefile\.in|aclocal\.m4|config\.h\.in|build-aux/[^/]+|"
+                              r"m4/(?:libtool|ltoptions|ltsugar|ltversion|lt~obsolete)\.m4)$")
+AUTOTOOLS_INPUT = re.compile(r"(?:^|/)(?:configure\.ac|configure\.in|Makefile\.am|acinclude\.m4|[^/]+\.m4)$")
+AUTORECONF = "( cd \"$SRCDIR\" && autoreconf -fi >/dev/null && rm -rf autom4te.cache configure~ )"
 # Hosts the release fetched some trees from over git://, and where they serve the same repositories over https.
 # lay-out-sources checks the commit it checks out, so a repository that is not the same would stop the build.
 HTTPS_FOR_GIT = {
@@ -284,19 +290,32 @@ def plan(name, release):
     # Targets whose trees are laid out alike share the first one's; the others get trees of their own.
     sources, files, series = [], {}, []
     shared = {}
+    # A patch too large for a project directory that is only autoreconf's output: the release made it with the
+    # toolchain image's autotools, so build.sh runs autoreconf instead ({target: the patch}).
+    regenerated = {}
     for target in order:
         inside = tuple(sorted((path, directive) for path, directive in items[target] if path.split("/")[0] == "src"))
         key = (main[target], inside, patched[target])
         if key in shared:
             sources.append(f"link\text/{target}/src\text/{shared[key]}/src")
+            if shared[key] in regenerated:
+                regenerated[target] = regenerated[shared[key]]
         else:
             shared[key] = target
             kind, *rest = main[target]
             sources.append("\t".join([kind, f"ext/{target}/src", *rest]))
             for path, directive in inside:
                 sources.append("\t".join([directive[0], f"ext/{target}/{path}", *directive[1:]]))
-            for patch in patched[target]:
-                text = (release.recipe / "patches" / tree_id_dir(release, tree_id) / patch).read_bytes()
+            texts = {patch: (release.recipe / "patches" / tree_id_dir(release, tree_id) / patch).read_bytes()
+                     for patch in patched[target]}
+            for patch, text in texts.items():
+                if len(text) > validate.MAX_SOURCE_BYTES and autoreconf_output(text):
+                    if any(AUTOTOOLS_INPUT.search(file) and not AUTOTOOLS_OUTPUT.search(file)
+                           for other, other_text in texts.items() if other != patch for file in patched_files(other_text)):
+                        raise Unsupported(f"{target}: its patch {patch} is autoreconf's output, and another patch "
+                                          "changes autoreconf's input")
+                    regenerated[target] = patch
+                    continue
                 stored = f"{target}.{patch}" if len(shared) > 1 or len(order) > 1 else patch
                 files[stored] = text
                 series.append(stored)
@@ -325,9 +344,20 @@ def plan(name, release):
     files["sources"] = (f"# {GENERATED}\n{unrecorded}# kind\tpath\targuments: see lay-out-sources\n" +
                         "\n".join(sources) + "\n")
     files["Dockerfile"] = dockerfile(name)
-    files["build.sh"] = build_script(name, mapped, dependencies, release)
+    files["build.sh"] = build_script(name, mapped, dependencies, release, regenerated)
     executable.add("build.sh")
     return files, executable
+
+
+def patched_files(text):
+    """The files a patch changes."""
+    return re.findall(r"^diff --git a/(\S+) b/", text.decode(errors="replace") if isinstance(text, bytes) else text, re.M)
+
+
+def autoreconf_output(text):
+    """Whether a patch only writes what autoreconf -fi writes."""
+    files = patched_files(text)
+    return bool(files) and all(AUTOTOOLS_OUTPUT.search(file) for file in files)
 
 
 def tree_id_dir(release, tree_id):
@@ -354,12 +384,19 @@ WORKDIR $SRC
 """
 
 
-def build_script(name, mapped, dependencies, release):
+def build_script(name, mapped, dependencies, release, regenerated=None):
+    regenerated = regenerated or {}
     blocks = []
     for harness, target in mapped:
         body, _ = pin_body(release, target)
         begin = " ".join(["ov_target_begin", target, *dependencies[target]])
         lines = [f"# {harness}: the release's target {target}", "(", begin]
+        needed = [dependency for dependency in dependencies[target] if dependency in regenerated]
+        if needed:
+            raise Unsupported(f"{needed[0]}: its patch {regenerated[needed[0]]} is autoreconf's output, for a dependency")
+        if target in regenerated:
+            lines.append(f"# In place of the release's patch {regenerated[target]}, which is what this writes:")
+            lines.append(AUTORECONF)
         if re.search(r"\$\{?COMMIT\b", body):
             lines.append(f'COMMIT=$(git -C "$SRC/upstream/{name}" rev-parse HEAD)')
         for dependency in dependencies[target]:

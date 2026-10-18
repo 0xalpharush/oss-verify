@@ -209,6 +209,28 @@ class Port(unittest.TestCase):
         ])
         self.assertIn("file\text/demo/vendor-archives/ab\thttps://example.org/zlib.tar.gz\tab", lines)
 
+    def test_a_patch_that_is_autoreconf_output(self):
+        patches = self.fixture.recipe / f"patches/github.com/example/demo/{COMMIT}"
+        big = "".join(f"diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n@@ -1 +1 @@\n-x\n+{'y' * 70000}\n"
+                      for name in ("configure", "Makefile.in", "build-aux/config.sub", "m4/libtool.m4"))
+        (patches / "0002-autoreconf.patch").write_text(big)
+        series = self.fixture.recipe / "patches/series.tsv"
+        series.write_text(series.read_text() + f"github.com/example/demo/{COMMIT}\t2\t0002-autoreconf.patch\t"
+                          "Build adaptation.\t00\tdemo\n")
+        self.release = port.Release(self.fixture.checkout, self.fixture.recipe, self.fixture.assets)
+        files, _ = port.plan("demo", self.release)
+        self.assertNotIn("demo.0002-autoreconf.patch", files)
+        self.assertEqual(files["series"], "demo.0001-build.patch\n")
+        block = files["build.sh"].split("# first-fuzzer: the release's target demo\n")[1]
+        self.assertIn("ov_target_begin demo\n# In place of the release's patch 0002-autoreconf.patch, which is what this "
+                      "writes:\n" + port.AUTORECONF + "\n", block)
+        self.assertNotIn("autoreconf", files["build.sh"].split("# first-fuzzer")[0])
+        # Not if another patch changes what autoreconf reads.
+        (patches / "0001-build.patch").write_text("diff --git a/Makefile.am b/Makefile.am\n--- a/Makefile.am\n"
+                                                 "+++ b/Makefile.am\n@@ -1 +1 @@\n-x\n+y\n")
+        with self.assertRaisesRegex(port.Unsupported, "another patch changes autoreconf's input"):
+            port.plan("demo", self.release)
+
     def test_a_project_with_no_source_manifest(self):
         (self.fixture.assets / "demo-src.MANIFEST.tsv").unlink()
         sources = port.plan("demo", self.release)[0]["sources"]
