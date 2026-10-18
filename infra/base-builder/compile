@@ -71,11 +71,14 @@ LIB_FUZZING_ENGINE=$OV/libFuzzingEngine.a
 # The driver of an allocation-failure fuzz target: cli.o with allocation_failure.o, linked only by link-fuzz-target,
 # which renames the allocators the project's code calls (OV_AF_RENAME) to allocation_failure.c's. A link that does
 # not go through $CC or $CXX would make a program whose allocations never fail, so this is not an archive: such a
-# link fails.
+# link fails. $LIB_ALLOCATION_COUNTING_ENGINE is the same with counting mode on, for sweep and test builds only.
 "$DRVCC" $BASE_CFLAGS -c -I"$LIB/driver" "$LIB/driver/allocation_failure.c" -o "$OV/allocation_failure.o"
+"$DRVCC" $BASE_CFLAGS -DOV_ALLOCATION_COUNTING -c -I"$LIB/driver" "$LIB/driver/allocation_failure.c" \
+  -o "$OV/allocation_counting.o"
 printf 'Not an archive: link an allocation-failure fuzz target with $CC or $CXX (docs/exit-codes.md).\n' \
-  > "$OV/libAllocationFailureEngine.a"
+  | tee "$OV/libAllocationFailureEngine.a" > "$OV/libAllocationCountingEngine.a"
 LIB_ALLOCATION_FAILURE_ENGINE=$OV/libAllocationFailureEngine.a
+LIB_ALLOCATION_COUNTING_ENGINE=$OV/libAllocationCountingEngine.a
 af_rename=""
 for f in malloc calloc realloc reallocarray aligned_alloc posix_memalign memalign strdup strndup \
          _Znwm _Znam _ZnwmRKSt9nothrow_t _ZnamRKSt9nothrow_t _ZnwmSt11align_val_t _ZnamSt11align_val_t \
@@ -93,6 +96,8 @@ OV_SEALS='$OV/wrap_getenv.o -Wl,--wrap=getenv $OV/wrap_mkstemp.o -Wl,--wrap=mkst
 OV_TWINS='$OV/twins'
 OV_AFE='$LIB_ALLOCATION_FAILURE_ENGINE'
 OV_AF_DRIVER='$OV/cli.o $OV/allocation_failure.o'
+OV_AFC='$LIB_ALLOCATION_COUNTING_ENGINE'
+OV_AFC_DRIVER='$OV/cli.o $OV/allocation_counting.o'
 OV_AF_RENAME='${af_rename# }'
 EOF
 
@@ -105,7 +110,8 @@ for a in "\$@"; do
   case "\$a" in -c|-E|-S|-fsyntax-only|-M|-MM|--version|-dumpmachine|-print-*) exec $2 "\$@" ;; esac
 done
 for a in "\$@"; do
-  case "\$a" in "$LIB_FUZZING_ENGINE"|"$LIB_ALLOCATION_FAILURE_ENGINE") exec $LIB/link-fuzz-target $2 "\$@" ;; esac
+  case "\$a" in "$LIB_FUZZING_ENGINE"|"$LIB_ALLOCATION_FAILURE_ENGINE"|"$LIB_ALLOCATION_COUNTING_ENGINE")
+    exec $LIB/link-fuzz-target $2 "\$@" ;; esac
 done
 exec $2 "\$@"
 EOF
@@ -141,7 +147,7 @@ EOF
 
 # OSS-Fuzz's names, and a few more that cross builds need. FUZZING_ENGINE is "none", OSS-Fuzz's name for a driver
 # that runs inputs from files.
-export CC CXX CFLAGS CXXFLAGS LIB_FUZZING_ENGINE LIB_ALLOCATION_FAILURE_ENGINE
+export CC CXX CFLAGS CXXFLAGS LIB_FUZZING_ENGINE LIB_ALLOCATION_FAILURE_ENGINE LIB_ALLOCATION_COUNTING_ENGINE
 export ARCHITECTURE=riscv64 FUZZING_ENGINE=none
 export CMAKE_TOOLCHAIN_FILE=$OV/toolchain.cmake
 export AR=$CHOST-ar NM=$CHOST-nm RANLIB=$CHOST-ranlib STRIP=$CHOST-strip OBJCOPY=$CHOST-objcopy

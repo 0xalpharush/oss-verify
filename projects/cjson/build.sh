@@ -2,8 +2,7 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
 #
-# Builds cjson_read_fuzzer, cJSON's own fuzz target (fuzzing/cjson_read_fuzzer.c), into $OUT, and its
-# allocation-failure variant, cjson_read_fuzzer_allocation_failure.
+# Builds cjson_read_fuzzer, cJSON's own fuzz target (fuzzing/cjson_read_fuzzer.c), into $OUT.
 # Ported from OSS-Fuzz's projects/cjson/build.sh, which runs cJSON's fuzzing/ossfuzz.sh.
 
 # Build a copy of the checkout, at the path oss-fuzz-theorems 2026.10.0-rc.2 built its cjson binaries at, so that all
@@ -25,10 +24,3 @@ make -j"$(nproc)"
 # The harness is C: compiled with $CC, not with $CXX as OSS-Fuzz's build does.
 $CC $CFLAGS -c "$build/src/fuzzing/cjson_read_fuzzer.c" -o "$WORK/cjson_read_fuzzer.o"
 $CC $CFLAGS "$WORK/cjson_read_fuzzer.o" -o "$OUT/cjson_read_fuzzer" $LIB_FUZZING_ENGINE "$build/cmk/libcjson.a"
-
-# The same fuzz target, with cJSON's allocations (and the harness's) failing as the input's allocation mask says
-# (docs/exit-codes.md#allocation-failure). cJSON returns NULL when an allocation fails, and the harness then returns 0.
-# A fuzz target of its own: cjson_read_fuzzer's binaries are as they were. project.yaml's fuzz_targets does not list
-# it, so it is built but not verified.
-$CC $CFLAGS "$WORK/cjson_read_fuzzer.o" -o "$OUT/cjson_read_fuzzer_allocation_failure" $LIB_ALLOCATION_FAILURE_ENGINE \
-  "$build/cmk/libcjson.a"

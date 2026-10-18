@@ -39,6 +39,7 @@ Builds ported from oss-fuzz-theorems are checked against the release's binaries 
 | `$CXXFLAGS` | `$CFLAGS -stdlib=libc++` |
 | `$LIB_FUZZING_ENGINE` | the driver, which takes libFuzzer's place in every fuzz target ([exit-codes.md](exit-codes.md)) |
 | `$LIB_ALLOCATION_FAILURE_ENGINE` | the driver of an allocation-failure fuzz target, in which allocations fail as the input says ([exit-codes.md](exit-codes.md#allocation-failure)) |
+| `$LIB_ALLOCATION_COUNTING_ENGINE` | the same, with counting mode on, for sweep and test builds that are never published |
 | `$SANITIZER` | `none`, `undefined`, `address` or `address-undefined` |
 | `$ARCHITECTURE`, `$FUZZING_ENGINE` | `riscv64`; `none` (OSS-Fuzz's name for a driver that runs inputs from files) |
 | `$CMAKE_TOOLCHAIN_FILE` | a CMake toolchain file for this build, which CMake 3.21 and later pick up by themselves |

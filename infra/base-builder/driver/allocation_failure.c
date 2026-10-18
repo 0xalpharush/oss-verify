@@ -14,8 +14,11 @@
  * else is counted: not the driver's allocations, not LLVMFuzzerInitialize's, and not those the C or C++ library
  * makes inside a function the project called. So a run makes the same calls, counted the same way, in every build.
  *
- * target_alloc_count() is the number of calls counted, which the driver reports as the exit status of a run whose
- * config word asks for it. Otherwise this is adapter.c: the same ossfuzz_adapter.h, around the same fuzz target.
+ * Counting mode (bit 15 of the config word) is ignored: the driver asks target_alloc_count() for the exit status,
+ * and gets the status the run would have had without it, so a published allocation-failure fuzz target exits 0 or 2
+ * whatever the input asks for. Compiled with -DOV_ALLOCATION_COUNTING, as $LIB_ALLOCATION_COUNTING_ENGINE links it
+ * for sweep and test builds that are never published, target_alloc_count() is the number of calls counted instead.
+ * Otherwise this is adapter.c: the same ossfuzz_adapter.h, around the same fuzz target.
  */
 #include <errno.h>
 #include <stddef.h>
@@ -23,31 +26,44 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ossfuzz_adapter.h's target_run, calling ov_test_one_input below in place of the fuzz target; its allocation hooks,
- * which do nothing, renamed out of the way. */
+/* ossfuzz_adapter.h's target_run, renamed ov_adapter_run, calling ov_test_one_input below in place of the fuzz target;
+ * its allocation hooks, which do nothing, renamed out of the way. */
 #define OFT_TARGET_NAME "fuzz_target"
 #define LLVMFuzzerTestOneInput ov_test_one_input
 #define target_alloc_init ov_unused_alloc_init
 #define target_alloc_count ov_unused_alloc_count
+#define target_run ov_adapter_run
 #include "ossfuzz_adapter.h"
 #undef LLVMFuzzerTestOneInput
 #undef target_alloc_init
 #undef target_alloc_count
+#undef target_run
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
 void target_alloc_init(unsigned int fail_bitmap);
 unsigned target_alloc_count(void);
+int target_run(const unsigned char *config, size_t config_len, const unsigned char *payload, size_t payload_len);
 
 static unsigned int ov_mask;
 static unsigned ov_count;
 static int ov_armed;
+static int ov_status;
 
 void target_alloc_init(unsigned int fail_bitmap) {
   ov_mask = fail_bitmap;
   ov_count = 0;
 }
 
+int target_run(const unsigned char *config, size_t config_len, const unsigned char *payload, size_t payload_len) {
+  ov_status = ov_adapter_run(config, config_len, payload, payload_len);
+  return ov_status;
+}
+
+#ifdef OV_ALLOCATION_COUNTING
 unsigned target_alloc_count(void) { return ov_count; }
+#else
+unsigned target_alloc_count(void) { return (unsigned)ov_status; } /* counting mode ignored: the run's own status */
+#endif
 
 int ov_test_one_input(const uint8_t *data, size_t size) {
   ov_armed = 1;
