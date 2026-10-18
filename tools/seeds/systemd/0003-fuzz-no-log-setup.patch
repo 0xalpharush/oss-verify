@@ -1,0 +1,19 @@
+0003-fuzz-no-log-setup.patch
+Platform adaptation.
+
+diff --git a/src/fuzz/fuzz.h b/src/fuzz/fuzz.h
+index 518f4d92c5da3102226dd05e796e49bb85888b9e..8c6f757202bdb2317df7b6d7cb8fe069427edbd4 100644
+--- a/src/fuzz/fuzz.h
++++ b/src/fuzz/fuzz.h
+@@ -35,7 +35,10 @@ static inline void fuzz_setup_logging(void) {
+          * in a fuzzing mode, so disable most of the logging. */
+         log_set_assert_return_is_critical(true);
+         log_set_max_level(LOG_CRIT);
+-        log_setup();
++                                                                                             
++                                                                                    
++                                                                                      
++                                                                             
+ }
+ 
+ /* Force value to not be optimized away. */

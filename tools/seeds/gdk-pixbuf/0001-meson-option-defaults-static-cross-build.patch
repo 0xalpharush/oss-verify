@@ -1,0 +1,34 @@
+0001-meson-option-defaults-static-cross-build.patch
+Build adaptation.
+
+diff --git a/meson_options.txt b/meson_options.txt
+index d49e530defb3fe49d78946b915d7ab57e8129d5e..2ddd8baf95e2c47519edbd1271922ca43cd23efc 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -17,7 +17,7 @@ option('gif',
+ option('glycin',
+        description: 'Enable Glycin loader (requires glycin)',
+        type: 'feature',
+-       value: 'auto')
++       value: 'disabled')
+ option('android',
+        description: 'Enable Android ImageDecoder loader. It provides loaders for JPEG, PNG, GIF, WEBP, BMP, ICO, WBMP, and HEIF images',
+        type: 'feature',
+@@ -50,7 +50,7 @@ option('introspection',
+ option('man',
+        description: 'Whether to generate man pages (requires rst2man)',
+        type: 'boolean',
+-       value: true)
++       value: false)
+ option('relocatable',
+        description: 'Whether to enable application bundle relocation support',
+        type: 'boolean',
+@@ -70,7 +70,7 @@ option('installed_tests',
+ option('gio_sniffing',
+        description: 'Perform file type detection using GIO (Unused on MacOS and Windows)',
+        type: 'boolean',
+-       value: true)
++       value: false)
+ option('thumbnailer',
+        description: 'Build the thumbnailer',
+        type: 'feature',

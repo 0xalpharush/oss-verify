@@ -1,0 +1,19 @@
+0003-test-init-carries-test-assert.patch
+Build adaptation.
+
+diff --git a/tests/fuzzer/test_init.h b/tests/fuzzer/test_init.h
+index a63c1a8cfba35355a83a2dca236b799346fde1f8..b0b0ee5a91f8e71ed9086574fac230dfe58906fe 100644
+--- a/tests/fuzzer/test_init.h
++++ b/tests/fuzzer/test_init.h
+@@ -4,6 +4,11 @@
+ 
+ #include "fuzzer_assert.h"
+ #include "test_assert.h"
++                                                                      
++                                                                     
++                                                                           
++                                                                            
++#include "../test_assert.cpp"
+ 
+ // Utility for test run.
+ struct OneTimeTestInit {

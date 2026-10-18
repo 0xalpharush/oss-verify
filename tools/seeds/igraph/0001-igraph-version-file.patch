@@ -1,0 +1,10 @@
+0001-igraph-version-file.patch
+Reproducible build.
+
+diff --git a/IGRAPH_VERSION b/IGRAPH_VERSION
+new file mode 100644
+index 0000000000000000000000000000000000000000..cde21f2791f08845b1b10f6b475222453ac72769
+--- /dev/null
++++ b/IGRAPH_VERSION
+@@ -0,0 +1 @@
++1.0.1-65-ge8e03b245

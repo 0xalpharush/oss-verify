@@ -20,6 +20,8 @@ The email addresses in `project.yaml` are public.
 
 We seed some projects ourselves, on branches named `draft-generic-oss-fuzz-<name>`, with `primary_contact: n/a`. To adopt one, copy its `projects/<name>/` into a pull request against `main`, set `primary_contact` to your project's security contact, and fill in the checklist as for any enrollment.
 
+A draft's build files, where it has them, were generated from the build recipe of oss-fuzz-theorems 2026.10.0-rc.2 (`tools/port.py`), and rebuild that release's binaries byte for byte. Keep them, or replace them with a `Dockerfile` and `build.sh` of your own ([docs/build-contract.md](docs/build-contract.md)); the draft's commit message says why one without build files has none yet.
+
 ## Changing or leaving
 
 Edit `projects/<name>/` in a pull request to change an enrollment, set `disabled: true` in `project.yaml` to pause the project, or remove `projects/<name>/` to withdraw it.

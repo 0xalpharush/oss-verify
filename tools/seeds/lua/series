@@ -1,0 +1,3 @@
+lua-luaL_dostring_test.0001-buildlua-no-sanitize-fuzzer-no-link.patch
+lua-luaL_dostring_test.0002-buildlua-vendored-lua-not-git-clone.patch
+lua-luaL_dostring_test.0003-capi-tests-no-protobuf-mutator.patch

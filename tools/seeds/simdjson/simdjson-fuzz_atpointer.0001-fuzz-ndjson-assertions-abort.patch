@@ -1,0 +1,47 @@
+0001-fuzz-ndjson-assertions-abort.patch
+Harness reporting.
+
+diff --git a/fuzz/fuzz_ndjson.cpp b/fuzz/fuzz_ndjson.cpp
+index 62e5ad890a3b83e2645b474262f0450cde677aac..3537084371d6c69c2e67809a8593fe46c8b7bbc2 100644
+--- a/fuzz/fuzz_ndjson.cpp
++++ b/fuzz/fuzz_ndjson.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include "FuzzUtils.h"
+ #include "NullBuffer.h"
++#include <cstdlib>                                                                
+ 
+ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+   FuzzData fd(Data, Size);
+@@ -20,7 +21,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+     bool_count1 += doc.is_bool();
+   }
+   // Restart, if we made it this far, the document *must* be accessible.
+-  if(parser.parse_many(json,batch_size).get(docs)) { return EXIT_FAILURE; }
++                                                                                             
++                                                                            
++                                                                            
++                                                                           
++                                         
++                                                                       
++                                                                           
++                                                                         
++                                          
++     
++  if(parser.parse_many(json,batch_size).get(docs)) { abort(); }
+   size_t bool_count2 = 0;
+   size_t total_count2 = 0;
+   for (auto doc : docs) {
+@@ -28,6 +39,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+     bool_count2 += doc.is_bool();
+   }
+   // They should agree!!!
+-  if((total_count2 != total_count1) || (bool_count2 != bool_count1)) { return EXIT_FAILURE; }
++                                                                        
++                                                                          
++                                                                          
++                                                                    
++                                         
++  if((total_count2 != total_count1) || (bool_count2 != bool_count1)) { abort(); }
+   return 0;
+ }

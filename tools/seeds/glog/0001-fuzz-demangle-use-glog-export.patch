@@ -1,0 +1,25 @@
+0001-fuzz-demangle-use-glog-export.patch
+Build adaptation.
+
+diff --git a/src/fuzz_demangle.cc b/src/fuzz_demangle.cc
+index e125c5c5ab7bf046c4c658a67af697f15868e99f..3946dd1fad0bde37d7b7d8cbbf1638f2af564297 100644
+--- a/src/fuzz_demangle.cc
++++ b/src/fuzz_demangle.cc
+@@ -16,6 +16,17 @@
+ 
+ #include <cstring>
+ 
++                                                                    
++                                                                         
++                                                                          
++                                                                         
++                                                                           
++                                                                       
++                                                   
++#ifndef GLOG_USE_GLOG_EXPORT
++#  define GLOG_USE_GLOG_EXPORT
++#endif
++
+ #include "demangle.h"
+ 
+ extern "C" int LLVMFuzzerTestOneInput(const unsigned char* Data,

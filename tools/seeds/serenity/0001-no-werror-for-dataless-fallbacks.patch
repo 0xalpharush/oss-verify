@@ -1,0 +1,21 @@
+0001-no-werror-for-dataless-fallbacks.patch
+Build adaptation.
+
+diff --git a/Meta/CMake/common_compile_options.cmake b/Meta/CMake/common_compile_options.cmake
+index 4ac3bec3cc1335d07d470d2079cf810d2fcbd169..298e88043d0b37e921c89060f1f413a4fc9f6b6f 100644
+--- a/Meta/CMake/common_compile_options.cmake
++++ b/Meta/CMake/common_compile_options.cmake
+@@ -61,7 +61,12 @@ endif()
+ if (NOT CMAKE_HOST_SYSTEM_NAME MATCHES SerenityOS)
+     # FIXME: Something makes this go crazy and flag unused variables that aren't flagged as such when building with the toolchain.
+     #        Disable -Werror for now.
+-    add_compile_options(-Werror)
++                                                                              
++                                                                               
++                                                                              
++                                                                    
++                                                  
++                                  
+ endif()
+ 
+ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang$")

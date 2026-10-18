@@ -1,0 +1,16 @@
+0002-meson-no-libucontext-dependency.patch
+Build adaptation.
+
+diff --git a/meson.build b/meson.build
+index 35701ed4ee25f55516c76c7a4d98dd091e68f16d..b6656014c8468fe69a02322e175a9146e627b254 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1057,7 +1057,7 @@ conf.set10('HAVE_LIBCRYPT', have)
+ # musl declares the ucontext.h functions but does not implement them; the fiber bootstrap in
+ # src/libsystemd/sd-future/fiber.c relies on them, so on musl we have to link to libucontext.
+ if get_option('libc') == 'musl'
+-        libucontext = dependency('libucontext')
++        libucontext = []                                                                                                                                                        
+ else
+         libucontext = []
+ endif

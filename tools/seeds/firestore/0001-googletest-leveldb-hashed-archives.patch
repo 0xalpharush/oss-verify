@@ -1,0 +1,66 @@
+0001-googletest-leveldb-hashed-archives.patch
+Reproducible build.
+
+diff --git a/cmake/external/googletest.cmake b/cmake/external/googletest.cmake
+index c7a3485ffe52320119244c9bbae255147283ae16..3c70a145145d81269710dbbe248341bd18501d24 100644
+--- a/cmake/external/googletest.cmake
++++ b/cmake/external/googletest.cmake
+@@ -25,14 +25,23 @@ endif()
+ # dropped c++14 support, setting the floor to c++17. Once Firebase sets _its_
+ # floor to c++17, this pinned commit can be moved to a new one.
+ # See https://github.com/firebase/firebase-ios-sdk/pull/14474.
+-set(version 4a00a24fff)
+-
++set(version 4a00a24fff3cf82254de382437bf840cab1d3993)
++
++                                                                              
++                                                                               
++                                                                            
++                                                                            
++                                                                                
++                                                                            
++                                                                            
++                                                                  
+ ExternalProject_Add(
+   googletest
+ 
+   DOWNLOAD_DIR ${FIREBASE_DOWNLOAD_DIR}
+-  GIT_REPOSITORY https://github.com/google/googletest.git
+-  GIT_TAG "${version}"
++  DOWNLOAD_NAME googletest-${version}.tar.gz
++  URL https://github.com/google/googletest/archive/${version}.tar.gz
++  URL_HASH SHA256=6e1d9fe2d3a03f5b4ff3705849481c60e3bd5dbc0685bf0ad562eab47f94c16a
+ 
+   PREFIX ${PROJECT_BINARY_DIR}
+ 
+diff --git a/cmake/external/leveldb.cmake b/cmake/external/leveldb.cmake
+index 81ed8e6f1549eaf80f3f2d83c419755d2733766b..b6416b8c8db0803b29dff6647e0d6d4030998a1c 100644
+--- a/cmake/external/leveldb.cmake
++++ b/cmake/external/leveldb.cmake
+@@ -33,14 +33,24 @@ set(snappy_binary_dir "${BINARY_DIR}")
+ 
+ set(additional_patch_file ${CMAKE_CURRENT_LIST_DIR}/leveldb-${version}_windows_paths.patch)
+ 
++                                                                              
++                                                                            
++                                                                            
++                                                                             
++                                                                            
++                                                                            
++                                                                            
++                                                                      
++                                                                           
+ ExternalProject_Add(
+   leveldb
+ 
+   DEPENDS snappy
+ 
+   DOWNLOAD_DIR ${FIREBASE_DOWNLOAD_DIR}
+-  GIT_REPOSITORY https://github.com/google/leveldb.git
+-  GIT_TAG "${version}"
++  DOWNLOAD_NAME leveldb-${version}.tar.gz
++  URL https://github.com/google/leveldb/archive/refs/tags/${version}.tar.gz
++  URL_HASH SHA256=55423cac9e3306f4a9502c738a001e4a339d1a38ffbee7572d4a07d5d63949b2
+ 
+   PREFIX ${PROJECT_BINARY_DIR}
+ 

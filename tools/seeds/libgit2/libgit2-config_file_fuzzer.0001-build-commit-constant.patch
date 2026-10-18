@@ -1,0 +1,27 @@
+0001-build-commit-constant.patch
+Reproducible build.
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 318024d2f676a1875bfec4acc2c7ff9b068c7331..08ed1b3552f77c620a3a0f43bc061a351ed11b65 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -147,8 +147,17 @@ endif()
+ #
+ 
+ set(GIT_BUILD_CPU "${CMAKE_SYSTEM_PROCESSOR}")
+-execute_process(COMMAND git rev-parse HEAD
+-	OUTPUT_VARIABLE GIT_BUILD_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE)
++                                                                         
++                                                                  
++                                                                              
++                                                                              
++                                                                              
++                                                                           
++                                                                             
++                                                                            
++                                                              
++                                                
++set(GIT_BUILD_COMMIT "0551dfd4ad989b6a3d5683c0d4cf326c6efef929")
+ 
+ add_subdirectory("${PROJECT_SOURCE_DIR}/deps/reftable" "${PROJECT_BINARY_DIR}/deps/reftable")
+ list(APPEND LIBGIT2_DEPENDENCY_INCLUDES "${PROJECT_SOURCE_DIR}/deps/reftable")

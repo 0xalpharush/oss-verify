@@ -1,0 +1,16 @@
+0003-capi-tests-no-protobuf-mutator.patch
+Build adaptation.
+
+diff --git a/tests/capi/CMakeLists.txt b/tests/capi/CMakeLists.txt
+index e0b87b45dc839f4c799d5e27e5af7521cdcb1e69..e74219c940ad76ac42e15ccfbe94ab4cb00270bd 100644
+--- a/tests/capi/CMakeLists.txt
++++ b/tests/capi/CMakeLists.txt
+@@ -143,8 +143,6 @@ foreach(filename ${tests})
+   )
+ endforeach()
+ 
+-include(ProtobufMutator)
+-add_subdirectory(luaL_loadbuffer_proto)
+ if(IS_LUAJIT)
+   add_subdirectory(ffi_cdef_proto)
+ endif ()

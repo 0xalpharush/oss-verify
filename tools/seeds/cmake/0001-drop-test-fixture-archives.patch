@@ -1,0 +1,129 @@
+0001-drop-test-fixture-archives.patch
+Build adaptation.
+
+diff --git a/Tests/CMakeOnly/find_library/A/libtestA.a b/Tests/CMakeOnly/find_library/A/libtestA.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/B/libtestB.a b/Tests/CMakeOnly/find_library/B/libtestB.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/32/libtest5.a b/Tests/CMakeOnly/find_library/lib/32/libtest5.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/64/libtest2.a b/Tests/CMakeOnly/find_library/lib/64/libtest2.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/A/lib/libtest1.a b/Tests/CMakeOnly/find_library/lib/A/lib/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/A/lib32/libtest3.a b/Tests/CMakeOnly/find_library/lib/A/lib32/libtest3.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/A/lib64/libtest3.a b/Tests/CMakeOnly/find_library/lib/A/lib64/libtest3.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/A/libXYZ/libtest2.a b/Tests/CMakeOnly/find_library/lib/A/libXYZ/libtest2.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/A/libtest1.a b/Tests/CMakeOnly/find_library/lib/A/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/A/libx32/libtest3.a b/Tests/CMakeOnly/find_library/lib/A/libx32/libtest3.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/XYZ/libtest1.a b/Tests/CMakeOnly/find_library/lib/XYZ/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/libtest1.a b/Tests/CMakeOnly/find_library/lib/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/libtest2.a b/Tests/CMakeOnly/find_library/lib/libtest2.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/libtest3.a b/Tests/CMakeOnly/find_library/lib/libtest3.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib/x32/libtest2.a b/Tests/CMakeOnly/find_library/lib/x32/libtest2.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib32/A/lib/libtest2.a b/Tests/CMakeOnly/find_library/lib32/A/lib/libtest2.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib32/A/lib32/libtest4.a b/Tests/CMakeOnly/find_library/lib32/A/lib32/libtest4.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib32/A/libtest4.a b/Tests/CMakeOnly/find_library/lib32/A/libtest4.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib32/libtest4.a b/Tests/CMakeOnly/find_library/lib32/libtest4.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib64/A/lib/libtest2.a b/Tests/CMakeOnly/find_library/lib64/A/lib/libtest2.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib64/A/lib64/libtest1.a b/Tests/CMakeOnly/find_library/lib64/A/lib64/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib64/A/libtest1.a b/Tests/CMakeOnly/find_library/lib64/A/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/lib64/libtest1.a b/Tests/CMakeOnly/find_library/lib64/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libXYZ/A/lib/libtest4.a b/Tests/CMakeOnly/find_library/libXYZ/A/lib/libtest4.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libXYZ/A/libXYZ/libtest5.a b/Tests/CMakeOnly/find_library/libXYZ/A/libXYZ/libtest5.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libXYZ/A/libtest6.a b/Tests/CMakeOnly/find_library/libXYZ/A/libtest6.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libXYZ/libtest7.a b/Tests/CMakeOnly/find_library/libXYZ/libtest7.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libx32/A/lib/libtest2.a b/Tests/CMakeOnly/find_library/libx32/A/lib/libtest2.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libx32/A/libtest1.a b/Tests/CMakeOnly/find_library/libx32/A/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libx32/A/libx32/libtest1.a b/Tests/CMakeOnly/find_library/libx32/A/libx32/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/CMakeOnly/find_library/libx32/libtest1.a b/Tests/CMakeOnly/find_library/libx32/libtest1.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_date_time.a b/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_date_time.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_mpi_python.a b/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_mpi_python.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_python.a b/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_python.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_python_release.a b/Tests/RunCMake/FindBoost/CMakePackage_New/lib/libboost_python_release.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/FindBoost/MockInstalls/1.70.0/lib/libboost_chrono.a b/Tests/RunCMake/FindBoost/MockInstalls/1.70.0/lib/libboost_chrono.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/FindBoost/MockInstalls/1.70.0/lib/libboost_system.a b/Tests/RunCMake/FindBoost/MockInstalls/1.70.0/lib/libboost_system.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/FindBoost/MockInstalls/1.70.0/lib/libboost_timer.a b/Tests/RunCMake/FindBoost/MockInstalls/1.70.0/lib/libboost_timer.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/find_library/MSYSTEM_PREFIX/lib/libmsystem_prefix.a b/Tests/RunCMake/find_library/MSYSTEM_PREFIX/lib/libmsystem_prefix.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/find_library/Windows-MSVC/libmeson_static.a b/Tests/RunCMake/find_library/Windows-MSVC/libmeson_static.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/find_library/lib/libPrefixInPATH.a b/Tests/RunCMake/find_library/lib/libPrefixInPATH.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000
+diff --git a/Tests/RunCMake/find_package-CPS/lib/libsecond.a b/Tests/RunCMake/find_package-CPS/lib/libsecond.a
+deleted file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000

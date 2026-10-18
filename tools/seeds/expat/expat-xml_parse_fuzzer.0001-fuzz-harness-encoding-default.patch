@@ -1,0 +1,35 @@
+0001-fuzz-harness-encoding-default.patch
+Build adaptation.
+
+--- a/expat/fuzz/xml_parse_fuzzer.c
++++ b/expat/fuzz/xml_parse_fuzzer.c
+@@ -29,6 +29,13 @@
+ // The encoder type that we wish to fuzz should come from the compile-time
+ // definition `ENCODING_FOR_FUZZING`. This allows us to have a separate fuzzer
+ // binary for
++                                                                       
++                                                                     
++                                                                     
++#ifndef ENCODING_FOR_FUZZING
++#  define ENCODING_FOR_FUZZING UTF-8
++#endif
++
+ #ifndef ENCODING_FOR_FUZZING
+ #  error "ENCODING_FOR_FUZZING was not provided to this fuzz target."
+ #endif
+--- a/expat/fuzz/xml_parsebuffer_fuzzer.c
++++ b/expat/fuzz/xml_parsebuffer_fuzzer.c
+@@ -30,6 +30,13 @@
+ // The encoder type that we wish to fuzz should come from the compile-time
+ // definition `ENCODING_FOR_FUZZING`. This allows us to have a separate fuzzer
+ // binary for
++                                                                       
++                                                                     
++                                                                     
++#ifndef ENCODING_FOR_FUZZING
++#  define ENCODING_FOR_FUZZING UTF-8
++#endif
++
+ #ifndef ENCODING_FOR_FUZZING
+ #  error "ENCODING_FOR_FUZZING was not provided to this fuzz target."
+ #endif

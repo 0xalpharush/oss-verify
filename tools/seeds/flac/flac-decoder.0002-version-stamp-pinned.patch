@@ -1,0 +1,55 @@
+0002-version-stamp-pinned.patch
+Reproducible build.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f65adc1c48179c1942a3de4f6d20cf8b8ab99d1a..7b345bda12e8bbd42e6930187a1578f57cddf20e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -48,31 +48,22 @@ if(WITH_OGG)
+     endif()
+ endif()
+ 
+-find_program (HAVE_GIT git)
+-
+-if(HAVE_GIT)
+-    execute_process(
+-        COMMAND git --git-dir=.git describe --tags --exact-match
+-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+-        OUTPUT_VARIABLE GIT_COMMIT_TAG
+-        OUTPUT_STRIP_TRAILING_WHITESPACE
+-        ERROR_QUIET
+-        )
+-    execute_process(
+-        COMMAND git --git-dir=.git log -1 --pretty=format:%h
+-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+-        OUTPUT_VARIABLE GIT_COMMIT_HASH
+-        OUTPUT_STRIP_TRAILING_WHITESPACE
+-        ERROR_QUIET
+-        )
+-    execute_process(
+-        COMMAND git --git-dir=.git log -1 --pretty=format:%cd --date=format:%Y%m%d
+-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+-        OUTPUT_VARIABLE GIT_COMMIT_DATE
+-        OUTPUT_STRIP_TRAILING_WHITESPACE
+-        ERROR_QUIET
+-        )
+-endif()
++                                                                             
++                                                                
++                                                                        
++                                                                         
++                                                                                         
++                                                                              
++                                                                      
++                                                                             
++                                                                          
++                                                                           
++                                                                           
++                                                                          
++set(OFT_FLAC_VERSION_STAMP_PINNED 1)
++set(GIT_COMMIT_TAG "")
++set(GIT_COMMIT_HASH "e94ff9f6")
++set(GIT_COMMIT_DATE "20260719")
+ 
+ if(NOT WIN32)
+     find_package(Iconv)

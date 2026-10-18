@@ -1,0 +1,3149 @@
+0001-fuzztest-generated-protos.patch
+Build adaptation.
+
+diff --git a/tests/fuzztest/alltypes_static.proto b/tests/fuzztest/alltypes_static.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ae4aab6d08ad2d840e682d6b5bacca9f1b2c541
+--- /dev/null
++++ b/tests/fuzztest/alltypes_static.proto
+@@ -0,0 +1,166 @@
++syntax = "proto2";
++package alltypes_static;
++
++enum NonZeroBasedEnum {
++    Two = 2;
++    Three = 3;
++    Four = 4;
++}
++
++message SubMessage {
++    required string substuff1 = 1 [default = "1"];
++    required int32 substuff2 = 2 [default = 2];
++    optional fixed32 substuff3 = 3 [default = 3];
++}
++
++message EmptyMessage {
++
++}
++
++enum HugeEnum {
++    Negative = -2147483647; /* protoc doesn't accept -2147483648 here */
++    Positive =  2147483647;
++}
++
++message Limits {
++    required int32      int32_min  =  1 [default = 2147483647];
++    required int32      int32_max  =  2 [default = -2147483647];
++    required uint32     uint32_min =  3 [default = 4294967295];
++    required uint32     uint32_max =  4 [default = 0];
++    required int64      int64_min  =  5 [default = 9223372036854775807];
++    required int64      int64_max  =  6 [default = -9223372036854775807];
++    required uint64     uint64_min =  7 [default = 18446744073709551615];
++    required uint64     uint64_max =  8 [default = 0];
++    required HugeEnum   enum_min   =  9 [default = Positive];
++    required HugeEnum   enum_max   = 10 [default = Negative];
++    required int32      largetag   = 65535 [default = 0];
++}
++
++message IntSizes {
++    required int32  req_int8 =   1 ;
++    required uint32 req_uint8 =  2 ;
++    required sint32 req_sint8 =  3 ;
++    required int32  req_int16 =  4 ;
++    required uint32 req_uint16 = 5 ;
++    required sint32 req_sint16 = 6 ;
++}
++
++message DescriptorSize8 {
++    required int32 first = 1;
++    required int32 second = 22222;
++}
++
++enum MyEnum {
++    Zero = 0;
++    First = 1;
++    Second = 2;
++    Truth = 42;
++}
++
++message AllTypes {
++    required int32      req_int32   = 1;
++    required int64      req_int64   = 2;
++    required uint32     req_uint32  = 3;
++    required uint64     req_uint64  = 4;
++    required sint32     req_sint32  = 5;
++    required sint64     req_sint64  = 6;
++    required bool       req_bool    = 7;
++    
++    required fixed32    req_fixed32 = 8;
++    required sfixed32   req_sfixed32= 9;
++    required float      req_float   = 10;
++    
++    required fixed64    req_fixed64 = 11;
++    required sfixed64   req_sfixed64= 12;
++    required double     req_double  = 13;
++    
++    required string     req_string  = 14;
++    required bytes      req_bytes   = 15;
++    required SubMessage req_submsg  = 16;
++    required MyEnum     req_enum    = 17;
++    required EmptyMessage req_emptymsg = 18;
++    required bytes      req_fbytes  = 19;
++    
++    repeated int32      rep_int32   = 21 [packed = true];
++    repeated int64      rep_int64   = 22 [packed = true];
++    repeated uint32     rep_uint32  = 23 [packed = true];
++    repeated uint64     rep_uint64  = 24 [packed = true];
++    repeated sint32     rep_sint32  = 25 [packed = true];
++    repeated sint64     rep_sint64  = 26 [packed = true];
++    repeated bool       rep_bool    = 27 [packed = true];
++    
++    repeated fixed32    rep_fixed32 = 28 [packed = true];
++    repeated sfixed32   rep_sfixed32= 29 [packed = true];
++    repeated float      rep_float   = 30 [packed = true];
++    
++    repeated fixed64    rep_fixed64 = 31 [packed = true];
++    repeated sfixed64   rep_sfixed64= 32 [packed = true];
++    repeated double     rep_double  = 33 [packed = true];
++    
++    repeated string     rep_string  = 34;
++    repeated bytes      rep_bytes   = 35;
++    repeated SubMessage rep_submsg  = 36;
++    repeated MyEnum     rep_enum    = 37 [packed = true];
++    repeated EmptyMessage rep_emptymsg = 38;
++    repeated bytes      rep_fbytes  = 39;
++    repeated int32      rep_farray  = 40 [packed = true];
++    
++    optional int32      opt_int32   = 41 [default = 4041];
++    optional int64      opt_int64   = 42 [default = 4042];
++    optional uint32     opt_uint32  = 43 [default = 4043];
++    optional uint64     opt_uint64  = 44 [default = 4044];
++    optional sint32     opt_sint32  = 45 [default = 4045];
++    optional sint64     opt_sint64  = 46 [default = 4046];
++    optional bool       opt_bool    = 47 [default = false];
++    
++    optional fixed32    opt_fixed32 = 48 [default = 4048];
++    optional sfixed32   opt_sfixed32= 49 [default = 4049];
++    optional float      opt_float   = 50 [default = 4050];
++    
++    optional fixed64    opt_fixed64 = 51 [default = 4051];
++    optional sfixed64   opt_sfixed64= 52 [default = 4052];
++    optional double     opt_double  = 53 [default = 4053];
++    
++    optional string     opt_string  = 54 [default = "4054"];
++    optional bytes      opt_bytes   = 55 [default = "\x34\x5C\x00\xff"];
++    optional SubMessage opt_submsg  = 56;
++    optional MyEnum     opt_enum    = 57 [default = Second];
++    optional EmptyMessage opt_emptymsg = 58;
++    optional bytes      opt_fbytes  = 59 [default = "4059"];
++
++    oneof oneof
++    {
++        SubMessage oneof_msg1 = 60;
++        EmptyMessage oneof_msg2 = 61;
++        SubMessage static_msg = 63;
++    }
++
++    optional NonZeroBasedEnum opt_non_zero_based_enum = 62;
++    
++    // Second fixed length array field to test the length check logic.
++    repeated fixed32 rep_farray2 = 95 [packed = true];
++
++    // Check support for custom integer sizes
++    required IntSizes req_intsizes = 96;
++
++    // Check support for 8-word descriptors
++    required DescriptorSize8 req_ds8 = 97;
++
++    // Check that extreme integer values are handled correctly
++    // Also checks support for 4-word descriptors
++    required Limits     req_limits = 98;
++
++    // Just to make sure that the size of the fields has been calculated
++    // properly, i.e. otherwise a bug in last field might not be detected.
++    required int32      end = 999;
++
++
++    extensions 200 to 255;
++}
++
++message TestExtension {
++    extend AllTypes {
++        optional TestExtension testextension = 250;
++    }
++    optional string strval = 1;
++}
+diff --git a/tests/fuzztest/alltypes_pointer.proto b/tests/fuzztest/alltypes_pointer.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd278e8eaccd547b297722b6bd355c1c7ebab398
+--- /dev/null
++++ b/tests/fuzztest/alltypes_pointer.proto
+@@ -0,0 +1,166 @@
++syntax = "proto2";
++package alltypes_pointer;
++
++enum NonZeroBasedEnum {
++    Two = 2;
++    Three = 3;
++    Four = 4;
++}
++
++message SubMessage {
++    required string substuff1 = 1 [default = "1"];
++    required int32 substuff2 = 2 [default = 2];
++    optional fixed32 substuff3 = 3 [default = 3];
++}
++
++message EmptyMessage {
++
++}
++
++enum HugeEnum {
++    Negative = -2147483647; /* protoc doesn't accept -2147483648 here */
++    Positive =  2147483647;
++}
++
++message Limits {
++    required int32      int32_min  =  1 [default = 2147483647];
++    required int32      int32_max  =  2 [default = -2147483647];
++    required uint32     uint32_min =  3 [default = 4294967295];
++    required uint32     uint32_max =  4 [default = 0];
++    required int64      int64_min  =  5 [default = 9223372036854775807];
++    required int64      int64_max  =  6 [default = -9223372036854775807];
++    required uint64     uint64_min =  7 [default = 18446744073709551615];
++    required uint64     uint64_max =  8 [default = 0];
++    required HugeEnum   enum_min   =  9 [default = Positive];
++    required HugeEnum   enum_max   = 10 [default = Negative];
++    required int32      largetag   = 65535 [default = 0];
++}
++
++message IntSizes {
++    required int32  req_int8 =   1 ;
++    required uint32 req_uint8 =  2 ;
++    required sint32 req_sint8 =  3 ;
++    required int32  req_int16 =  4 ;
++    required uint32 req_uint16 = 5 ;
++    required sint32 req_sint16 = 6 ;
++}
++
++message DescriptorSize8 {
++    required int32 first = 1;
++    required int32 second = 22222;
++}
++
++enum MyEnum {
++    Zero = 0;
++    First = 1;
++    Second = 2;
++    Truth = 42;
++}
++
++message AllTypes {
++    required int32      req_int32   = 1;
++    required int64      req_int64   = 2;
++    required uint32     req_uint32  = 3;
++    required uint64     req_uint64  = 4;
++    required sint32     req_sint32  = 5;
++    required sint64     req_sint64  = 6;
++    required bool       req_bool    = 7;
++    
++    required fixed32    req_fixed32 = 8;
++    required sfixed32   req_sfixed32= 9;
++    required float      req_float   = 10;
++    
++    required fixed64    req_fixed64 = 11;
++    required sfixed64   req_sfixed64= 12;
++    required double     req_double  = 13;
++    
++    required string     req_string  = 14;
++    required bytes      req_bytes   = 15;
++    required SubMessage req_submsg  = 16;
++    required MyEnum     req_enum    = 17;
++    required EmptyMessage req_emptymsg = 18;
++    required bytes      req_fbytes  = 19;
++    
++    repeated int32      rep_int32   = 21 [packed = true];
++    repeated int64      rep_int64   = 22 [packed = true];
++    repeated uint32     rep_uint32  = 23 [packed = true];
++    repeated uint64     rep_uint64  = 24 [packed = true];
++    repeated sint32     rep_sint32  = 25 [packed = true];
++    repeated sint64     rep_sint64  = 26 [packed = true];
++    repeated bool       rep_bool    = 27 [packed = true];
++    
++    repeated fixed32    rep_fixed32 = 28 [packed = true];
++    repeated sfixed32   rep_sfixed32= 29 [packed = true];
++    repeated float      rep_float   = 30 [packed = true];
++    
++    repeated fixed64    rep_fixed64 = 31 [packed = true];
++    repeated sfixed64   rep_sfixed64= 32 [packed = true];
++    repeated double     rep_double  = 33 [packed = true];
++    
++    repeated string     rep_string  = 34;
++    repeated bytes      rep_bytes   = 35;
++    repeated SubMessage rep_submsg  = 36;
++    repeated MyEnum     rep_enum    = 37 [packed = true];
++    repeated EmptyMessage rep_emptymsg = 38;
++    repeated bytes      rep_fbytes  = 39;
++    repeated int32      rep_farray  = 40 [packed = true];
++    
++    optional int32      opt_int32   = 41 [default = 4041];
++    optional int64      opt_int64   = 42 [default = 4042];
++    optional uint32     opt_uint32  = 43 [default = 4043];
++    optional uint64     opt_uint64  = 44 [default = 4044];
++    optional sint32     opt_sint32  = 45 [default = 4045];
++    optional sint64     opt_sint64  = 46 [default = 4046];
++    optional bool       opt_bool    = 47 [default = false];
++    
++    optional fixed32    opt_fixed32 = 48 [default = 4048];
++    optional sfixed32   opt_sfixed32= 49 [default = 4049];
++    optional float      opt_float   = 50 [default = 4050];
++    
++    optional fixed64    opt_fixed64 = 51 [default = 4051];
++    optional sfixed64   opt_sfixed64= 52 [default = 4052];
++    optional double     opt_double  = 53 [default = 4053];
++    
++    optional string     opt_string  = 54 [default = "4054"];
++    optional bytes      opt_bytes   = 55 [default = "\x34\x5C\x00\xff"];
++    optional SubMessage opt_submsg  = 56;
++    optional MyEnum     opt_enum    = 57 [default = Second];
++    optional EmptyMessage opt_emptymsg = 58;
++    optional bytes      opt_fbytes  = 59 [default = "4059"];
++
++    oneof oneof
++    {
++        SubMessage oneof_msg1 = 60;
++        EmptyMessage oneof_msg2 = 61;
++        SubMessage static_msg = 63;
++    }
++
++    optional NonZeroBasedEnum opt_non_zero_based_enum = 62;
++    
++    // Second fixed length array field to test the length check logic.
++    repeated fixed32 rep_farray2 = 95 [packed = true];
++
++    // Check support for custom integer sizes
++    required IntSizes req_intsizes = 96;
++
++    // Check support for 8-word descriptors
++    required DescriptorSize8 req_ds8 = 97;
++
++    // Check that extreme integer values are handled correctly
++    // Also checks support for 4-word descriptors
++    required Limits     req_limits = 98;
++
++    // Just to make sure that the size of the fields has been calculated
++    // properly, i.e. otherwise a bug in last field might not be detected.
++    required int32      end = 999;
++
++
++    extensions 200 to 255;
++}
++
++message TestExtension {
++    extend AllTypes {
++        optional TestExtension testextension = 250;
++    }
++    optional string strval = 1;
++}
+diff --git a/tests/fuzztest/alltypes_callback.proto b/tests/fuzztest/alltypes_callback.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..2ff0a810877794505ff2cad5fa37b4fc9037c0fa
+--- /dev/null
++++ b/tests/fuzztest/alltypes_callback.proto
+@@ -0,0 +1,166 @@
++syntax = "proto2";
++package alltypes_callback;
++
++enum NonZeroBasedEnum {
++    Two = 2;
++    Three = 3;
++    Four = 4;
++}
++
++message SubMessage {
++    required string substuff1 = 1 [default = "1"];
++    required int32 substuff2 = 2 [default = 2];
++    optional fixed32 substuff3 = 3 [default = 3];
++}
++
++message EmptyMessage {
++
++}
++
++enum HugeEnum {
++    Negative = -2147483647; /* protoc doesn't accept -2147483648 here */
++    Positive =  2147483647;
++}
++
++message Limits {
++    required int32      int32_min  =  1 [default = 2147483647];
++    required int32      int32_max  =  2 [default = -2147483647];
++    required uint32     uint32_min =  3 [default = 4294967295];
++    required uint32     uint32_max =  4 [default = 0];
++    required int64      int64_min  =  5 [default = 9223372036854775807];
++    required int64      int64_max  =  6 [default = -9223372036854775807];
++    required uint64     uint64_min =  7 [default = 18446744073709551615];
++    required uint64     uint64_max =  8 [default = 0];
++    required HugeEnum   enum_min   =  9 [default = Positive];
++    required HugeEnum   enum_max   = 10 [default = Negative];
++    required int32      largetag   = 65535 [default = 0];
++}
++
++message IntSizes {
++    required int32  req_int8 =   1 ;
++    required uint32 req_uint8 =  2 ;
++    required sint32 req_sint8 =  3 ;
++    required int32  req_int16 =  4 ;
++    required uint32 req_uint16 = 5 ;
++    required sint32 req_sint16 = 6 ;
++}
++
++message DescriptorSize8 {
++    required int32 first = 1;
++    required int32 second = 22222;
++}
++
++enum MyEnum {
++    Zero = 0;
++    First = 1;
++    Second = 2;
++    Truth = 42;
++}
++
++message AllTypes {
++    required int32      req_int32   = 1;
++    required int64      req_int64   = 2;
++    required uint32     req_uint32  = 3;
++    required uint64     req_uint64  = 4;
++    required sint32     req_sint32  = 5;
++    required sint64     req_sint64  = 6;
++    required bool       req_bool    = 7;
++    
++    required fixed32    req_fixed32 = 8;
++    required sfixed32   req_sfixed32= 9;
++    required float      req_float   = 10;
++    
++    required fixed64    req_fixed64 = 11;
++    required sfixed64   req_sfixed64= 12;
++    required double     req_double  = 13;
++    
++    required string     req_string  = 14;
++    required bytes      req_bytes   = 15;
++    required SubMessage req_submsg  = 16;
++    required MyEnum     req_enum    = 17;
++    required EmptyMessage req_emptymsg = 18;
++    required bytes      req_fbytes  = 19;
++    
++    repeated int32      rep_int32   = 21 [packed = true];
++    repeated int64      rep_int64   = 22 [packed = true];
++    repeated uint32     rep_uint32  = 23 [packed = true];
++    repeated uint64     rep_uint64  = 24 [packed = true];
++    repeated sint32     rep_sint32  = 25 [packed = true];
++    repeated sint64     rep_sint64  = 26 [packed = true];
++    repeated bool       rep_bool    = 27 [packed = true];
++    
++    repeated fixed32    rep_fixed32 = 28 [packed = true];
++    repeated sfixed32   rep_sfixed32= 29 [packed = true];
++    repeated float      rep_float   = 30 [packed = true];
++    
++    repeated fixed64    rep_fixed64 = 31 [packed = true];
++    repeated sfixed64   rep_sfixed64= 32 [packed = true];
++    repeated double     rep_double  = 33 [packed = true];
++    
++    repeated string     rep_string  = 34;
++    repeated bytes      rep_bytes   = 35;
++    repeated SubMessage rep_submsg  = 36;
++    repeated MyEnum     rep_enum    = 37 [packed = true];
++    repeated EmptyMessage rep_emptymsg = 38;
++    repeated bytes      rep_fbytes  = 39;
++    repeated int32      rep_farray  = 40 [packed = true];
++    
++    optional int32      opt_int32   = 41 [default = 4041];
++    optional int64      opt_int64   = 42 [default = 4042];
++    optional uint32     opt_uint32  = 43 [default = 4043];
++    optional uint64     opt_uint64  = 44 [default = 4044];
++    optional sint32     opt_sint32  = 45 [default = 4045];
++    optional sint64     opt_sint64  = 46 [default = 4046];
++    optional bool       opt_bool    = 47 [default = false];
++    
++    optional fixed32    opt_fixed32 = 48 [default = 4048];
++    optional sfixed32   opt_sfixed32= 49 [default = 4049];
++    optional float      opt_float   = 50 [default = 4050];
++    
++    optional fixed64    opt_fixed64 = 51 [default = 4051];
++    optional sfixed64   opt_sfixed64= 52 [default = 4052];
++    optional double     opt_double  = 53 [default = 4053];
++    
++    optional string     opt_string  = 54 [default = "4054"];
++    optional bytes      opt_bytes   = 55 [default = "\x34\x5C\x00\xff"];
++    optional SubMessage opt_submsg  = 56;
++    optional MyEnum     opt_enum    = 57 [default = Second];
++    optional EmptyMessage opt_emptymsg = 58;
++    optional bytes      opt_fbytes  = 59 [default = "4059"];
++
++    oneof oneof
++    {
++        SubMessage oneof_msg1 = 60;
++        EmptyMessage oneof_msg2 = 61;
++        SubMessage static_msg = 63;
++    }
++
++    optional NonZeroBasedEnum opt_non_zero_based_enum = 62;
++    
++    // Second fixed length array field to test the length check logic.
++    repeated fixed32 rep_farray2 = 95 [packed = true];
++
++    // Check support for custom integer sizes
++    required IntSizes req_intsizes = 96;
++
++    // Check support for 8-word descriptors
++    required DescriptorSize8 req_ds8 = 97;
++
++    // Check that extreme integer values are handled correctly
++    // Also checks support for 4-word descriptors
++    required Limits     req_limits = 98;
++
++    // Just to make sure that the size of the fields has been calculated
++    // properly, i.e. otherwise a bug in last field might not be detected.
++    required int32      end = 999;
++
++
++    extensions 200 to 255;
++}
++
++message TestExtension {
++    extend AllTypes {
++        optional TestExtension testextension = 250;
++    }
++    optional string strval = 1;
++}
+diff --git a/tests/fuzztest/alltypes_proto3_static.proto b/tests/fuzztest/alltypes_proto3_static.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..4339a6b1d123366ad4cef47dcba7595b68af6cec
+--- /dev/null
++++ b/tests/fuzztest/alltypes_proto3_static.proto
+@@ -0,0 +1,101 @@
++syntax = "proto3";
++package alltypes_proto3_static;
++
++message SubMessage {
++    string substuff1 = 1;
++    int32 substuff2 = 2;
++    fixed32 substuff3 = 3;
++}
++
++message EmptyMessage {
++
++}
++
++enum HugeEnum {
++    HE_Zero = 0;
++    Negative = -2147483647; /* protoc doesn't accept -2147483648 here */
++    Positive =  2147483647;
++}
++
++message Limits {
++    int32      int32_min  =  1;
++    int32      int32_max  =  2;
++    uint32     uint32_min =  3;
++    uint32     uint32_max =  4;
++    int64      int64_min  =  5;
++    int64      int64_max  =  6;
++    uint64     uint64_min =  7;
++    uint64     uint64_max =  8;
++    HugeEnum   enum_min   =  9;
++    HugeEnum   enum_max   = 10;
++}
++
++enum MyEnum {
++    Zero = 0;
++    First = 1;
++    Second = 2;
++    Truth = 42;
++}
++
++message AllTypes {
++    int32      sng_int32   = 1;
++    int64      sng_int64   = 2;
++    uint32     sng_uint32  = 3;
++    uint64     sng_uint64  = 4;
++    sint32     sng_sint32  = 5;
++    sint64     sng_sint64  = 6;
++    bool       sng_bool    = 7;
++    
++    fixed32    sng_fixed32 = 8;
++    sfixed32   sng_sfixed32= 9;
++    float      sng_float   = 10;
++    
++    fixed64    sng_fixed64 = 11;
++    sfixed64   sng_sfixed64= 12;
++    double     sng_double  = 13;
++    
++    string     sng_string  = 14;
++    bytes      sng_bytes   = 15;
++    SubMessage sng_submsg  = 16;
++    MyEnum     sng_enum    = 17;
++    EmptyMessage sng_emptymsg = 18;
++    bytes      sng_fbytes  = 19;
++
++    repeated int32      rep_int32   = 21 [packed = true];
++    repeated int64      rep_int64   = 22 [packed = true];
++    repeated uint32     rep_uint32  = 23 [packed = true];
++    repeated uint64     rep_uint64  = 24 [packed = true];
++    repeated sint32     rep_sint32  = 25 [packed = true];
++    repeated sint64     rep_sint64  = 26 [packed = true];
++    repeated bool       rep_bool    = 27 [packed = true];
++    
++    repeated fixed32    rep_fixed32 = 28 [packed = true];
++    repeated sfixed32   rep_sfixed32= 29 [packed = true];
++    repeated float      rep_float   = 30 [packed = true];
++    
++    repeated fixed64    rep_fixed64 = 31 [packed = true];
++    repeated sfixed64   rep_sfixed64= 32 [packed = true];
++    repeated double     rep_double  = 33 [packed = true];
++    
++    repeated string     rep_string  = 34;
++    repeated bytes      rep_bytes   = 35;
++    repeated SubMessage rep_submsg  = 36;
++    repeated MyEnum     rep_enum    = 37 [packed = true];
++    repeated EmptyMessage rep_emptymsg = 38;
++    repeated bytes      rep_fbytes  = 39;
++    
++    oneof oneof
++    {
++        SubMessage oneof_msg1 = 60;
++        EmptyMessage oneof_msg2 = 61;
++        SubMessage static_msg = 63;
++    }
++    
++    // Check that extreme integer values are handled correctly
++    Limits     req_limits = 98;
++
++    // Just to make sure that the size of the fields has been calculated
++    // properly, i.e. otherwise a bug in last field might not be detected.
++    int32      end = 999;
++}
++
+diff --git a/tests/fuzztest/alltypes_proto3_pointer.proto b/tests/fuzztest/alltypes_proto3_pointer.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..386b00102a715e9abdd1d7a93cfd1be6f93fe204
+--- /dev/null
++++ b/tests/fuzztest/alltypes_proto3_pointer.proto
+@@ -0,0 +1,101 @@
++syntax = "proto3";
++package alltypes_proto3_pointer;
++
++message SubMessage {
++    string substuff1 = 1;
++    int32 substuff2 = 2;
++    fixed32 substuff3 = 3;
++}
++
++message EmptyMessage {
++
++}
++
++enum HugeEnum {
++    HE_Zero = 0;
++    Negative = -2147483647; /* protoc doesn't accept -2147483648 here */
++    Positive =  2147483647;
++}
++
++message Limits {
++    int32      int32_min  =  1;
++    int32      int32_max  =  2;
++    uint32     uint32_min =  3;
++    uint32     uint32_max =  4;
++    int64      int64_min  =  5;
++    int64      int64_max  =  6;
++    uint64     uint64_min =  7;
++    uint64     uint64_max =  8;
++    HugeEnum   enum_min   =  9;
++    HugeEnum   enum_max   = 10;
++}
++
++enum MyEnum {
++    Zero = 0;
++    First = 1;
++    Second = 2;
++    Truth = 42;
++}
++
++message AllTypes {
++    int32      sng_int32   = 1;
++    int64      sng_int64   = 2;
++    uint32     sng_uint32  = 3;
++    uint64     sng_uint64  = 4;
++    sint32     sng_sint32  = 5;
++    sint64     sng_sint64  = 6;
++    bool       sng_bool    = 7;
++    
++    fixed32    sng_fixed32 = 8;
++    sfixed32   sng_sfixed32= 9;
++    float      sng_float   = 10;
++    
++    fixed64    sng_fixed64 = 11;
++    sfixed64   sng_sfixed64= 12;
++    double     sng_double  = 13;
++    
++    string     sng_string  = 14;
++    bytes      sng_bytes   = 15;
++    SubMessage sng_submsg  = 16;
++    MyEnum     sng_enum    = 17;
++    EmptyMessage sng_emptymsg = 18;
++    bytes      sng_fbytes  = 19;
++
++    repeated int32      rep_int32   = 21 [packed = true];
++    repeated int64      rep_int64   = 22 [packed = true];
++    repeated uint32     rep_uint32  = 23 [packed = true];
++    repeated uint64     rep_uint64  = 24 [packed = true];
++    repeated sint32     rep_sint32  = 25 [packed = true];
++    repeated sint64     rep_sint64  = 26 [packed = true];
++    repeated bool       rep_bool    = 27 [packed = true];
++    
++    repeated fixed32    rep_fixed32 = 28 [packed = true];
++    repeated sfixed32   rep_sfixed32= 29 [packed = true];
++    repeated float      rep_float   = 30 [packed = true];
++    
++    repeated fixed64    rep_fixed64 = 31 [packed = true];
++    repeated sfixed64   rep_sfixed64= 32 [packed = true];
++    repeated double     rep_double  = 33 [packed = true];
++    
++    repeated string     rep_string  = 34;
++    repeated bytes      rep_bytes   = 35;
++    repeated SubMessage rep_submsg  = 36;
++    repeated MyEnum     rep_enum    = 37 [packed = true];
++    repeated EmptyMessage rep_emptymsg = 38;
++    repeated bytes      rep_fbytes  = 39;
++    
++    oneof oneof
++    {
++        SubMessage oneof_msg1 = 60;
++        EmptyMessage oneof_msg2 = 61;
++        SubMessage static_msg = 63;
++    }
++    
++    // Check that extreme integer values are handled correctly
++    Limits     req_limits = 98;
++
++    // Just to make sure that the size of the fields has been calculated
++    // properly, i.e. otherwise a bug in last field might not be detected.
++    int32      end = 999;
++}
++
+diff --git a/tests/fuzztest/alltypes_static.pb.c b/tests/fuzztest/alltypes_static.pb.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d3b126f61694aa15b596dd5a5bcd7f1f33775e6
+--- /dev/null
++++ b/tests/fuzztest/alltypes_static.pb.c
+@@ -0,0 +1,61 @@
++/* Automatically generated nanopb constant definitions */
++/* Generated by nanopb-1.0.0-dev */
++
++#include "alltypes_static.pb.h"
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++PB_BIND(alltypes_static_SubMessage, alltypes_static_SubMessage, AUTO)
++
++
++PB_BIND(alltypes_static_EmptyMessage, alltypes_static_EmptyMessage, AUTO)
++
++
++PB_BIND(alltypes_static_Limits, alltypes_static_Limits, 4)
++
++
++PB_BIND(alltypes_static_IntSizes, alltypes_static_IntSizes, AUTO)
++
++
++PB_BIND(alltypes_static_DescriptorSize8, alltypes_static_DescriptorSize8, 8)
++
++
++PB_BIND(alltypes_static_AllTypes, alltypes_static_AllTypes, 2)
++
++
++PB_BIND(alltypes_static_TestExtension, alltypes_static_TestExtension, AUTO)
++
++
++/* Definition for extension field alltypes_static_TestExtension_testextension */
++typedef struct _alltypes_static_TestExtension_testextension_extmsg {
++    alltypes_static_TestExtension testextension;
++} alltypes_static_TestExtension_testextension_extmsg;
++#define alltypes_static_TestExtension_testextension_extmsg_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, MESSAGE,  testextension,   250)
++#define alltypes_static_TestExtension_testextension_extmsg_CALLBACK NULL
++#define alltypes_static_TestExtension_testextension_extmsg_DEFAULT NULL
++#define alltypes_static_TestExtension_testextension_extmsg_testextension_MSGTYPE alltypes_static_TestExtension
++pb_byte_t alltypes_static_TestExtension_testextension_extmsg_default[] = {0x00};
++PB_BIND(alltypes_static_TestExtension_testextension_extmsg, alltypes_static_TestExtension_testextension_extmsg, 2)
++const pb_extension_type_t alltypes_static_TestExtension_testextension = {
++    NULL,
++    NULL,
++    &alltypes_static_TestExtension_testextension_extmsg_msg
++};
++
++
++
++
++
++
++
++
++#ifndef PB_CONVERT_DOUBLE_FLOAT
++/* On some platforms (such as AVR), double is really float.
++ * To be able to encode/decode double on these platforms, you need.
++ * to define PB_CONVERT_DOUBLE_FLOAT in pb.h or compiler command line.
++ */
++PB_STATIC_ASSERT(sizeof(double) == 8, DOUBLE_MUST_BE_8_BYTES)
++#endif
++
+diff --git a/tests/fuzztest/alltypes_static.pb.h b/tests/fuzztest/alltypes_static.pb.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..a66221699dd72f49d243228c329e21ac29463b8b
+--- /dev/null
++++ b/tests/fuzztest/alltypes_static.pb.h
+@@ -0,0 +1,507 @@
++/* Automatically generated nanopb header */
++/* Generated by nanopb-1.0.0-dev */
++
++#ifndef PB_ALLTYPES_STATIC_ALLTYPES_STATIC_PB_H_INCLUDED
++#define PB_ALLTYPES_STATIC_ALLTYPES_STATIC_PB_H_INCLUDED
++#include <pb.h>
++
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++/* Enum definitions */
++typedef enum _alltypes_static_NonZeroBasedEnum {
++    alltypes_static_NonZeroBasedEnum_Two = 2,
++    alltypes_static_NonZeroBasedEnum_Three = 3,
++    alltypes_static_NonZeroBasedEnum_Four = 4
++} alltypes_static_NonZeroBasedEnum;
++
++typedef enum _alltypes_static_HugeEnum {
++    alltypes_static_HugeEnum_Negative = -2147483647, /* protoc doesn't accept -2147483648 here */
++    alltypes_static_HugeEnum_Positive = 2147483647
++} alltypes_static_HugeEnum;
++
++typedef enum _alltypes_static_MyEnum {
++    alltypes_static_MyEnum_Zero = 0,
++    alltypes_static_MyEnum_First = 1,
++    alltypes_static_MyEnum_Second = 2,
++    alltypes_static_MyEnum_Truth = 42
++} alltypes_static_MyEnum;
++
++/* Struct definitions */
++typedef struct _alltypes_static_SubMessage {
++    char substuff1[32];
++    int32_t substuff2;
++    bool has_substuff3;
++    uint32_t substuff3;
++} alltypes_static_SubMessage;
++
++typedef struct _alltypes_static_EmptyMessage {
++    char dummy_field;
++} alltypes_static_EmptyMessage;
++
++typedef struct _alltypes_static_Limits {
++    int32_t int32_min;
++    int32_t int32_max;
++    uint32_t uint32_min;
++    uint32_t uint32_max;
++    int64_t int64_min;
++    int64_t int64_max;
++    uint64_t uint64_min;
++    uint64_t uint64_max;
++    alltypes_static_HugeEnum enum_min;
++    alltypes_static_HugeEnum enum_max;
++    int32_t largetag;
++} alltypes_static_Limits;
++
++typedef struct _alltypes_static_IntSizes {
++    int8_t req_int8;
++    uint8_t req_uint8;
++    int8_t req_sint8;
++    int16_t req_int16;
++    uint16_t req_uint16;
++    int16_t req_sint16;
++} alltypes_static_IntSizes;
++
++typedef struct _alltypes_static_DescriptorSize8 {
++    int32_t first;
++    int32_t second;
++} alltypes_static_DescriptorSize8;
++
++typedef PB_BYTES_ARRAY_T(32) alltypes_static_AllTypes_req_bytes_t;
++typedef PB_BYTES_ARRAY_T(32) alltypes_static_AllTypes_rep_bytes_t;
++typedef PB_BYTES_ARRAY_T(32) alltypes_static_AllTypes_opt_bytes_t;
++typedef struct _alltypes_static_AllTypes {
++    int32_t req_int32;
++    int64_t req_int64;
++    uint32_t req_uint32;
++    uint64_t req_uint64;
++    int32_t req_sint32;
++    int64_t req_sint64;
++    bool req_bool;
++    uint32_t req_fixed32;
++    int32_t req_sfixed32;
++    float req_float;
++    uint64_t req_fixed64;
++    int64_t req_sfixed64;
++    double req_double;
++    char req_string[32];
++    alltypes_static_AllTypes_req_bytes_t req_bytes;
++    alltypes_static_SubMessage req_submsg;
++    alltypes_static_MyEnum req_enum;
++    alltypes_static_EmptyMessage req_emptymsg;
++    pb_byte_t req_fbytes[4];
++    pb_size_t rep_int32_count;
++    int32_t rep_int32[8];
++    pb_size_t rep_int64_count;
++    int64_t rep_int64[8];
++    pb_size_t rep_uint32_count;
++    uint32_t rep_uint32[8];
++    pb_size_t rep_uint64_count;
++    uint64_t rep_uint64[8];
++    pb_size_t rep_sint32_count;
++    int32_t rep_sint32[8];
++    pb_size_t rep_sint64_count;
++    int64_t rep_sint64[8];
++    pb_size_t rep_bool_count;
++    bool rep_bool[8];
++    pb_size_t rep_fixed32_count;
++    uint32_t rep_fixed32[8];
++    pb_size_t rep_sfixed32_count;
++    int32_t rep_sfixed32[8];
++    pb_size_t rep_float_count;
++    float rep_float[8];
++    pb_size_t rep_fixed64_count;
++    uint64_t rep_fixed64[8];
++    pb_size_t rep_sfixed64_count;
++    int64_t rep_sfixed64[8];
++    pb_size_t rep_double_count;
++    double rep_double[8];
++    pb_size_t rep_string_count;
++    char rep_string[8][32];
++    pb_size_t rep_bytes_count;
++    alltypes_static_AllTypes_rep_bytes_t rep_bytes[8];
++    pb_size_t rep_submsg_count;
++    alltypes_static_SubMessage rep_submsg[8];
++    pb_size_t rep_enum_count;
++    alltypes_static_MyEnum rep_enum[8];
++    pb_size_t rep_emptymsg_count;
++    alltypes_static_EmptyMessage rep_emptymsg[8];
++    pb_size_t rep_fbytes_count;
++    pb_byte_t rep_fbytes[8][4];
++    int32_t rep_farray[5];
++    bool has_opt_int32;
++    int32_t opt_int32;
++    bool has_opt_int64;
++    int64_t opt_int64;
++    bool has_opt_uint32;
++    uint32_t opt_uint32;
++    bool has_opt_uint64;
++    uint64_t opt_uint64;
++    bool has_opt_sint32;
++    int32_t opt_sint32;
++    bool has_opt_sint64;
++    int64_t opt_sint64;
++    bool has_opt_bool;
++    bool opt_bool;
++    bool has_opt_fixed32;
++    uint32_t opt_fixed32;
++    bool has_opt_sfixed32;
++    int32_t opt_sfixed32;
++    bool has_opt_float;
++    float opt_float;
++    bool has_opt_fixed64;
++    uint64_t opt_fixed64;
++    bool has_opt_sfixed64;
++    int64_t opt_sfixed64;
++    bool has_opt_double;
++    double opt_double;
++    bool has_opt_string;
++    char opt_string[32];
++    bool has_opt_bytes;
++    alltypes_static_AllTypes_opt_bytes_t opt_bytes;
++    bool has_opt_submsg;
++    alltypes_static_SubMessage opt_submsg;
++    bool has_opt_enum;
++    alltypes_static_MyEnum opt_enum;
++    bool has_opt_emptymsg;
++    alltypes_static_EmptyMessage opt_emptymsg;
++    bool has_opt_fbytes;
++    pb_byte_t opt_fbytes[4];
++    pb_size_t which_oneof;
++    union _alltypes_static_AllTypes_oneof {
++        alltypes_static_SubMessage oneof_msg1;
++        alltypes_static_EmptyMessage oneof_msg2;
++        alltypes_static_SubMessage static_msg;
++    } oneof;
++    bool has_opt_non_zero_based_enum;
++    alltypes_static_NonZeroBasedEnum opt_non_zero_based_enum;
++    /* Second fixed length array field to test the length check logic. */
++    uint32_t rep_farray2[3];
++    /* Check support for custom integer sizes */
++    alltypes_static_IntSizes req_intsizes;
++    /* Check support for 8-word descriptors */
++    alltypes_static_DescriptorSize8 req_ds8;
++    /* Check that extreme integer values are handled correctly
++ Also checks support for 4-word descriptors */
++    alltypes_static_Limits req_limits;
++    pb_extension_t *extensions;
++    /* Just to make sure that the size of the fields has been calculated
++ properly, i.e. otherwise a bug in last field might not be detected. */
++    int32_t end;
++} alltypes_static_AllTypes;
++
++typedef struct _alltypes_static_TestExtension {
++    bool has_strval;
++    char strval[32];
++} alltypes_static_TestExtension;
++
++
++/* Extensions */
++extern const pb_extension_type_t alltypes_static_TestExtension_testextension; /* field type: alltypes_static_TestExtension testextension; */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* Helper constants for enums */
++#define _alltypes_static_NonZeroBasedEnum_MIN alltypes_static_NonZeroBasedEnum_Two
++#define _alltypes_static_NonZeroBasedEnum_MAX alltypes_static_NonZeroBasedEnum_Four
++#define _alltypes_static_NonZeroBasedEnum_ARRAYSIZE ((alltypes_static_NonZeroBasedEnum)(alltypes_static_NonZeroBasedEnum_Four+1))
++
++#define _alltypes_static_HugeEnum_MIN alltypes_static_HugeEnum_Negative
++#define _alltypes_static_HugeEnum_MAX alltypes_static_HugeEnum_Positive
++#define _alltypes_static_HugeEnum_ARRAYSIZE ((alltypes_static_HugeEnum)(alltypes_static_HugeEnum_Positive+1))
++
++#define _alltypes_static_MyEnum_MIN alltypes_static_MyEnum_Zero
++#define _alltypes_static_MyEnum_MAX alltypes_static_MyEnum_Truth
++#define _alltypes_static_MyEnum_ARRAYSIZE ((alltypes_static_MyEnum)(alltypes_static_MyEnum_Truth+1))
++
++
++
++#define alltypes_static_Limits_enum_min_ENUMTYPE alltypes_static_HugeEnum
++#define alltypes_static_Limits_enum_max_ENUMTYPE alltypes_static_HugeEnum
++
++
++
++#define alltypes_static_AllTypes_req_enum_ENUMTYPE alltypes_static_MyEnum
++#define alltypes_static_AllTypes_rep_enum_ENUMTYPE alltypes_static_MyEnum
++#define alltypes_static_AllTypes_opt_enum_ENUMTYPE alltypes_static_MyEnum
++#define alltypes_static_AllTypes_opt_non_zero_based_enum_ENUMTYPE alltypes_static_NonZeroBasedEnum
++
++
++
++/* Initializer values for message structs */
++#define alltypes_static_SubMessage_init_default  {"1", 2, false, 3u}
++#define alltypes_static_EmptyMessage_init_default {0}
++#define alltypes_static_Limits_init_default      {2147483647, -2147483647, 4294967295u, 0u, 9223372036854775807ll, -9223372036854775807ll, 18446744073709551615ull, 0ull, alltypes_static_HugeEnum_Positive, alltypes_static_HugeEnum_Negative, 0}
++#define alltypes_static_IntSizes_init_default    {0, 0, 0, 0, 0, 0}
++#define alltypes_static_DescriptorSize8_init_default {0, 0}
++#define alltypes_static_AllTypes_init_default    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", {0, {0}}, alltypes_static_SubMessage_init_default, _alltypes_static_MyEnum_MIN, alltypes_static_EmptyMessage_init_default, {0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {"", "", "", "", "", "", "", ""}, 0, {{0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}}, 0, {alltypes_static_SubMessage_init_default, alltypes_static_SubMessage_init_default, alltypes_static_SubMessage_init_default, alltypes_static_SubMessage_init_default, alltypes_static_SubMessage_init_default, alltypes_static_SubMessage_init_default, alltypes_static_SubMessage_init_default, alltypes_static_SubMessage_init_default}, 0, {_alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN}, 0, {alltypes_static_EmptyMessage_init_default, alltypes_static_EmptyMessage_init_default, alltypes_static_EmptyMessage_init_default, alltypes_static_EmptyMessage_init_default, alltypes_static_EmptyMessage_init_default, alltypes_static_EmptyMessage_init_default, alltypes_static_EmptyMessage_init_default, alltypes_static_EmptyMessage_init_default}, 0, {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}}, {0, 0, 0, 0, 0}, false, 4041, false, 4042ll, false, 4043u, false, 4044ull, false, 4045, false, 4046, false, false, false, 4048u, false, 4049, false, 4050.0f, false, 4051ull, false, 4052ll, false, 4053, false, "4054", false, {4, {0x34,0x5c,0x00,0xff}}, false, alltypes_static_SubMessage_init_default, false, alltypes_static_MyEnum_Second, false, alltypes_static_EmptyMessage_init_default, false, {0x34,0x30,0x35,0x39}, 0, {alltypes_static_SubMessage_init_default}, false, _alltypes_static_NonZeroBasedEnum_MIN, {0, 0, 0}, alltypes_static_IntSizes_init_default, alltypes_static_DescriptorSize8_init_default, alltypes_static_Limits_init_default, NULL, 0}
++#define alltypes_static_TestExtension_init_default {false, ""}
++#define alltypes_static_SubMessage_init_zero     {"", 0, false, 0}
++#define alltypes_static_EmptyMessage_init_zero   {0}
++#define alltypes_static_Limits_init_zero         {0, 0, 0, 0, 0, 0, 0, 0, _alltypes_static_HugeEnum_MIN, _alltypes_static_HugeEnum_MIN, 0}
++#define alltypes_static_IntSizes_init_zero       {0, 0, 0, 0, 0, 0}
++#define alltypes_static_DescriptorSize8_init_zero {0, 0}
++#define alltypes_static_AllTypes_init_zero       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", {0, {0}}, alltypes_static_SubMessage_init_zero, _alltypes_static_MyEnum_MIN, alltypes_static_EmptyMessage_init_zero, {0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {"", "", "", "", "", "", "", ""}, 0, {{0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}}, 0, {alltypes_static_SubMessage_init_zero, alltypes_static_SubMessage_init_zero, alltypes_static_SubMessage_init_zero, alltypes_static_SubMessage_init_zero, alltypes_static_SubMessage_init_zero, alltypes_static_SubMessage_init_zero, alltypes_static_SubMessage_init_zero, alltypes_static_SubMessage_init_zero}, 0, {_alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN, _alltypes_static_MyEnum_MIN}, 0, {alltypes_static_EmptyMessage_init_zero, alltypes_static_EmptyMessage_init_zero, alltypes_static_EmptyMessage_init_zero, alltypes_static_EmptyMessage_init_zero, alltypes_static_EmptyMessage_init_zero, alltypes_static_EmptyMessage_init_zero, alltypes_static_EmptyMessage_init_zero, alltypes_static_EmptyMessage_init_zero}, 0, {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}}, {0, 0, 0, 0, 0}, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, "", false, {0, {0}}, false, alltypes_static_SubMessage_init_zero, false, _alltypes_static_MyEnum_MIN, false, alltypes_static_EmptyMessage_init_zero, false, {0}, 0, {alltypes_static_SubMessage_init_zero}, false, _alltypes_static_NonZeroBasedEnum_MIN, {0, 0, 0}, alltypes_static_IntSizes_init_zero, alltypes_static_DescriptorSize8_init_zero, alltypes_static_Limits_init_zero, NULL, 0}
++#define alltypes_static_TestExtension_init_zero  {false, ""}
++
++/* Field tags (for use in manual encoding/decoding) */
++#define alltypes_static_SubMessage_substuff1_tag 1
++#define alltypes_static_SubMessage_substuff2_tag 2
++#define alltypes_static_SubMessage_substuff3_tag 3
++#define alltypes_static_Limits_int32_min_tag     1
++#define alltypes_static_Limits_int32_max_tag     2
++#define alltypes_static_Limits_uint32_min_tag    3
++#define alltypes_static_Limits_uint32_max_tag    4
++#define alltypes_static_Limits_int64_min_tag     5
++#define alltypes_static_Limits_int64_max_tag     6
++#define alltypes_static_Limits_uint64_min_tag    7
++#define alltypes_static_Limits_uint64_max_tag    8
++#define alltypes_static_Limits_enum_min_tag      9
++#define alltypes_static_Limits_enum_max_tag      10
++#define alltypes_static_Limits_largetag_tag      65535
++#define alltypes_static_IntSizes_req_int8_tag    1
++#define alltypes_static_IntSizes_req_uint8_tag   2
++#define alltypes_static_IntSizes_req_sint8_tag   3
++#define alltypes_static_IntSizes_req_int16_tag   4
++#define alltypes_static_IntSizes_req_uint16_tag  5
++#define alltypes_static_IntSizes_req_sint16_tag  6
++#define alltypes_static_DescriptorSize8_first_tag 1
++#define alltypes_static_DescriptorSize8_second_tag 22222
++#define alltypes_static_AllTypes_req_int32_tag   1
++#define alltypes_static_AllTypes_req_int64_tag   2
++#define alltypes_static_AllTypes_req_uint32_tag  3
++#define alltypes_static_AllTypes_req_uint64_tag  4
++#define alltypes_static_AllTypes_req_sint32_tag  5
++#define alltypes_static_AllTypes_req_sint64_tag  6
++#define alltypes_static_AllTypes_req_bool_tag    7
++#define alltypes_static_AllTypes_req_fixed32_tag 8
++#define alltypes_static_AllTypes_req_sfixed32_tag 9
++#define alltypes_static_AllTypes_req_float_tag   10
++#define alltypes_static_AllTypes_req_fixed64_tag 11
++#define alltypes_static_AllTypes_req_sfixed64_tag 12
++#define alltypes_static_AllTypes_req_double_tag  13
++#define alltypes_static_AllTypes_req_string_tag  14
++#define alltypes_static_AllTypes_req_bytes_tag   15
++#define alltypes_static_AllTypes_req_submsg_tag  16
++#define alltypes_static_AllTypes_req_enum_tag    17
++#define alltypes_static_AllTypes_req_emptymsg_tag 18
++#define alltypes_static_AllTypes_req_fbytes_tag  19
++#define alltypes_static_AllTypes_rep_int32_tag   21
++#define alltypes_static_AllTypes_rep_int64_tag   22
++#define alltypes_static_AllTypes_rep_uint32_tag  23
++#define alltypes_static_AllTypes_rep_uint64_tag  24
++#define alltypes_static_AllTypes_rep_sint32_tag  25
++#define alltypes_static_AllTypes_rep_sint64_tag  26
++#define alltypes_static_AllTypes_rep_bool_tag    27
++#define alltypes_static_AllTypes_rep_fixed32_tag 28
++#define alltypes_static_AllTypes_rep_sfixed32_tag 29
++#define alltypes_static_AllTypes_rep_float_tag   30
++#define alltypes_static_AllTypes_rep_fixed64_tag 31
++#define alltypes_static_AllTypes_rep_sfixed64_tag 32
++#define alltypes_static_AllTypes_rep_double_tag  33
++#define alltypes_static_AllTypes_rep_string_tag  34
++#define alltypes_static_AllTypes_rep_bytes_tag   35
++#define alltypes_static_AllTypes_rep_submsg_tag  36
++#define alltypes_static_AllTypes_rep_enum_tag    37
++#define alltypes_static_AllTypes_rep_emptymsg_tag 38
++#define alltypes_static_AllTypes_rep_fbytes_tag  39
++#define alltypes_static_AllTypes_rep_farray_tag  40
++#define alltypes_static_AllTypes_opt_int32_tag   41
++#define alltypes_static_AllTypes_opt_int64_tag   42
++#define alltypes_static_AllTypes_opt_uint32_tag  43
++#define alltypes_static_AllTypes_opt_uint64_tag  44
++#define alltypes_static_AllTypes_opt_sint32_tag  45
++#define alltypes_static_AllTypes_opt_sint64_tag  46
++#define alltypes_static_AllTypes_opt_bool_tag    47
++#define alltypes_static_AllTypes_opt_fixed32_tag 48
++#define alltypes_static_AllTypes_opt_sfixed32_tag 49
++#define alltypes_static_AllTypes_opt_float_tag   50
++#define alltypes_static_AllTypes_opt_fixed64_tag 51
++#define alltypes_static_AllTypes_opt_sfixed64_tag 52
++#define alltypes_static_AllTypes_opt_double_tag  53
++#define alltypes_static_AllTypes_opt_string_tag  54
++#define alltypes_static_AllTypes_opt_bytes_tag   55
++#define alltypes_static_AllTypes_opt_submsg_tag  56
++#define alltypes_static_AllTypes_opt_enum_tag    57
++#define alltypes_static_AllTypes_opt_emptymsg_tag 58
++#define alltypes_static_AllTypes_opt_fbytes_tag  59
++#define alltypes_static_AllTypes_oneof_msg1_tag  60
++#define alltypes_static_AllTypes_oneof_msg2_tag  61
++#define alltypes_static_AllTypes_static_msg_tag  63
++#define alltypes_static_AllTypes_opt_non_zero_based_enum_tag 62
++#define alltypes_static_AllTypes_rep_farray2_tag 95
++#define alltypes_static_AllTypes_req_intsizes_tag 96
++#define alltypes_static_AllTypes_req_ds8_tag     97
++#define alltypes_static_AllTypes_req_limits_tag  98
++#define alltypes_static_AllTypes_end_tag         999
++#define alltypes_static_TestExtension_strval_tag 1
++#define alltypes_static_TestExtension_testextension_tag 250
++
++/* Struct field encoding specification for nanopb */
++#define alltypes_static_SubMessage_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, STRING,   substuff1,         1) \
++X(a, STATIC,   REQUIRED, INT32,    substuff2,         2) \
++X(a, STATIC,   OPTIONAL, FIXED32,  substuff3,         3)
++#define alltypes_static_SubMessage_CALLBACK NULL
++#define alltypes_static_SubMessage_DEFAULT (const pb_byte_t*)"\x0a\x01\x31\x10\x02\x1d\x03\x00\x00\x00\x00"
++
++#define alltypes_static_EmptyMessage_FIELDLIST(X, a) \
++
++#define alltypes_static_EmptyMessage_CALLBACK NULL
++#define alltypes_static_EmptyMessage_DEFAULT NULL
++
++#define alltypes_static_Limits_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    int32_min,         1) \
++X(a, STATIC,   REQUIRED, INT32,    int32_max,         2) \
++X(a, STATIC,   REQUIRED, UINT32,   uint32_min,        3) \
++X(a, STATIC,   REQUIRED, UINT32,   uint32_max,        4) \
++X(a, STATIC,   REQUIRED, INT64,    int64_min,         5) \
++X(a, STATIC,   REQUIRED, INT64,    int64_max,         6) \
++X(a, STATIC,   REQUIRED, UINT64,   uint64_min,        7) \
++X(a, STATIC,   REQUIRED, UINT64,   uint64_max,        8) \
++X(a, STATIC,   REQUIRED, ENUM,     enum_min,          9) \
++X(a, STATIC,   REQUIRED, ENUM,     enum_max,         10) \
++X(a, STATIC,   REQUIRED, INT32,    largetag,        65535)
++#define alltypes_static_Limits_CALLBACK NULL
++#define alltypes_static_Limits_DEFAULT (const pb_byte_t*)"\x08\xff\xff\xff\xff\x07\x10\x81\x80\x80\x80\xf8\xff\xff\xff\xff\x01\x18\xff\xff\xff\xff\x0f\x20\x00\x28\xff\xff\xff\xff\xff\xff\xff\xff\x7f\x30\x81\x80\x80\x80\x80\x80\x80\x80\x80\x01\x38\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\x40\x00\x48\xff\xff\xff\xff\x07\x50\x81\x80\x80\x80\xf8\xff\xff\xff\xff\x01\xf8\xff\x1f\x00\x00"
++
++#define alltypes_static_IntSizes_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    req_int8,          1) \
++X(a, STATIC,   REQUIRED, UINT32,   req_uint8,         2) \
++X(a, STATIC,   REQUIRED, SINT32,   req_sint8,         3) \
++X(a, STATIC,   REQUIRED, INT32,    req_int16,         4) \
++X(a, STATIC,   REQUIRED, UINT32,   req_uint16,        5) \
++X(a, STATIC,   REQUIRED, SINT32,   req_sint16,        6)
++#define alltypes_static_IntSizes_CALLBACK NULL
++#define alltypes_static_IntSizes_DEFAULT NULL
++
++#define alltypes_static_DescriptorSize8_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    first,             1) \
++X(a, STATIC,   REQUIRED, INT32,    second,          22222)
++#define alltypes_static_DescriptorSize8_CALLBACK NULL
++#define alltypes_static_DescriptorSize8_DEFAULT NULL
++
++#define alltypes_static_AllTypes_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    req_int32,         1) \
++X(a, STATIC,   REQUIRED, INT64,    req_int64,         2) \
++X(a, STATIC,   REQUIRED, UINT32,   req_uint32,        3) \
++X(a, STATIC,   REQUIRED, UINT64,   req_uint64,        4) \
++X(a, STATIC,   REQUIRED, SINT32,   req_sint32,        5) \
++X(a, STATIC,   REQUIRED, SINT64,   req_sint64,        6) \
++X(a, STATIC,   REQUIRED, BOOL,     req_bool,          7) \
++X(a, STATIC,   REQUIRED, FIXED32,  req_fixed32,       8) \
++X(a, STATIC,   REQUIRED, SFIXED32, req_sfixed32,      9) \
++X(a, STATIC,   REQUIRED, FLOAT,    req_float,        10) \
++X(a, STATIC,   REQUIRED, FIXED64,  req_fixed64,      11) \
++X(a, STATIC,   REQUIRED, SFIXED64, req_sfixed64,     12) \
++X(a, STATIC,   REQUIRED, DOUBLE,   req_double,       13) \
++X(a, STATIC,   REQUIRED, STRING,   req_string,       14) \
++X(a, STATIC,   REQUIRED, BYTES,    req_bytes,        15) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_submsg,       16) \
++X(a, STATIC,   REQUIRED, UENUM,    req_enum,         17) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_emptymsg,     18) \
++X(a, STATIC,   REQUIRED, FIXED_LENGTH_BYTES, req_fbytes,       19) \
++X(a, STATIC,   REPEATED, INT32,    rep_int32,        21) \
++X(a, STATIC,   REPEATED, INT64,    rep_int64,        22) \
++X(a, STATIC,   REPEATED, UINT32,   rep_uint32,       23) \
++X(a, STATIC,   REPEATED, UINT64,   rep_uint64,       24) \
++X(a, STATIC,   REPEATED, SINT32,   rep_sint32,       25) \
++X(a, STATIC,   REPEATED, SINT64,   rep_sint64,       26) \
++X(a, STATIC,   REPEATED, BOOL,     rep_bool,         27) \
++X(a, STATIC,   REPEATED, FIXED32,  rep_fixed32,      28) \
++X(a, STATIC,   REPEATED, SFIXED32, rep_sfixed32,     29) \
++X(a, STATIC,   REPEATED, FLOAT,    rep_float,        30) \
++X(a, STATIC,   REPEATED, FIXED64,  rep_fixed64,      31) \
++X(a, STATIC,   REPEATED, SFIXED64, rep_sfixed64,     32) \
++X(a, STATIC,   REPEATED, DOUBLE,   rep_double,       33) \
++X(a, STATIC,   REPEATED, STRING,   rep_string,       34) \
++X(a, STATIC,   REPEATED, BYTES,    rep_bytes,        35) \
++X(a, STATIC,   REPEATED, MESSAGE,  rep_submsg,       36) \
++X(a, STATIC,   REPEATED, UENUM,    rep_enum,         37) \
++X(a, STATIC,   REPEATED, MESSAGE,  rep_emptymsg,     38) \
++X(a, STATIC,   REPEATED, FIXED_LENGTH_BYTES, rep_fbytes,       39) \
++X(a, STATIC,   FIXARRAY, INT32,    rep_farray,       40) \
++X(a, STATIC,   OPTIONAL, INT32,    opt_int32,        41) \
++X(a, STATIC,   OPTIONAL, INT64,    opt_int64,        42) \
++X(a, STATIC,   OPTIONAL, UINT32,   opt_uint32,       43) \
++X(a, STATIC,   OPTIONAL, UINT64,   opt_uint64,       44) \
++X(a, STATIC,   OPTIONAL, SINT32,   opt_sint32,       45) \
++X(a, STATIC,   OPTIONAL, SINT64,   opt_sint64,       46) \
++X(a, STATIC,   OPTIONAL, BOOL,     opt_bool,         47) \
++X(a, STATIC,   OPTIONAL, FIXED32,  opt_fixed32,      48) \
++X(a, STATIC,   OPTIONAL, SFIXED32, opt_sfixed32,     49) \
++X(a, STATIC,   OPTIONAL, FLOAT,    opt_float,        50) \
++X(a, STATIC,   OPTIONAL, FIXED64,  opt_fixed64,      51) \
++X(a, STATIC,   OPTIONAL, SFIXED64, opt_sfixed64,     52) \
++X(a, STATIC,   OPTIONAL, DOUBLE,   opt_double,       53) \
++X(a, STATIC,   OPTIONAL, STRING,   opt_string,       54) \
++X(a, STATIC,   OPTIONAL, BYTES,    opt_bytes,        55) \
++X(a, STATIC,   OPTIONAL, MESSAGE,  opt_submsg,       56) \
++X(a, STATIC,   OPTIONAL, UENUM,    opt_enum,         57) \
++X(a, STATIC,   OPTIONAL, MESSAGE,  opt_emptymsg,     58) \
++X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, opt_fbytes,       59) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,oneof_msg1,oneof.oneof_msg1),  60) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,oneof_msg2,oneof.oneof_msg2),  61) \
++X(a, STATIC,   OPTIONAL, UENUM,    opt_non_zero_based_enum,  62) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,static_msg,oneof.static_msg),  63) \
++X(a, STATIC,   FIXARRAY, FIXED32,  rep_farray2,      95) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_intsizes,     96) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_ds8,          97) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_limits,       98) \
++X(a, CALLBACK, OPTIONAL, EXTENSION, extensions,      200) \
++X(a, STATIC,   REQUIRED, INT32,    end,             999)
++#define alltypes_static_AllTypes_CALLBACK pb_default_field_callback
++#define alltypes_static_AllTypes_DEFAULT (const pb_byte_t*)"\xc8\x02\xc9\x1f\xd0\x02\xca\x1f\xd8\x02\xcb\x1f\xe0\x02\xcc\x1f\xe8\x02\x9a\x3f\xf0\x02\x9c\x3f\xf8\x02\x00\x85\x03\xd0\x0f\x00\x00\x8d\x03\xd1\x0f\x00\x00\x95\x03\x00\x20\x7d\x45\x99\x03\xd3\x0f\x00\x00\x00\x00\x00\x00\xa1\x03\xd4\x0f\x00\x00\x00\x00\x00\x00\xa9\x03\x00\x00\x00\x00\x00\xaa\xaf\x40\xb2\x03\x04\x34\x30\x35\x34\xba\x03\x04\x34\x5c\x00\xff\xc8\x03\x02\xda\x03\x04\x34\x30\x35\x39\xf0\x03\x02\x00"
++#define alltypes_static_AllTypes_req_submsg_MSGTYPE alltypes_static_SubMessage
++#define alltypes_static_AllTypes_req_emptymsg_MSGTYPE alltypes_static_EmptyMessage
++#define alltypes_static_AllTypes_rep_submsg_MSGTYPE alltypes_static_SubMessage
++#define alltypes_static_AllTypes_rep_emptymsg_MSGTYPE alltypes_static_EmptyMessage
++#define alltypes_static_AllTypes_opt_submsg_MSGTYPE alltypes_static_SubMessage
++#define alltypes_static_AllTypes_opt_emptymsg_MSGTYPE alltypes_static_EmptyMessage
++#define alltypes_static_AllTypes_oneof_oneof_msg1_MSGTYPE alltypes_static_SubMessage
++#define alltypes_static_AllTypes_oneof_oneof_msg2_MSGTYPE alltypes_static_EmptyMessage
++#define alltypes_static_AllTypes_oneof_static_msg_MSGTYPE alltypes_static_SubMessage
++#define alltypes_static_AllTypes_req_intsizes_MSGTYPE alltypes_static_IntSizes
++#define alltypes_static_AllTypes_req_ds8_MSGTYPE alltypes_static_DescriptorSize8
++#define alltypes_static_AllTypes_req_limits_MSGTYPE alltypes_static_Limits
++
++#define alltypes_static_TestExtension_FIELDLIST(X, a) \
++X(a, STATIC,   OPTIONAL, STRING,   strval,            1)
++#define alltypes_static_TestExtension_CALLBACK NULL
++#define alltypes_static_TestExtension_DEFAULT NULL
++
++extern const pb_msgdesc_t alltypes_static_SubMessage_msg;
++extern const pb_msgdesc_t alltypes_static_EmptyMessage_msg;
++extern const pb_msgdesc_t alltypes_static_Limits_msg;
++extern const pb_msgdesc_t alltypes_static_IntSizes_msg;
++extern const pb_msgdesc_t alltypes_static_DescriptorSize8_msg;
++extern const pb_msgdesc_t alltypes_static_AllTypes_msg;
++extern const pb_msgdesc_t alltypes_static_TestExtension_msg;
++
++/* Defines for backwards compatibility with code written before nanopb-0.4.0 */
++#define alltypes_static_SubMessage_fields &alltypes_static_SubMessage_msg
++#define alltypes_static_EmptyMessage_fields &alltypes_static_EmptyMessage_msg
++#define alltypes_static_Limits_fields &alltypes_static_Limits_msg
++#define alltypes_static_IntSizes_fields &alltypes_static_IntSizes_msg
++#define alltypes_static_DescriptorSize8_fields &alltypes_static_DescriptorSize8_msg
++#define alltypes_static_AllTypes_fields &alltypes_static_AllTypes_msg
++#define alltypes_static_TestExtension_fields &alltypes_static_TestExtension_msg
++
++/* Maximum encoded size of messages (where known) */
++#define ALLTYPES_STATIC_ALLTYPES_STATIC_PB_H_MAX_SIZE alltypes_static_AllTypes_size
++#define alltypes_static_AllTypes_size            2782
++#define alltypes_static_DescriptorSize8_size     24
++#define alltypes_static_EmptyMessage_size        0
++#define alltypes_static_IntSizes_size            36
++#define alltypes_static_Limits_size              113
++#define alltypes_static_SubMessage_size          49
++#define alltypes_static_TestExtension_size       33
++
++#ifdef __cplusplus
++} /* extern "C" */
++#endif
++
++#endif
+diff --git a/tests/fuzztest/alltypes_pointer.pb.c b/tests/fuzztest/alltypes_pointer.pb.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..90f61c1117cd588f560f5404c45ad12dcc8f27f9
+--- /dev/null
++++ b/tests/fuzztest/alltypes_pointer.pb.c
+@@ -0,0 +1,61 @@
++/* Automatically generated nanopb constant definitions */
++/* Generated by nanopb-1.0.0-dev */
++
++#include "alltypes_pointer.pb.h"
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++PB_BIND(alltypes_pointer_SubMessage, alltypes_pointer_SubMessage, AUTO)
++
++
++PB_BIND(alltypes_pointer_EmptyMessage, alltypes_pointer_EmptyMessage, AUTO)
++
++
++PB_BIND(alltypes_pointer_Limits, alltypes_pointer_Limits, 4)
++
++
++PB_BIND(alltypes_pointer_IntSizes, alltypes_pointer_IntSizes, AUTO)
++
++
++PB_BIND(alltypes_pointer_DescriptorSize8, alltypes_pointer_DescriptorSize8, 8)
++
++
++PB_BIND(alltypes_pointer_AllTypes, alltypes_pointer_AllTypes, 2)
++
++
++PB_BIND(alltypes_pointer_TestExtension, alltypes_pointer_TestExtension, AUTO)
++
++
++/* Definition for extension field alltypes_pointer_TestExtension_testextension */
++typedef struct _alltypes_pointer_TestExtension_testextension_extmsg {
++    struct _alltypes_pointer_TestExtension *testextension;
++} alltypes_pointer_TestExtension_testextension_extmsg;
++#define alltypes_pointer_TestExtension_testextension_extmsg_FIELDLIST(X, a) \
++X(a, POINTER,  REQUIRED, MESSAGE,  testextension,   250)
++#define alltypes_pointer_TestExtension_testextension_extmsg_CALLBACK NULL
++#define alltypes_pointer_TestExtension_testextension_extmsg_DEFAULT NULL
++#define alltypes_pointer_TestExtension_testextension_extmsg_testextension_MSGTYPE alltypes_pointer_TestExtension
++pb_byte_t alltypes_pointer_TestExtension_testextension_extmsg_default[] = {0x00};
++PB_BIND(alltypes_pointer_TestExtension_testextension_extmsg, alltypes_pointer_TestExtension_testextension_extmsg, 2)
++const pb_extension_type_t alltypes_pointer_TestExtension_testextension = {
++    NULL,
++    NULL,
++    &alltypes_pointer_TestExtension_testextension_extmsg_msg
++};
++
++
++
++
++
++
++
++
++#ifndef PB_CONVERT_DOUBLE_FLOAT
++/* On some platforms (such as AVR), double is really float.
++ * To be able to encode/decode double on these platforms, you need.
++ * to define PB_CONVERT_DOUBLE_FLOAT in pb.h or compiler command line.
++ */
++PB_STATIC_ASSERT(sizeof(double) == 8, DOUBLE_MUST_BE_8_BYTES)
++#endif
++
+diff --git a/tests/fuzztest/alltypes_pointer.pb.h b/tests/fuzztest/alltypes_pointer.pb.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..b1126f0667f687621b9a692bf0c9c69af7aa8b99
+--- /dev/null
++++ b/tests/fuzztest/alltypes_pointer.pb.h
+@@ -0,0 +1,482 @@
++/* Automatically generated nanopb header */
++/* Generated by nanopb-1.0.0-dev */
++
++#ifndef PB_ALLTYPES_POINTER_ALLTYPES_POINTER_PB_H_INCLUDED
++#define PB_ALLTYPES_POINTER_ALLTYPES_POINTER_PB_H_INCLUDED
++#include <pb.h>
++
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++/* Enum definitions */
++typedef enum _alltypes_pointer_NonZeroBasedEnum {
++    alltypes_pointer_NonZeroBasedEnum_Two = 2,
++    alltypes_pointer_NonZeroBasedEnum_Three = 3,
++    alltypes_pointer_NonZeroBasedEnum_Four = 4
++} alltypes_pointer_NonZeroBasedEnum;
++
++typedef enum _alltypes_pointer_HugeEnum {
++    alltypes_pointer_HugeEnum_Negative = -2147483647, /* protoc doesn't accept -2147483648 here */
++    alltypes_pointer_HugeEnum_Positive = 2147483647
++} alltypes_pointer_HugeEnum;
++
++typedef enum _alltypes_pointer_MyEnum {
++    alltypes_pointer_MyEnum_Zero = 0,
++    alltypes_pointer_MyEnum_First = 1,
++    alltypes_pointer_MyEnum_Second = 2,
++    alltypes_pointer_MyEnum_Truth = 42
++} alltypes_pointer_MyEnum;
++
++/* Struct definitions */
++typedef struct _alltypes_pointer_SubMessage {
++    char *substuff1;
++    int32_t *substuff2;
++    uint32_t *substuff3;
++} alltypes_pointer_SubMessage;
++
++typedef struct _alltypes_pointer_EmptyMessage {
++    char dummy_field;
++} alltypes_pointer_EmptyMessage;
++
++typedef struct _alltypes_pointer_Limits {
++    int32_t *int32_min;
++    int32_t *int32_max;
++    uint32_t *uint32_min;
++    uint32_t *uint32_max;
++    int64_t *int64_min;
++    int64_t *int64_max;
++    uint64_t *uint64_min;
++    uint64_t *uint64_max;
++    alltypes_pointer_HugeEnum *enum_min;
++    alltypes_pointer_HugeEnum *enum_max;
++    int32_t *largetag;
++} alltypes_pointer_Limits;
++
++typedef struct _alltypes_pointer_IntSizes {
++    int8_t *req_int8;
++    uint8_t *req_uint8;
++    int8_t *req_sint8;
++    int16_t *req_int16;
++    uint16_t *req_uint16;
++    int16_t *req_sint16;
++} alltypes_pointer_IntSizes;
++
++typedef struct _alltypes_pointer_DescriptorSize8 {
++    int32_t *first;
++    int32_t *second;
++} alltypes_pointer_DescriptorSize8;
++
++typedef struct _alltypes_pointer_AllTypes {
++    int32_t *req_int32;
++    int64_t *req_int64;
++    uint32_t *req_uint32;
++    uint64_t *req_uint64;
++    int32_t *req_sint32;
++    int64_t *req_sint64;
++    bool *req_bool;
++    uint32_t *req_fixed32;
++    int32_t *req_sfixed32;
++    float *req_float;
++    uint64_t *req_fixed64;
++    int64_t *req_sfixed64;
++    double *req_double;
++    char *req_string;
++    pb_bytes_array_t *req_bytes;
++    struct _alltypes_pointer_SubMessage *req_submsg;
++    alltypes_pointer_MyEnum *req_enum;
++    struct _alltypes_pointer_EmptyMessage *req_emptymsg;
++    pb_byte_t (*req_fbytes)[4];
++    pb_size_t rep_int32_count;
++    int32_t *rep_int32;
++    pb_size_t rep_int64_count;
++    int64_t *rep_int64;
++    pb_size_t rep_uint32_count;
++    uint32_t *rep_uint32;
++    pb_size_t rep_uint64_count;
++    uint64_t *rep_uint64;
++    pb_size_t rep_sint32_count;
++    int32_t *rep_sint32;
++    pb_size_t rep_sint64_count;
++    int64_t *rep_sint64;
++    pb_size_t rep_bool_count;
++    bool *rep_bool;
++    pb_size_t rep_fixed32_count;
++    uint32_t *rep_fixed32;
++    pb_size_t rep_sfixed32_count;
++    int32_t *rep_sfixed32;
++    pb_size_t rep_float_count;
++    float *rep_float;
++    pb_size_t rep_fixed64_count;
++    uint64_t *rep_fixed64;
++    pb_size_t rep_sfixed64_count;
++    int64_t *rep_sfixed64;
++    pb_size_t rep_double_count;
++    double *rep_double;
++    pb_size_t rep_string_count;
++    char **rep_string;
++    pb_size_t rep_bytes_count;
++    pb_bytes_array_t **rep_bytes;
++    pb_size_t rep_submsg_count;
++    struct _alltypes_pointer_SubMessage *rep_submsg;
++    pb_size_t rep_enum_count;
++    alltypes_pointer_MyEnum *rep_enum;
++    pb_size_t rep_emptymsg_count;
++    struct _alltypes_pointer_EmptyMessage *rep_emptymsg;
++    pb_size_t rep_fbytes_count;
++    pb_byte_t (*rep_fbytes)[4];
++    int32_t (*rep_farray)[5];
++    int32_t *opt_int32;
++    int64_t *opt_int64;
++    uint32_t *opt_uint32;
++    uint64_t *opt_uint64;
++    int32_t *opt_sint32;
++    int64_t *opt_sint64;
++    bool *opt_bool;
++    uint32_t *opt_fixed32;
++    int32_t *opt_sfixed32;
++    float *opt_float;
++    uint64_t *opt_fixed64;
++    int64_t *opt_sfixed64;
++    double *opt_double;
++    char *opt_string;
++    pb_bytes_array_t *opt_bytes;
++    struct _alltypes_pointer_SubMessage *opt_submsg;
++    alltypes_pointer_MyEnum *opt_enum;
++    struct _alltypes_pointer_EmptyMessage *opt_emptymsg;
++    pb_byte_t (*opt_fbytes)[4];
++    pb_size_t which_oneof;
++    union _alltypes_pointer_AllTypes_oneof {
++        struct _alltypes_pointer_SubMessage *oneof_msg1;
++        struct _alltypes_pointer_EmptyMessage *oneof_msg2;
++        alltypes_pointer_SubMessage static_msg;
++    } oneof;
++    alltypes_pointer_NonZeroBasedEnum *opt_non_zero_based_enum;
++    /* Second fixed length array field to test the length check logic. */
++    uint32_t (*rep_farray2)[3];
++    /* Check support for custom integer sizes */
++    struct _alltypes_pointer_IntSizes *req_intsizes;
++    /* Check support for 8-word descriptors */
++    struct _alltypes_pointer_DescriptorSize8 *req_ds8;
++    /* Check that extreme integer values are handled correctly
++ Also checks support for 4-word descriptors */
++    struct _alltypes_pointer_Limits *req_limits;
++    pb_extension_t *extensions;
++    /* Just to make sure that the size of the fields has been calculated
++ properly, i.e. otherwise a bug in last field might not be detected. */
++    int32_t *end;
++} alltypes_pointer_AllTypes;
++
++typedef struct _alltypes_pointer_TestExtension {
++    char *strval;
++} alltypes_pointer_TestExtension;
++
++
++/* Extensions */
++extern const pb_extension_type_t alltypes_pointer_TestExtension_testextension; /* field type: struct _alltypes_pointer_TestExtension *testextension; */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* Helper constants for enums */
++#define _alltypes_pointer_NonZeroBasedEnum_MIN alltypes_pointer_NonZeroBasedEnum_Two
++#define _alltypes_pointer_NonZeroBasedEnum_MAX alltypes_pointer_NonZeroBasedEnum_Four
++#define _alltypes_pointer_NonZeroBasedEnum_ARRAYSIZE ((alltypes_pointer_NonZeroBasedEnum)(alltypes_pointer_NonZeroBasedEnum_Four+1))
++
++#define _alltypes_pointer_HugeEnum_MIN alltypes_pointer_HugeEnum_Negative
++#define _alltypes_pointer_HugeEnum_MAX alltypes_pointer_HugeEnum_Positive
++#define _alltypes_pointer_HugeEnum_ARRAYSIZE ((alltypes_pointer_HugeEnum)(alltypes_pointer_HugeEnum_Positive+1))
++
++#define _alltypes_pointer_MyEnum_MIN alltypes_pointer_MyEnum_Zero
++#define _alltypes_pointer_MyEnum_MAX alltypes_pointer_MyEnum_Truth
++#define _alltypes_pointer_MyEnum_ARRAYSIZE ((alltypes_pointer_MyEnum)(alltypes_pointer_MyEnum_Truth+1))
++
++
++
++#define alltypes_pointer_Limits_enum_min_ENUMTYPE alltypes_pointer_HugeEnum
++#define alltypes_pointer_Limits_enum_max_ENUMTYPE alltypes_pointer_HugeEnum
++
++
++
++#define alltypes_pointer_AllTypes_req_enum_ENUMTYPE alltypes_pointer_MyEnum
++#define alltypes_pointer_AllTypes_rep_enum_ENUMTYPE alltypes_pointer_MyEnum
++#define alltypes_pointer_AllTypes_opt_enum_ENUMTYPE alltypes_pointer_MyEnum
++#define alltypes_pointer_AllTypes_opt_non_zero_based_enum_ENUMTYPE alltypes_pointer_NonZeroBasedEnum
++
++
++
++/* Initializer values for message structs */
++#define alltypes_pointer_SubMessage_init_default {NULL, NULL, NULL}
++#define alltypes_pointer_EmptyMessage_init_default {0}
++#define alltypes_pointer_Limits_init_default     {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_pointer_IntSizes_init_default   {NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_pointer_DescriptorSize8_init_default {NULL, NULL}
++#define alltypes_pointer_AllTypes_init_default   {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, {NULL}, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_pointer_TestExtension_init_default {NULL}
++#define alltypes_pointer_SubMessage_init_zero    {NULL, NULL, NULL}
++#define alltypes_pointer_EmptyMessage_init_zero  {0}
++#define alltypes_pointer_Limits_init_zero        {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_pointer_IntSizes_init_zero      {NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_pointer_DescriptorSize8_init_zero {NULL, NULL}
++#define alltypes_pointer_AllTypes_init_zero      {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, {NULL}, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_pointer_TestExtension_init_zero {NULL}
++
++/* Field tags (for use in manual encoding/decoding) */
++#define alltypes_pointer_SubMessage_substuff1_tag 1
++#define alltypes_pointer_SubMessage_substuff2_tag 2
++#define alltypes_pointer_SubMessage_substuff3_tag 3
++#define alltypes_pointer_Limits_int32_min_tag    1
++#define alltypes_pointer_Limits_int32_max_tag    2
++#define alltypes_pointer_Limits_uint32_min_tag   3
++#define alltypes_pointer_Limits_uint32_max_tag   4
++#define alltypes_pointer_Limits_int64_min_tag    5
++#define alltypes_pointer_Limits_int64_max_tag    6
++#define alltypes_pointer_Limits_uint64_min_tag   7
++#define alltypes_pointer_Limits_uint64_max_tag   8
++#define alltypes_pointer_Limits_enum_min_tag     9
++#define alltypes_pointer_Limits_enum_max_tag     10
++#define alltypes_pointer_Limits_largetag_tag     65535
++#define alltypes_pointer_IntSizes_req_int8_tag   1
++#define alltypes_pointer_IntSizes_req_uint8_tag  2
++#define alltypes_pointer_IntSizes_req_sint8_tag  3
++#define alltypes_pointer_IntSizes_req_int16_tag  4
++#define alltypes_pointer_IntSizes_req_uint16_tag 5
++#define alltypes_pointer_IntSizes_req_sint16_tag 6
++#define alltypes_pointer_DescriptorSize8_first_tag 1
++#define alltypes_pointer_DescriptorSize8_second_tag 22222
++#define alltypes_pointer_AllTypes_req_int32_tag  1
++#define alltypes_pointer_AllTypes_req_int64_tag  2
++#define alltypes_pointer_AllTypes_req_uint32_tag 3
++#define alltypes_pointer_AllTypes_req_uint64_tag 4
++#define alltypes_pointer_AllTypes_req_sint32_tag 5
++#define alltypes_pointer_AllTypes_req_sint64_tag 6
++#define alltypes_pointer_AllTypes_req_bool_tag   7
++#define alltypes_pointer_AllTypes_req_fixed32_tag 8
++#define alltypes_pointer_AllTypes_req_sfixed32_tag 9
++#define alltypes_pointer_AllTypes_req_float_tag  10
++#define alltypes_pointer_AllTypes_req_fixed64_tag 11
++#define alltypes_pointer_AllTypes_req_sfixed64_tag 12
++#define alltypes_pointer_AllTypes_req_double_tag 13
++#define alltypes_pointer_AllTypes_req_string_tag 14
++#define alltypes_pointer_AllTypes_req_bytes_tag  15
++#define alltypes_pointer_AllTypes_req_submsg_tag 16
++#define alltypes_pointer_AllTypes_req_enum_tag   17
++#define alltypes_pointer_AllTypes_req_emptymsg_tag 18
++#define alltypes_pointer_AllTypes_req_fbytes_tag 19
++#define alltypes_pointer_AllTypes_rep_int32_tag  21
++#define alltypes_pointer_AllTypes_rep_int64_tag  22
++#define alltypes_pointer_AllTypes_rep_uint32_tag 23
++#define alltypes_pointer_AllTypes_rep_uint64_tag 24
++#define alltypes_pointer_AllTypes_rep_sint32_tag 25
++#define alltypes_pointer_AllTypes_rep_sint64_tag 26
++#define alltypes_pointer_AllTypes_rep_bool_tag   27
++#define alltypes_pointer_AllTypes_rep_fixed32_tag 28
++#define alltypes_pointer_AllTypes_rep_sfixed32_tag 29
++#define alltypes_pointer_AllTypes_rep_float_tag  30
++#define alltypes_pointer_AllTypes_rep_fixed64_tag 31
++#define alltypes_pointer_AllTypes_rep_sfixed64_tag 32
++#define alltypes_pointer_AllTypes_rep_double_tag 33
++#define alltypes_pointer_AllTypes_rep_string_tag 34
++#define alltypes_pointer_AllTypes_rep_bytes_tag  35
++#define alltypes_pointer_AllTypes_rep_submsg_tag 36
++#define alltypes_pointer_AllTypes_rep_enum_tag   37
++#define alltypes_pointer_AllTypes_rep_emptymsg_tag 38
++#define alltypes_pointer_AllTypes_rep_fbytes_tag 39
++#define alltypes_pointer_AllTypes_rep_farray_tag 40
++#define alltypes_pointer_AllTypes_opt_int32_tag  41
++#define alltypes_pointer_AllTypes_opt_int64_tag  42
++#define alltypes_pointer_AllTypes_opt_uint32_tag 43
++#define alltypes_pointer_AllTypes_opt_uint64_tag 44
++#define alltypes_pointer_AllTypes_opt_sint32_tag 45
++#define alltypes_pointer_AllTypes_opt_sint64_tag 46
++#define alltypes_pointer_AllTypes_opt_bool_tag   47
++#define alltypes_pointer_AllTypes_opt_fixed32_tag 48
++#define alltypes_pointer_AllTypes_opt_sfixed32_tag 49
++#define alltypes_pointer_AllTypes_opt_float_tag  50
++#define alltypes_pointer_AllTypes_opt_fixed64_tag 51
++#define alltypes_pointer_AllTypes_opt_sfixed64_tag 52
++#define alltypes_pointer_AllTypes_opt_double_tag 53
++#define alltypes_pointer_AllTypes_opt_string_tag 54
++#define alltypes_pointer_AllTypes_opt_bytes_tag  55
++#define alltypes_pointer_AllTypes_opt_submsg_tag 56
++#define alltypes_pointer_AllTypes_opt_enum_tag   57
++#define alltypes_pointer_AllTypes_opt_emptymsg_tag 58
++#define alltypes_pointer_AllTypes_opt_fbytes_tag 59
++#define alltypes_pointer_AllTypes_oneof_msg1_tag 60
++#define alltypes_pointer_AllTypes_oneof_msg2_tag 61
++#define alltypes_pointer_AllTypes_static_msg_tag 63
++#define alltypes_pointer_AllTypes_opt_non_zero_based_enum_tag 62
++#define alltypes_pointer_AllTypes_rep_farray2_tag 95
++#define alltypes_pointer_AllTypes_req_intsizes_tag 96
++#define alltypes_pointer_AllTypes_req_ds8_tag    97
++#define alltypes_pointer_AllTypes_req_limits_tag 98
++#define alltypes_pointer_AllTypes_end_tag        999
++#define alltypes_pointer_TestExtension_strval_tag 1
++#define alltypes_pointer_TestExtension_testextension_tag 250
++
++/* Struct field encoding specification for nanopb */
++#define alltypes_pointer_SubMessage_FIELDLIST(X, a) \
++X(a, POINTER,  REQUIRED, STRING,   substuff1,         1) \
++X(a, POINTER,  REQUIRED, INT32,    substuff2,         2) \
++X(a, POINTER,  OPTIONAL, FIXED32,  substuff3,         3)
++#define alltypes_pointer_SubMessage_CALLBACK NULL
++#define alltypes_pointer_SubMessage_DEFAULT NULL
++
++#define alltypes_pointer_EmptyMessage_FIELDLIST(X, a) \
++
++#define alltypes_pointer_EmptyMessage_CALLBACK NULL
++#define alltypes_pointer_EmptyMessage_DEFAULT NULL
++
++#define alltypes_pointer_Limits_FIELDLIST(X, a) \
++X(a, POINTER,  REQUIRED, INT32,    int32_min,         1) \
++X(a, POINTER,  REQUIRED, INT32,    int32_max,         2) \
++X(a, POINTER,  REQUIRED, UINT32,   uint32_min,        3) \
++X(a, POINTER,  REQUIRED, UINT32,   uint32_max,        4) \
++X(a, POINTER,  REQUIRED, INT64,    int64_min,         5) \
++X(a, POINTER,  REQUIRED, INT64,    int64_max,         6) \
++X(a, POINTER,  REQUIRED, UINT64,   uint64_min,        7) \
++X(a, POINTER,  REQUIRED, UINT64,   uint64_max,        8) \
++X(a, POINTER,  REQUIRED, ENUM,     enum_min,          9) \
++X(a, POINTER,  REQUIRED, ENUM,     enum_max,         10) \
++X(a, POINTER,  REQUIRED, INT32,    largetag,        65535)
++#define alltypes_pointer_Limits_CALLBACK NULL
++#define alltypes_pointer_Limits_DEFAULT NULL
++
++#define alltypes_pointer_IntSizes_FIELDLIST(X, a) \
++X(a, POINTER,  REQUIRED, INT32,    req_int8,          1) \
++X(a, POINTER,  REQUIRED, UINT32,   req_uint8,         2) \
++X(a, POINTER,  REQUIRED, SINT32,   req_sint8,         3) \
++X(a, POINTER,  REQUIRED, INT32,    req_int16,         4) \
++X(a, POINTER,  REQUIRED, UINT32,   req_uint16,        5) \
++X(a, POINTER,  REQUIRED, SINT32,   req_sint16,        6)
++#define alltypes_pointer_IntSizes_CALLBACK NULL
++#define alltypes_pointer_IntSizes_DEFAULT NULL
++
++#define alltypes_pointer_DescriptorSize8_FIELDLIST(X, a) \
++X(a, POINTER,  REQUIRED, INT32,    first,             1) \
++X(a, POINTER,  REQUIRED, INT32,    second,          22222)
++#define alltypes_pointer_DescriptorSize8_CALLBACK NULL
++#define alltypes_pointer_DescriptorSize8_DEFAULT NULL
++
++#define alltypes_pointer_AllTypes_FIELDLIST(X, a) \
++X(a, POINTER,  REQUIRED, INT32,    req_int32,         1) \
++X(a, POINTER,  REQUIRED, INT64,    req_int64,         2) \
++X(a, POINTER,  REQUIRED, UINT32,   req_uint32,        3) \
++X(a, POINTER,  REQUIRED, UINT64,   req_uint64,        4) \
++X(a, POINTER,  REQUIRED, SINT32,   req_sint32,        5) \
++X(a, POINTER,  REQUIRED, SINT64,   req_sint64,        6) \
++X(a, POINTER,  REQUIRED, BOOL,     req_bool,          7) \
++X(a, POINTER,  REQUIRED, FIXED32,  req_fixed32,       8) \
++X(a, POINTER,  REQUIRED, SFIXED32, req_sfixed32,      9) \
++X(a, POINTER,  REQUIRED, FLOAT,    req_float,        10) \
++X(a, POINTER,  REQUIRED, FIXED64,  req_fixed64,      11) \
++X(a, POINTER,  REQUIRED, SFIXED64, req_sfixed64,     12) \
++X(a, POINTER,  REQUIRED, DOUBLE,   req_double,       13) \
++X(a, POINTER,  REQUIRED, STRING,   req_string,       14) \
++X(a, POINTER,  REQUIRED, BYTES,    req_bytes,        15) \
++X(a, POINTER,  REQUIRED, MESSAGE,  req_submsg,       16) \
++X(a, POINTER,  REQUIRED, UENUM,    req_enum,         17) \
++X(a, POINTER,  REQUIRED, MESSAGE,  req_emptymsg,     18) \
++X(a, POINTER,  REQUIRED, FIXED_LENGTH_BYTES, req_fbytes,       19) \
++X(a, POINTER,  REPEATED, INT32,    rep_int32,        21) \
++X(a, POINTER,  REPEATED, INT64,    rep_int64,        22) \
++X(a, POINTER,  REPEATED, UINT32,   rep_uint32,       23) \
++X(a, POINTER,  REPEATED, UINT64,   rep_uint64,       24) \
++X(a, POINTER,  REPEATED, SINT32,   rep_sint32,       25) \
++X(a, POINTER,  REPEATED, SINT64,   rep_sint64,       26) \
++X(a, POINTER,  REPEATED, BOOL,     rep_bool,         27) \
++X(a, POINTER,  REPEATED, FIXED32,  rep_fixed32,      28) \
++X(a, POINTER,  REPEATED, SFIXED32, rep_sfixed32,     29) \
++X(a, POINTER,  REPEATED, FLOAT,    rep_float,        30) \
++X(a, POINTER,  REPEATED, FIXED64,  rep_fixed64,      31) \
++X(a, POINTER,  REPEATED, SFIXED64, rep_sfixed64,     32) \
++X(a, POINTER,  REPEATED, DOUBLE,   rep_double,       33) \
++X(a, POINTER,  REPEATED, STRING,   rep_string,       34) \
++X(a, POINTER,  REPEATED, BYTES,    rep_bytes,        35) \
++X(a, POINTER,  REPEATED, MESSAGE,  rep_submsg,       36) \
++X(a, POINTER,  REPEATED, UENUM,    rep_enum,         37) \
++X(a, POINTER,  REPEATED, MESSAGE,  rep_emptymsg,     38) \
++X(a, POINTER,  REPEATED, FIXED_LENGTH_BYTES, rep_fbytes,       39) \
++X(a, POINTER,  FIXARRAY, INT32,    rep_farray,       40) \
++X(a, POINTER,  OPTIONAL, INT32,    opt_int32,        41) \
++X(a, POINTER,  OPTIONAL, INT64,    opt_int64,        42) \
++X(a, POINTER,  OPTIONAL, UINT32,   opt_uint32,       43) \
++X(a, POINTER,  OPTIONAL, UINT64,   opt_uint64,       44) \
++X(a, POINTER,  OPTIONAL, SINT32,   opt_sint32,       45) \
++X(a, POINTER,  OPTIONAL, SINT64,   opt_sint64,       46) \
++X(a, POINTER,  OPTIONAL, BOOL,     opt_bool,         47) \
++X(a, POINTER,  OPTIONAL, FIXED32,  opt_fixed32,      48) \
++X(a, POINTER,  OPTIONAL, SFIXED32, opt_sfixed32,     49) \
++X(a, POINTER,  OPTIONAL, FLOAT,    opt_float,        50) \
++X(a, POINTER,  OPTIONAL, FIXED64,  opt_fixed64,      51) \
++X(a, POINTER,  OPTIONAL, SFIXED64, opt_sfixed64,     52) \
++X(a, POINTER,  OPTIONAL, DOUBLE,   opt_double,       53) \
++X(a, POINTER,  OPTIONAL, STRING,   opt_string,       54) \
++X(a, POINTER,  OPTIONAL, BYTES,    opt_bytes,        55) \
++X(a, POINTER,  OPTIONAL, MESSAGE,  opt_submsg,       56) \
++X(a, POINTER,  OPTIONAL, UENUM,    opt_enum,         57) \
++X(a, POINTER,  OPTIONAL, MESSAGE,  opt_emptymsg,     58) \
++X(a, POINTER,  OPTIONAL, FIXED_LENGTH_BYTES, opt_fbytes,       59) \
++X(a, POINTER,  ONEOF,    MESSAGE,  (oneof,oneof_msg1,oneof.oneof_msg1),  60) \
++X(a, POINTER,  ONEOF,    MESSAGE,  (oneof,oneof_msg2,oneof.oneof_msg2),  61) \
++X(a, POINTER,  OPTIONAL, UENUM,    opt_non_zero_based_enum,  62) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,static_msg,oneof.static_msg),  63) \
++X(a, POINTER,  FIXARRAY, FIXED32,  rep_farray2,      95) \
++X(a, POINTER,  REQUIRED, MESSAGE,  req_intsizes,     96) \
++X(a, POINTER,  REQUIRED, MESSAGE,  req_ds8,          97) \
++X(a, POINTER,  REQUIRED, MESSAGE,  req_limits,       98) \
++X(a, CALLBACK, OPTIONAL, EXTENSION, extensions,      200) \
++X(a, POINTER,  REQUIRED, INT32,    end,             999)
++#define alltypes_pointer_AllTypes_CALLBACK pb_default_field_callback
++#define alltypes_pointer_AllTypes_DEFAULT NULL
++#define alltypes_pointer_AllTypes_req_submsg_MSGTYPE alltypes_pointer_SubMessage
++#define alltypes_pointer_AllTypes_req_emptymsg_MSGTYPE alltypes_pointer_EmptyMessage
++#define alltypes_pointer_AllTypes_rep_submsg_MSGTYPE alltypes_pointer_SubMessage
++#define alltypes_pointer_AllTypes_rep_emptymsg_MSGTYPE alltypes_pointer_EmptyMessage
++#define alltypes_pointer_AllTypes_opt_submsg_MSGTYPE alltypes_pointer_SubMessage
++#define alltypes_pointer_AllTypes_opt_emptymsg_MSGTYPE alltypes_pointer_EmptyMessage
++#define alltypes_pointer_AllTypes_oneof_oneof_msg1_MSGTYPE alltypes_pointer_SubMessage
++#define alltypes_pointer_AllTypes_oneof_oneof_msg2_MSGTYPE alltypes_pointer_EmptyMessage
++#define alltypes_pointer_AllTypes_oneof_static_msg_MSGTYPE alltypes_pointer_SubMessage
++#define alltypes_pointer_AllTypes_req_intsizes_MSGTYPE alltypes_pointer_IntSizes
++#define alltypes_pointer_AllTypes_req_ds8_MSGTYPE alltypes_pointer_DescriptorSize8
++#define alltypes_pointer_AllTypes_req_limits_MSGTYPE alltypes_pointer_Limits
++
++#define alltypes_pointer_TestExtension_FIELDLIST(X, a) \
++X(a, POINTER,  OPTIONAL, STRING,   strval,            1)
++#define alltypes_pointer_TestExtension_CALLBACK NULL
++#define alltypes_pointer_TestExtension_DEFAULT NULL
++
++extern const pb_msgdesc_t alltypes_pointer_SubMessage_msg;
++extern const pb_msgdesc_t alltypes_pointer_EmptyMessage_msg;
++extern const pb_msgdesc_t alltypes_pointer_Limits_msg;
++extern const pb_msgdesc_t alltypes_pointer_IntSizes_msg;
++extern const pb_msgdesc_t alltypes_pointer_DescriptorSize8_msg;
++extern const pb_msgdesc_t alltypes_pointer_AllTypes_msg;
++extern const pb_msgdesc_t alltypes_pointer_TestExtension_msg;
++
++/* Defines for backwards compatibility with code written before nanopb-0.4.0 */
++#define alltypes_pointer_SubMessage_fields &alltypes_pointer_SubMessage_msg
++#define alltypes_pointer_EmptyMessage_fields &alltypes_pointer_EmptyMessage_msg
++#define alltypes_pointer_Limits_fields &alltypes_pointer_Limits_msg
++#define alltypes_pointer_IntSizes_fields &alltypes_pointer_IntSizes_msg
++#define alltypes_pointer_DescriptorSize8_fields &alltypes_pointer_DescriptorSize8_msg
++#define alltypes_pointer_AllTypes_fields &alltypes_pointer_AllTypes_msg
++#define alltypes_pointer_TestExtension_fields &alltypes_pointer_TestExtension_msg
++
++/* Maximum encoded size of messages (where known) */
++/* alltypes_pointer_SubMessage_size depends on runtime parameters */
++/* alltypes_pointer_AllTypes_size depends on runtime parameters */
++/* alltypes_pointer_TestExtension_size depends on runtime parameters */
++#define ALLTYPES_POINTER_ALLTYPES_POINTER_PB_H_MAX_SIZE alltypes_pointer_Limits_size
++#define alltypes_pointer_DescriptorSize8_size    24
++#define alltypes_pointer_EmptyMessage_size       0
++#define alltypes_pointer_IntSizes_size           36
++#define alltypes_pointer_Limits_size             113
++
++#ifdef __cplusplus
++} /* extern "C" */
++#endif
++
++#endif
+diff --git a/tests/fuzztest/alltypes_callback.pb.c b/tests/fuzztest/alltypes_callback.pb.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..c1983618a7001fe6307e5de89cb966cc4623f826
+--- /dev/null
++++ b/tests/fuzztest/alltypes_callback.pb.c
+@@ -0,0 +1,61 @@
++/* Automatically generated nanopb constant definitions */
++/* Generated by nanopb-1.0.0-dev */
++
++#include "alltypes_callback.pb.h"
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++PB_BIND(alltypes_callback_SubMessage, alltypes_callback_SubMessage, AUTO)
++
++
++PB_BIND(alltypes_callback_EmptyMessage, alltypes_callback_EmptyMessage, AUTO)
++
++
++PB_BIND(alltypes_callback_Limits, alltypes_callback_Limits, 4)
++
++
++PB_BIND(alltypes_callback_IntSizes, alltypes_callback_IntSizes, AUTO)
++
++
++PB_BIND(alltypes_callback_DescriptorSize8, alltypes_callback_DescriptorSize8, 8)
++
++
++PB_BIND(alltypes_callback_AllTypes, alltypes_callback_AllTypes, 2)
++
++
++PB_BIND(alltypes_callback_TestExtension, alltypes_callback_TestExtension, AUTO)
++
++
++/* Definition for extension field alltypes_callback_TestExtension_testextension */
++typedef struct _alltypes_callback_TestExtension_testextension_extmsg {
++    alltypes_callback_TestExtension testextension;
++} alltypes_callback_TestExtension_testextension_extmsg;
++#define alltypes_callback_TestExtension_testextension_extmsg_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, MESSAGE,  testextension,   250)
++#define alltypes_callback_TestExtension_testextension_extmsg_CALLBACK NULL
++#define alltypes_callback_TestExtension_testextension_extmsg_DEFAULT NULL
++#define alltypes_callback_TestExtension_testextension_extmsg_testextension_MSGTYPE alltypes_callback_TestExtension
++pb_byte_t alltypes_callback_TestExtension_testextension_extmsg_default[] = {0x00};
++PB_BIND(alltypes_callback_TestExtension_testextension_extmsg, alltypes_callback_TestExtension_testextension_extmsg, 2)
++const pb_extension_type_t alltypes_callback_TestExtension_testextension = {
++    NULL,
++    NULL,
++    &alltypes_callback_TestExtension_testextension_extmsg_msg
++};
++
++
++
++
++
++
++
++
++#ifndef PB_CONVERT_DOUBLE_FLOAT
++/* On some platforms (such as AVR), double is really float.
++ * To be able to encode/decode double on these platforms, you need.
++ * to define PB_CONVERT_DOUBLE_FLOAT in pb.h or compiler command line.
++ */
++PB_STATIC_ASSERT(sizeof(double) == 8, DOUBLE_MUST_BE_8_BYTES)
++#endif
++
+diff --git a/tests/fuzztest/alltypes_callback.pb.h b/tests/fuzztest/alltypes_callback.pb.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..769ee780b455f4d019e57b608a62362866e335b8
+--- /dev/null
++++ b/tests/fuzztest/alltypes_callback.pb.h
+@@ -0,0 +1,482 @@
++/* Automatically generated nanopb header */
++/* Generated by nanopb-1.0.0-dev */
++
++#ifndef PB_ALLTYPES_CALLBACK_ALLTYPES_CALLBACK_PB_H_INCLUDED
++#define PB_ALLTYPES_CALLBACK_ALLTYPES_CALLBACK_PB_H_INCLUDED
++#include <pb.h>
++
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++/* Enum definitions */
++typedef enum _alltypes_callback_NonZeroBasedEnum {
++    alltypes_callback_NonZeroBasedEnum_Two = 2,
++    alltypes_callback_NonZeroBasedEnum_Three = 3,
++    alltypes_callback_NonZeroBasedEnum_Four = 4
++} alltypes_callback_NonZeroBasedEnum;
++
++typedef enum _alltypes_callback_HugeEnum {
++    alltypes_callback_HugeEnum_Negative = -2147483647, /* protoc doesn't accept -2147483648 here */
++    alltypes_callback_HugeEnum_Positive = 2147483647
++} alltypes_callback_HugeEnum;
++
++typedef enum _alltypes_callback_MyEnum {
++    alltypes_callback_MyEnum_Zero = 0,
++    alltypes_callback_MyEnum_First = 1,
++    alltypes_callback_MyEnum_Second = 2,
++    alltypes_callback_MyEnum_Truth = 42
++} alltypes_callback_MyEnum;
++
++/* Struct definitions */
++typedef struct _alltypes_callback_SubMessage {
++    pb_callback_t substuff1;
++    int32_t substuff2;
++    bool has_substuff3;
++    uint32_t substuff3;
++} alltypes_callback_SubMessage;
++
++typedef struct _alltypes_callback_EmptyMessage {
++    char dummy_field;
++} alltypes_callback_EmptyMessage;
++
++typedef struct _alltypes_callback_Limits {
++    int32_t int32_min;
++    int32_t int32_max;
++    uint32_t uint32_min;
++    uint32_t uint32_max;
++    pb_callback_t int64_min;
++    int64_t int64_max;
++    uint64_t uint64_min;
++    uint64_t uint64_max;
++    alltypes_callback_HugeEnum enum_min;
++    alltypes_callback_HugeEnum enum_max;
++    int32_t largetag;
++} alltypes_callback_Limits;
++
++typedef struct _alltypes_callback_IntSizes {
++    int32_t req_int8;
++    uint32_t req_uint8;
++    int32_t req_sint8;
++    int32_t req_int16;
++    uint32_t req_uint16;
++    int32_t req_sint16;
++} alltypes_callback_IntSizes;
++
++typedef struct _alltypes_callback_DescriptorSize8 {
++    int32_t first;
++    int32_t second;
++} alltypes_callback_DescriptorSize8;
++
++typedef struct _alltypes_callback_AllTypes {
++    int32_t req_int32;
++    int64_t req_int64;
++    uint32_t req_uint32;
++    uint64_t req_uint64;
++    int32_t req_sint32;
++    int64_t req_sint64;
++    bool req_bool;
++    uint32_t req_fixed32;
++    int32_t req_sfixed32;
++    float req_float;
++    uint64_t req_fixed64;
++    int64_t req_sfixed64;
++    double req_double;
++    pb_callback_t req_string;
++    pb_callback_t req_bytes;
++    alltypes_callback_SubMessage req_submsg;
++    alltypes_callback_MyEnum req_enum;
++    alltypes_callback_EmptyMessage req_emptymsg;
++    pb_callback_t req_fbytes;
++    pb_callback_t rep_int32;
++    pb_callback_t rep_int64;
++    pb_callback_t rep_uint32;
++    pb_callback_t rep_uint64;
++    pb_callback_t rep_sint32;
++    pb_callback_t rep_sint64;
++    pb_callback_t rep_bool;
++    pb_callback_t rep_fixed32;
++    pb_callback_t rep_sfixed32;
++    pb_callback_t rep_float;
++    pb_callback_t rep_fixed64;
++    pb_callback_t rep_sfixed64;
++    pb_callback_t rep_double;
++    pb_callback_t rep_string;
++    pb_callback_t rep_bytes;
++    pb_callback_t rep_submsg;
++    pb_callback_t rep_enum;
++    pb_callback_t rep_emptymsg;
++    pb_callback_t rep_fbytes;
++    pb_callback_t rep_farray;
++    bool has_opt_int32;
++    int32_t opt_int32;
++    bool has_opt_int64;
++    int64_t opt_int64;
++    bool has_opt_uint32;
++    uint32_t opt_uint32;
++    bool has_opt_uint64;
++    uint64_t opt_uint64;
++    bool has_opt_sint32;
++    int32_t opt_sint32;
++    bool has_opt_sint64;
++    int64_t opt_sint64;
++    bool has_opt_bool;
++    bool opt_bool;
++    bool has_opt_fixed32;
++    uint32_t opt_fixed32;
++    bool has_opt_sfixed32;
++    int32_t opt_sfixed32;
++    bool has_opt_float;
++    float opt_float;
++    bool has_opt_fixed64;
++    uint64_t opt_fixed64;
++    bool has_opt_sfixed64;
++    int64_t opt_sfixed64;
++    bool has_opt_double;
++    double opt_double;
++    pb_callback_t opt_string;
++    pb_callback_t opt_bytes;
++    bool has_opt_submsg;
++    alltypes_callback_SubMessage opt_submsg;
++    bool has_opt_enum;
++    alltypes_callback_MyEnum opt_enum;
++    bool has_opt_emptymsg;
++    alltypes_callback_EmptyMessage opt_emptymsg;
++    pb_callback_t opt_fbytes;
++    pb_callback_t cb_oneof;
++    pb_size_t which_oneof;
++    union _alltypes_callback_AllTypes_oneof {
++        alltypes_callback_SubMessage oneof_msg1;
++        alltypes_callback_EmptyMessage oneof_msg2;
++        alltypes_callback_SubMessage static_msg;
++    } oneof;
++    bool has_opt_non_zero_based_enum;
++    alltypes_callback_NonZeroBasedEnum opt_non_zero_based_enum;
++    /* Second fixed length array field to test the length check logic. */
++    pb_callback_t rep_farray2;
++    /* Check support for custom integer sizes */
++    alltypes_callback_IntSizes req_intsizes;
++    /* Check support for 8-word descriptors */
++    alltypes_callback_DescriptorSize8 req_ds8;
++    /* Check that extreme integer values are handled correctly
++ Also checks support for 4-word descriptors */
++    alltypes_callback_Limits req_limits;
++    pb_extension_t *extensions;
++    /* Just to make sure that the size of the fields has been calculated
++ properly, i.e. otherwise a bug in last field might not be detected. */
++    int32_t end;
++} alltypes_callback_AllTypes;
++
++typedef struct _alltypes_callback_TestExtension {
++    pb_callback_t strval;
++} alltypes_callback_TestExtension;
++
++
++/* Extensions */
++extern const pb_extension_type_t alltypes_callback_TestExtension_testextension; /* field type: alltypes_callback_TestExtension testextension; */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* Helper constants for enums */
++#define _alltypes_callback_NonZeroBasedEnum_MIN alltypes_callback_NonZeroBasedEnum_Two
++#define _alltypes_callback_NonZeroBasedEnum_MAX alltypes_callback_NonZeroBasedEnum_Four
++#define _alltypes_callback_NonZeroBasedEnum_ARRAYSIZE ((alltypes_callback_NonZeroBasedEnum)(alltypes_callback_NonZeroBasedEnum_Four+1))
++
++#define _alltypes_callback_HugeEnum_MIN alltypes_callback_HugeEnum_Negative
++#define _alltypes_callback_HugeEnum_MAX alltypes_callback_HugeEnum_Positive
++#define _alltypes_callback_HugeEnum_ARRAYSIZE ((alltypes_callback_HugeEnum)(alltypes_callback_HugeEnum_Positive+1))
++
++#define _alltypes_callback_MyEnum_MIN alltypes_callback_MyEnum_Zero
++#define _alltypes_callback_MyEnum_MAX alltypes_callback_MyEnum_Truth
++#define _alltypes_callback_MyEnum_ARRAYSIZE ((alltypes_callback_MyEnum)(alltypes_callback_MyEnum_Truth+1))
++
++
++
++#define alltypes_callback_Limits_enum_min_ENUMTYPE alltypes_callback_HugeEnum
++#define alltypes_callback_Limits_enum_max_ENUMTYPE alltypes_callback_HugeEnum
++
++
++
++#define alltypes_callback_AllTypes_req_enum_ENUMTYPE alltypes_callback_MyEnum
++#define alltypes_callback_AllTypes_rep_enum_ENUMTYPE alltypes_callback_MyEnum
++#define alltypes_callback_AllTypes_opt_enum_ENUMTYPE alltypes_callback_MyEnum
++#define alltypes_callback_AllTypes_opt_non_zero_based_enum_ENUMTYPE alltypes_callback_NonZeroBasedEnum
++
++
++
++/* Initializer values for message structs */
++#define alltypes_callback_SubMessage_init_default {{{NULL}, NULL}, 2, false, 3u}
++#define alltypes_callback_EmptyMessage_init_default {0}
++#define alltypes_callback_Limits_init_default    {2147483647, -2147483647, 4294967295u, 0u, {{NULL}, NULL}, -9223372036854775807ll, 18446744073709551615ull, 0ull, alltypes_callback_HugeEnum_Positive, alltypes_callback_HugeEnum_Negative, 0}
++#define alltypes_callback_IntSizes_init_default  {0, 0, 0, 0, 0, 0}
++#define alltypes_callback_DescriptorSize8_init_default {0, 0}
++#define alltypes_callback_AllTypes_init_default  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, {{NULL}, NULL}, {{NULL}, NULL}, alltypes_callback_SubMessage_init_default, _alltypes_callback_MyEnum_MIN, alltypes_callback_EmptyMessage_init_default, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, false, 4041, false, 4042ll, false, 4043u, false, 4044ull, false, 4045, false, 4046, false, false, false, 4048u, false, 4049, false, 4050.0f, false, 4051ull, false, 4052ll, false, 4053, {{NULL}, NULL}, {{NULL}, NULL}, false, alltypes_callback_SubMessage_init_default, false, alltypes_callback_MyEnum_Second, false, alltypes_callback_EmptyMessage_init_default, {{NULL}, NULL}, {{NULL}, NULL}, 0, {alltypes_callback_SubMessage_init_default}, false, _alltypes_callback_NonZeroBasedEnum_MIN, {{NULL}, NULL}, alltypes_callback_IntSizes_init_default, alltypes_callback_DescriptorSize8_init_default, alltypes_callback_Limits_init_default, NULL, 0}
++#define alltypes_callback_TestExtension_init_default {{{NULL}, NULL}}
++#define alltypes_callback_SubMessage_init_zero   {{{NULL}, NULL}, 0, false, 0}
++#define alltypes_callback_EmptyMessage_init_zero {0}
++#define alltypes_callback_Limits_init_zero       {0, 0, 0, 0, {{NULL}, NULL}, 0, 0, 0, _alltypes_callback_HugeEnum_MIN, _alltypes_callback_HugeEnum_MIN, 0}
++#define alltypes_callback_IntSizes_init_zero     {0, 0, 0, 0, 0, 0}
++#define alltypes_callback_DescriptorSize8_init_zero {0, 0}
++#define alltypes_callback_AllTypes_init_zero     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, {{NULL}, NULL}, {{NULL}, NULL}, alltypes_callback_SubMessage_init_zero, _alltypes_callback_MyEnum_MIN, alltypes_callback_EmptyMessage_init_zero, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, false, 0, {{NULL}, NULL}, {{NULL}, NULL}, false, alltypes_callback_SubMessage_init_zero, false, _alltypes_callback_MyEnum_MIN, false, alltypes_callback_EmptyMessage_init_zero, {{NULL}, NULL}, {{NULL}, NULL}, 0, {alltypes_callback_SubMessage_init_zero}, false, _alltypes_callback_NonZeroBasedEnum_MIN, {{NULL}, NULL}, alltypes_callback_IntSizes_init_zero, alltypes_callback_DescriptorSize8_init_zero, alltypes_callback_Limits_init_zero, NULL, 0}
++#define alltypes_callback_TestExtension_init_zero {{{NULL}, NULL}}
++
++/* Field tags (for use in manual encoding/decoding) */
++#define alltypes_callback_SubMessage_substuff1_tag 1
++#define alltypes_callback_SubMessage_substuff2_tag 2
++#define alltypes_callback_SubMessage_substuff3_tag 3
++#define alltypes_callback_Limits_int32_min_tag   1
++#define alltypes_callback_Limits_int32_max_tag   2
++#define alltypes_callback_Limits_uint32_min_tag  3
++#define alltypes_callback_Limits_uint32_max_tag  4
++#define alltypes_callback_Limits_int64_min_tag   5
++#define alltypes_callback_Limits_int64_max_tag   6
++#define alltypes_callback_Limits_uint64_min_tag  7
++#define alltypes_callback_Limits_uint64_max_tag  8
++#define alltypes_callback_Limits_enum_min_tag    9
++#define alltypes_callback_Limits_enum_max_tag    10
++#define alltypes_callback_Limits_largetag_tag    65535
++#define alltypes_callback_IntSizes_req_int8_tag  1
++#define alltypes_callback_IntSizes_req_uint8_tag 2
++#define alltypes_callback_IntSizes_req_sint8_tag 3
++#define alltypes_callback_IntSizes_req_int16_tag 4
++#define alltypes_callback_IntSizes_req_uint16_tag 5
++#define alltypes_callback_IntSizes_req_sint16_tag 6
++#define alltypes_callback_DescriptorSize8_first_tag 1
++#define alltypes_callback_DescriptorSize8_second_tag 22222
++#define alltypes_callback_AllTypes_req_int32_tag 1
++#define alltypes_callback_AllTypes_req_int64_tag 2
++#define alltypes_callback_AllTypes_req_uint32_tag 3
++#define alltypes_callback_AllTypes_req_uint64_tag 4
++#define alltypes_callback_AllTypes_req_sint32_tag 5
++#define alltypes_callback_AllTypes_req_sint64_tag 6
++#define alltypes_callback_AllTypes_req_bool_tag  7
++#define alltypes_callback_AllTypes_req_fixed32_tag 8
++#define alltypes_callback_AllTypes_req_sfixed32_tag 9
++#define alltypes_callback_AllTypes_req_float_tag 10
++#define alltypes_callback_AllTypes_req_fixed64_tag 11
++#define alltypes_callback_AllTypes_req_sfixed64_tag 12
++#define alltypes_callback_AllTypes_req_double_tag 13
++#define alltypes_callback_AllTypes_req_string_tag 14
++#define alltypes_callback_AllTypes_req_bytes_tag 15
++#define alltypes_callback_AllTypes_req_submsg_tag 16
++#define alltypes_callback_AllTypes_req_enum_tag  17
++#define alltypes_callback_AllTypes_req_emptymsg_tag 18
++#define alltypes_callback_AllTypes_req_fbytes_tag 19
++#define alltypes_callback_AllTypes_rep_int32_tag 21
++#define alltypes_callback_AllTypes_rep_int64_tag 22
++#define alltypes_callback_AllTypes_rep_uint32_tag 23
++#define alltypes_callback_AllTypes_rep_uint64_tag 24
++#define alltypes_callback_AllTypes_rep_sint32_tag 25
++#define alltypes_callback_AllTypes_rep_sint64_tag 26
++#define alltypes_callback_AllTypes_rep_bool_tag  27
++#define alltypes_callback_AllTypes_rep_fixed32_tag 28
++#define alltypes_callback_AllTypes_rep_sfixed32_tag 29
++#define alltypes_callback_AllTypes_rep_float_tag 30
++#define alltypes_callback_AllTypes_rep_fixed64_tag 31
++#define alltypes_callback_AllTypes_rep_sfixed64_tag 32
++#define alltypes_callback_AllTypes_rep_double_tag 33
++#define alltypes_callback_AllTypes_rep_string_tag 34
++#define alltypes_callback_AllTypes_rep_bytes_tag 35
++#define alltypes_callback_AllTypes_rep_submsg_tag 36
++#define alltypes_callback_AllTypes_rep_enum_tag  37
++#define alltypes_callback_AllTypes_rep_emptymsg_tag 38
++#define alltypes_callback_AllTypes_rep_fbytes_tag 39
++#define alltypes_callback_AllTypes_rep_farray_tag 40
++#define alltypes_callback_AllTypes_opt_int32_tag 41
++#define alltypes_callback_AllTypes_opt_int64_tag 42
++#define alltypes_callback_AllTypes_opt_uint32_tag 43
++#define alltypes_callback_AllTypes_opt_uint64_tag 44
++#define alltypes_callback_AllTypes_opt_sint32_tag 45
++#define alltypes_callback_AllTypes_opt_sint64_tag 46
++#define alltypes_callback_AllTypes_opt_bool_tag  47
++#define alltypes_callback_AllTypes_opt_fixed32_tag 48
++#define alltypes_callback_AllTypes_opt_sfixed32_tag 49
++#define alltypes_callback_AllTypes_opt_float_tag 50
++#define alltypes_callback_AllTypes_opt_fixed64_tag 51
++#define alltypes_callback_AllTypes_opt_sfixed64_tag 52
++#define alltypes_callback_AllTypes_opt_double_tag 53
++#define alltypes_callback_AllTypes_opt_string_tag 54
++#define alltypes_callback_AllTypes_opt_bytes_tag 55
++#define alltypes_callback_AllTypes_opt_submsg_tag 56
++#define alltypes_callback_AllTypes_opt_enum_tag  57
++#define alltypes_callback_AllTypes_opt_emptymsg_tag 58
++#define alltypes_callback_AllTypes_opt_fbytes_tag 59
++#define alltypes_callback_AllTypes_oneof_msg1_tag 60
++#define alltypes_callback_AllTypes_oneof_msg2_tag 61
++#define alltypes_callback_AllTypes_static_msg_tag 63
++#define alltypes_callback_AllTypes_opt_non_zero_based_enum_tag 62
++#define alltypes_callback_AllTypes_rep_farray2_tag 95
++#define alltypes_callback_AllTypes_req_intsizes_tag 96
++#define alltypes_callback_AllTypes_req_ds8_tag   97
++#define alltypes_callback_AllTypes_req_limits_tag 98
++#define alltypes_callback_AllTypes_end_tag       999
++#define alltypes_callback_TestExtension_strval_tag 1
++#define alltypes_callback_TestExtension_testextension_tag 250
++
++/* Struct field encoding specification for nanopb */
++#define alltypes_callback_SubMessage_FIELDLIST(X, a) \
++X(a, CALLBACK, REQUIRED, STRING,   substuff1,         1) \
++X(a, STATIC,   REQUIRED, INT32,    substuff2,         2) \
++X(a, STATIC,   OPTIONAL, FIXED32,  substuff3,         3)
++#define alltypes_callback_SubMessage_CALLBACK pb_default_field_callback
++#define alltypes_callback_SubMessage_DEFAULT (const pb_byte_t*)"\x10\x02\x1d\x03\x00\x00\x00\x00"
++
++#define alltypes_callback_EmptyMessage_FIELDLIST(X, a) \
++
++#define alltypes_callback_EmptyMessage_CALLBACK NULL
++#define alltypes_callback_EmptyMessage_DEFAULT NULL
++
++#define alltypes_callback_Limits_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    int32_min,         1) \
++X(a, STATIC,   REQUIRED, INT32,    int32_max,         2) \
++X(a, STATIC,   REQUIRED, UINT32,   uint32_min,        3) \
++X(a, STATIC,   REQUIRED, UINT32,   uint32_max,        4) \
++X(a, CALLBACK, REQUIRED, INT64,    int64_min,         5) \
++X(a, STATIC,   REQUIRED, INT64,    int64_max,         6) \
++X(a, STATIC,   REQUIRED, UINT64,   uint64_min,        7) \
++X(a, STATIC,   REQUIRED, UINT64,   uint64_max,        8) \
++X(a, STATIC,   REQUIRED, ENUM,     enum_min,          9) \
++X(a, STATIC,   REQUIRED, ENUM,     enum_max,         10) \
++X(a, STATIC,   REQUIRED, INT32,    largetag,        65535)
++#define alltypes_callback_Limits_CALLBACK pb_default_field_callback
++#define alltypes_callback_Limits_DEFAULT (const pb_byte_t*)"\x08\xff\xff\xff\xff\x07\x10\x81\x80\x80\x80\xf8\xff\xff\xff\xff\x01\x18\xff\xff\xff\xff\x0f\x20\x00\x30\x81\x80\x80\x80\x80\x80\x80\x80\x80\x01\x38\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\x40\x00\x48\xff\xff\xff\xff\x07\x50\x81\x80\x80\x80\xf8\xff\xff\xff\xff\x01\xf8\xff\x1f\x00\x00"
++
++#define alltypes_callback_IntSizes_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    req_int8,          1) \
++X(a, STATIC,   REQUIRED, UINT32,   req_uint8,         2) \
++X(a, STATIC,   REQUIRED, SINT32,   req_sint8,         3) \
++X(a, STATIC,   REQUIRED, INT32,    req_int16,         4) \
++X(a, STATIC,   REQUIRED, UINT32,   req_uint16,        5) \
++X(a, STATIC,   REQUIRED, SINT32,   req_sint16,        6)
++#define alltypes_callback_IntSizes_CALLBACK NULL
++#define alltypes_callback_IntSizes_DEFAULT NULL
++
++#define alltypes_callback_DescriptorSize8_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    first,             1) \
++X(a, STATIC,   REQUIRED, INT32,    second,          22222)
++#define alltypes_callback_DescriptorSize8_CALLBACK NULL
++#define alltypes_callback_DescriptorSize8_DEFAULT NULL
++
++#define alltypes_callback_AllTypes_FIELDLIST(X, a) \
++X(a, STATIC,   REQUIRED, INT32,    req_int32,         1) \
++X(a, STATIC,   REQUIRED, INT64,    req_int64,         2) \
++X(a, STATIC,   REQUIRED, UINT32,   req_uint32,        3) \
++X(a, STATIC,   REQUIRED, UINT64,   req_uint64,        4) \
++X(a, STATIC,   REQUIRED, SINT32,   req_sint32,        5) \
++X(a, STATIC,   REQUIRED, SINT64,   req_sint64,        6) \
++X(a, STATIC,   REQUIRED, BOOL,     req_bool,          7) \
++X(a, STATIC,   REQUIRED, FIXED32,  req_fixed32,       8) \
++X(a, STATIC,   REQUIRED, SFIXED32, req_sfixed32,      9) \
++X(a, STATIC,   REQUIRED, FLOAT,    req_float,        10) \
++X(a, STATIC,   REQUIRED, FIXED64,  req_fixed64,      11) \
++X(a, STATIC,   REQUIRED, SFIXED64, req_sfixed64,     12) \
++X(a, STATIC,   REQUIRED, DOUBLE,   req_double,       13) \
++X(a, CALLBACK, REQUIRED, STRING,   req_string,       14) \
++X(a, CALLBACK, REQUIRED, BYTES,    req_bytes,        15) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_submsg,       16) \
++X(a, STATIC,   REQUIRED, UENUM,    req_enum,         17) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_emptymsg,     18) \
++X(a, CALLBACK, REQUIRED, BYTES,    req_fbytes,       19) \
++X(a, CALLBACK, REPEATED, INT32,    rep_int32,        21) \
++X(a, CALLBACK, REPEATED, INT64,    rep_int64,        22) \
++X(a, CALLBACK, REPEATED, UINT32,   rep_uint32,       23) \
++X(a, CALLBACK, REPEATED, UINT64,   rep_uint64,       24) \
++X(a, CALLBACK, REPEATED, SINT32,   rep_sint32,       25) \
++X(a, CALLBACK, REPEATED, SINT64,   rep_sint64,       26) \
++X(a, CALLBACK, REPEATED, BOOL,     rep_bool,         27) \
++X(a, CALLBACK, REPEATED, FIXED32,  rep_fixed32,      28) \
++X(a, CALLBACK, REPEATED, SFIXED32, rep_sfixed32,     29) \
++X(a, CALLBACK, REPEATED, FLOAT,    rep_float,        30) \
++X(a, CALLBACK, REPEATED, FIXED64,  rep_fixed64,      31) \
++X(a, CALLBACK, REPEATED, SFIXED64, rep_sfixed64,     32) \
++X(a, CALLBACK, REPEATED, DOUBLE,   rep_double,       33) \
++X(a, CALLBACK, REPEATED, STRING,   rep_string,       34) \
++X(a, CALLBACK, REPEATED, BYTES,    rep_bytes,        35) \
++X(a, CALLBACK, REPEATED, MESSAGE,  rep_submsg,       36) \
++X(a, CALLBACK, REPEATED, UENUM,    rep_enum,         37) \
++X(a, CALLBACK, REPEATED, MESSAGE,  rep_emptymsg,     38) \
++X(a, CALLBACK, REPEATED, BYTES,    rep_fbytes,       39) \
++X(a, CALLBACK, REPEATED, INT32,    rep_farray,       40) \
++X(a, STATIC,   OPTIONAL, INT32,    opt_int32,        41) \
++X(a, STATIC,   OPTIONAL, INT64,    opt_int64,        42) \
++X(a, STATIC,   OPTIONAL, UINT32,   opt_uint32,       43) \
++X(a, STATIC,   OPTIONAL, UINT64,   opt_uint64,       44) \
++X(a, STATIC,   OPTIONAL, SINT32,   opt_sint32,       45) \
++X(a, STATIC,   OPTIONAL, SINT64,   opt_sint64,       46) \
++X(a, STATIC,   OPTIONAL, BOOL,     opt_bool,         47) \
++X(a, STATIC,   OPTIONAL, FIXED32,  opt_fixed32,      48) \
++X(a, STATIC,   OPTIONAL, SFIXED32, opt_sfixed32,     49) \
++X(a, STATIC,   OPTIONAL, FLOAT,    opt_float,        50) \
++X(a, STATIC,   OPTIONAL, FIXED64,  opt_fixed64,      51) \
++X(a, STATIC,   OPTIONAL, SFIXED64, opt_sfixed64,     52) \
++X(a, STATIC,   OPTIONAL, DOUBLE,   opt_double,       53) \
++X(a, CALLBACK, OPTIONAL, STRING,   opt_string,       54) \
++X(a, CALLBACK, OPTIONAL, BYTES,    opt_bytes,        55) \
++X(a, STATIC,   OPTIONAL, MESSAGE,  opt_submsg,       56) \
++X(a, STATIC,   OPTIONAL, UENUM,    opt_enum,         57) \
++X(a, STATIC,   OPTIONAL, MESSAGE,  opt_emptymsg,     58) \
++X(a, CALLBACK, OPTIONAL, BYTES,    opt_fbytes,       59) \
++X(a, STATIC,   ONEOF,    MSG_W_CB, (oneof,oneof_msg1,oneof.oneof_msg1),  60) \
++X(a, STATIC,   ONEOF,    MSG_W_CB, (oneof,oneof_msg2,oneof.oneof_msg2),  61) \
++X(a, STATIC,   OPTIONAL, UENUM,    opt_non_zero_based_enum,  62) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,static_msg,oneof.static_msg),  63) \
++X(a, CALLBACK, REPEATED, FIXED32,  rep_farray2,      95) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_intsizes,     96) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_ds8,          97) \
++X(a, STATIC,   REQUIRED, MESSAGE,  req_limits,       98) \
++X(a, CALLBACK, OPTIONAL, EXTENSION, extensions,      200) \
++X(a, STATIC,   REQUIRED, INT32,    end,             999)
++#define alltypes_callback_AllTypes_CALLBACK pb_default_field_callback
++#define alltypes_callback_AllTypes_DEFAULT (const pb_byte_t*)"\xc8\x02\xc9\x1f\xd0\x02\xca\x1f\xd8\x02\xcb\x1f\xe0\x02\xcc\x1f\xe8\x02\x9a\x3f\xf0\x02\x9c\x3f\xf8\x02\x00\x85\x03\xd0\x0f\x00\x00\x8d\x03\xd1\x0f\x00\x00\x95\x03\x00\x20\x7d\x45\x99\x03\xd3\x0f\x00\x00\x00\x00\x00\x00\xa1\x03\xd4\x0f\x00\x00\x00\x00\x00\x00\xa9\x03\x00\x00\x00\x00\x00\xaa\xaf\x40\xc8\x03\x02\xf0\x03\x02\x00"
++#define alltypes_callback_AllTypes_req_submsg_MSGTYPE alltypes_callback_SubMessage
++#define alltypes_callback_AllTypes_req_emptymsg_MSGTYPE alltypes_callback_EmptyMessage
++#define alltypes_callback_AllTypes_rep_submsg_MSGTYPE alltypes_callback_SubMessage
++#define alltypes_callback_AllTypes_rep_emptymsg_MSGTYPE alltypes_callback_EmptyMessage
++#define alltypes_callback_AllTypes_opt_submsg_MSGTYPE alltypes_callback_SubMessage
++#define alltypes_callback_AllTypes_opt_emptymsg_MSGTYPE alltypes_callback_EmptyMessage
++#define alltypes_callback_AllTypes_oneof_oneof_msg1_MSGTYPE alltypes_callback_SubMessage
++#define alltypes_callback_AllTypes_oneof_oneof_msg2_MSGTYPE alltypes_callback_EmptyMessage
++#define alltypes_callback_AllTypes_oneof_static_msg_MSGTYPE alltypes_callback_SubMessage
++#define alltypes_callback_AllTypes_req_intsizes_MSGTYPE alltypes_callback_IntSizes
++#define alltypes_callback_AllTypes_req_ds8_MSGTYPE alltypes_callback_DescriptorSize8
++#define alltypes_callback_AllTypes_req_limits_MSGTYPE alltypes_callback_Limits
++
++#define alltypes_callback_TestExtension_FIELDLIST(X, a) \
++X(a, CALLBACK, OPTIONAL, STRING,   strval,            1)
++#define alltypes_callback_TestExtension_CALLBACK pb_default_field_callback
++#define alltypes_callback_TestExtension_DEFAULT NULL
++
++extern const pb_msgdesc_t alltypes_callback_SubMessage_msg;
++extern const pb_msgdesc_t alltypes_callback_EmptyMessage_msg;
++extern const pb_msgdesc_t alltypes_callback_Limits_msg;
++extern const pb_msgdesc_t alltypes_callback_IntSizes_msg;
++extern const pb_msgdesc_t alltypes_callback_DescriptorSize8_msg;
++extern const pb_msgdesc_t alltypes_callback_AllTypes_msg;
++extern const pb_msgdesc_t alltypes_callback_TestExtension_msg;
++
++/* Defines for backwards compatibility with code written before nanopb-0.4.0 */
++#define alltypes_callback_SubMessage_fields &alltypes_callback_SubMessage_msg
++#define alltypes_callback_EmptyMessage_fields &alltypes_callback_EmptyMessage_msg
++#define alltypes_callback_Limits_fields &alltypes_callback_Limits_msg
++#define alltypes_callback_IntSizes_fields &alltypes_callback_IntSizes_msg
++#define alltypes_callback_DescriptorSize8_fields &alltypes_callback_DescriptorSize8_msg
++#define alltypes_callback_AllTypes_fields &alltypes_callback_AllTypes_msg
++#define alltypes_callback_TestExtension_fields &alltypes_callback_TestExtension_msg
++
++/* Maximum encoded size of messages (where known) */
++/* alltypes_callback_SubMessage_size depends on runtime parameters */
++/* alltypes_callback_AllTypes_size depends on runtime parameters */
++/* alltypes_callback_TestExtension_size depends on runtime parameters */
++#define ALLTYPES_CALLBACK_ALLTYPES_CALLBACK_PB_H_MAX_SIZE alltypes_callback_Limits_size
++#define alltypes_callback_DescriptorSize8_size   24
++#define alltypes_callback_EmptyMessage_size      0
++#define alltypes_callback_IntSizes_size          46
++#define alltypes_callback_Limits_size            113
++
++#ifdef __cplusplus
++} /* extern "C" */
++#endif
++
++#endif
+diff --git a/tests/fuzztest/alltypes_proto3_static.pb.c b/tests/fuzztest/alltypes_proto3_static.pb.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..60265d489591df1c154f40133c370deadab60d3b
+--- /dev/null
++++ b/tests/fuzztest/alltypes_proto3_static.pb.c
+@@ -0,0 +1,33 @@
++/* Automatically generated nanopb constant definitions */
++/* Generated by nanopb-1.0.0-dev */
++
++#include "alltypes_proto3_static.pb.h"
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++PB_BIND(alltypes_proto3_static_SubMessage, alltypes_proto3_static_SubMessage, AUTO)
++
++
++PB_BIND(alltypes_proto3_static_EmptyMessage, alltypes_proto3_static_EmptyMessage, AUTO)
++
++
++PB_BIND(alltypes_proto3_static_Limits, alltypes_proto3_static_Limits, AUTO)
++
++
++PB_BIND(alltypes_proto3_static_AllTypes, alltypes_proto3_static_AllTypes, 2)
++
++
++
++
++
++
++
++#ifndef PB_CONVERT_DOUBLE_FLOAT
++/* On some platforms (such as AVR), double is really float.
++ * To be able to encode/decode double on these platforms, you need.
++ * to define PB_CONVERT_DOUBLE_FLOAT in pb.h or compiler command line.
++ */
++PB_STATIC_ASSERT(sizeof(double) == 8, DOUBLE_MUST_BE_8_BYTES)
++#endif
++
+diff --git a/tests/fuzztest/alltypes_proto3_static.pb.h b/tests/fuzztest/alltypes_proto3_static.pb.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ade9bc622b04dae16dec010b3ba31629c0f81a0
+--- /dev/null
++++ b/tests/fuzztest/alltypes_proto3_static.pb.h
+@@ -0,0 +1,320 @@
++/* Automatically generated nanopb header */
++/* Generated by nanopb-1.0.0-dev */
++
++#ifndef PB_ALLTYPES_PROTO3_STATIC_ALLTYPES_PROTO3_STATIC_PB_H_INCLUDED
++#define PB_ALLTYPES_PROTO3_STATIC_ALLTYPES_PROTO3_STATIC_PB_H_INCLUDED
++#include <pb.h>
++
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++/* Enum definitions */
++typedef enum _alltypes_proto3_static_HugeEnum {
++    alltypes_proto3_static_HugeEnum_HE_Zero = 0,
++    alltypes_proto3_static_HugeEnum_Negative = -2147483647, /* protoc doesn't accept -2147483648 here */
++    alltypes_proto3_static_HugeEnum_Positive = 2147483647
++} alltypes_proto3_static_HugeEnum;
++
++typedef enum _alltypes_proto3_static_MyEnum {
++    alltypes_proto3_static_MyEnum_Zero = 0,
++    alltypes_proto3_static_MyEnum_First = 1,
++    alltypes_proto3_static_MyEnum_Second = 2,
++    alltypes_proto3_static_MyEnum_Truth = 42
++} alltypes_proto3_static_MyEnum;
++
++/* Struct definitions */
++typedef struct _alltypes_proto3_static_SubMessage {
++    char substuff1[32];
++    int32_t substuff2;
++    uint32_t substuff3;
++} alltypes_proto3_static_SubMessage;
++
++typedef struct _alltypes_proto3_static_EmptyMessage {
++    char dummy_field;
++} alltypes_proto3_static_EmptyMessage;
++
++typedef struct _alltypes_proto3_static_Limits {
++    int32_t int32_min;
++    int32_t int32_max;
++    uint32_t uint32_min;
++    uint32_t uint32_max;
++    int64_t int64_min;
++    int64_t int64_max;
++    uint64_t uint64_min;
++    uint64_t uint64_max;
++    alltypes_proto3_static_HugeEnum enum_min;
++    alltypes_proto3_static_HugeEnum enum_max;
++} alltypes_proto3_static_Limits;
++
++typedef PB_BYTES_ARRAY_T(32) alltypes_proto3_static_AllTypes_sng_bytes_t;
++typedef PB_BYTES_ARRAY_T(32) alltypes_proto3_static_AllTypes_rep_bytes_t;
++typedef struct _alltypes_proto3_static_AllTypes {
++    int32_t sng_int32;
++    int64_t sng_int64;
++    uint32_t sng_uint32;
++    uint64_t sng_uint64;
++    int32_t sng_sint32;
++    int64_t sng_sint64;
++    bool sng_bool;
++    uint32_t sng_fixed32;
++    int32_t sng_sfixed32;
++    float sng_float;
++    uint64_t sng_fixed64;
++    int64_t sng_sfixed64;
++    double sng_double;
++    char sng_string[32];
++    alltypes_proto3_static_AllTypes_sng_bytes_t sng_bytes;
++    bool has_sng_submsg;
++    alltypes_proto3_static_SubMessage sng_submsg;
++    alltypes_proto3_static_MyEnum sng_enum;
++    bool has_sng_emptymsg;
++    alltypes_proto3_static_EmptyMessage sng_emptymsg;
++    pb_byte_t sng_fbytes[4];
++    pb_size_t rep_int32_count;
++    int32_t rep_int32[8];
++    pb_size_t rep_int64_count;
++    int64_t rep_int64[8];
++    pb_size_t rep_uint32_count;
++    uint32_t rep_uint32[8];
++    pb_size_t rep_uint64_count;
++    uint64_t rep_uint64[8];
++    pb_size_t rep_sint32_count;
++    int32_t rep_sint32[8];
++    pb_size_t rep_sint64_count;
++    int64_t rep_sint64[8];
++    pb_size_t rep_bool_count;
++    bool rep_bool[8];
++    pb_size_t rep_fixed32_count;
++    uint32_t rep_fixed32[8];
++    pb_size_t rep_sfixed32_count;
++    int32_t rep_sfixed32[8];
++    pb_size_t rep_float_count;
++    float rep_float[8];
++    pb_size_t rep_fixed64_count;
++    uint64_t rep_fixed64[8];
++    pb_size_t rep_sfixed64_count;
++    int64_t rep_sfixed64[8];
++    pb_size_t rep_double_count;
++    double rep_double[8];
++    pb_size_t rep_string_count;
++    char rep_string[8][32];
++    pb_size_t rep_bytes_count;
++    alltypes_proto3_static_AllTypes_rep_bytes_t rep_bytes[8];
++    pb_size_t rep_submsg_count;
++    alltypes_proto3_static_SubMessage rep_submsg[8];
++    pb_size_t rep_enum_count;
++    alltypes_proto3_static_MyEnum rep_enum[8];
++    pb_size_t rep_emptymsg_count;
++    alltypes_proto3_static_EmptyMessage rep_emptymsg[8];
++    pb_size_t rep_fbytes_count;
++    pb_byte_t rep_fbytes[8][4];
++    pb_size_t which_oneof;
++    union _alltypes_proto3_static_AllTypes_oneof {
++        alltypes_proto3_static_SubMessage oneof_msg1;
++        alltypes_proto3_static_EmptyMessage oneof_msg2;
++        alltypes_proto3_static_SubMessage static_msg;
++    } oneof;
++    /* Check that extreme integer values are handled correctly */
++    alltypes_proto3_static_Limits req_limits;
++    /* Just to make sure that the size of the fields has been calculated
++ properly, i.e. otherwise a bug in last field might not be detected. */
++    int32_t end;
++} alltypes_proto3_static_AllTypes;
++
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* Helper constants for enums */
++#define _alltypes_proto3_static_HugeEnum_MIN alltypes_proto3_static_HugeEnum_Negative
++#define _alltypes_proto3_static_HugeEnum_MAX alltypes_proto3_static_HugeEnum_Positive
++#define _alltypes_proto3_static_HugeEnum_ARRAYSIZE ((alltypes_proto3_static_HugeEnum)(alltypes_proto3_static_HugeEnum_Positive+1))
++
++#define _alltypes_proto3_static_MyEnum_MIN alltypes_proto3_static_MyEnum_Zero
++#define _alltypes_proto3_static_MyEnum_MAX alltypes_proto3_static_MyEnum_Truth
++#define _alltypes_proto3_static_MyEnum_ARRAYSIZE ((alltypes_proto3_static_MyEnum)(alltypes_proto3_static_MyEnum_Truth+1))
++
++
++
++#define alltypes_proto3_static_Limits_enum_min_ENUMTYPE alltypes_proto3_static_HugeEnum
++#define alltypes_proto3_static_Limits_enum_max_ENUMTYPE alltypes_proto3_static_HugeEnum
++
++#define alltypes_proto3_static_AllTypes_sng_enum_ENUMTYPE alltypes_proto3_static_MyEnum
++#define alltypes_proto3_static_AllTypes_rep_enum_ENUMTYPE alltypes_proto3_static_MyEnum
++
++
++/* Initializer values for message structs */
++#define alltypes_proto3_static_SubMessage_init_default {"", 0, 0}
++#define alltypes_proto3_static_EmptyMessage_init_default {0}
++#define alltypes_proto3_static_Limits_init_default {0, 0, 0, 0, 0, 0, 0, 0, _alltypes_proto3_static_HugeEnum_MIN, _alltypes_proto3_static_HugeEnum_MIN}
++#define alltypes_proto3_static_AllTypes_init_default {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", {0, {0}}, false, alltypes_proto3_static_SubMessage_init_default, _alltypes_proto3_static_MyEnum_MIN, false, alltypes_proto3_static_EmptyMessage_init_default, {0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {"", "", "", "", "", "", "", ""}, 0, {{0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}}, 0, {alltypes_proto3_static_SubMessage_init_default, alltypes_proto3_static_SubMessage_init_default, alltypes_proto3_static_SubMessage_init_default, alltypes_proto3_static_SubMessage_init_default, alltypes_proto3_static_SubMessage_init_default, alltypes_proto3_static_SubMessage_init_default, alltypes_proto3_static_SubMessage_init_default, alltypes_proto3_static_SubMessage_init_default}, 0, {_alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN}, 0, {alltypes_proto3_static_EmptyMessage_init_default, alltypes_proto3_static_EmptyMessage_init_default, alltypes_proto3_static_EmptyMessage_init_default, alltypes_proto3_static_EmptyMessage_init_default, alltypes_proto3_static_EmptyMessage_init_default, alltypes_proto3_static_EmptyMessage_init_default, alltypes_proto3_static_EmptyMessage_init_default, alltypes_proto3_static_EmptyMessage_init_default}, 0, {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}}, 0, {alltypes_proto3_static_SubMessage_init_default}, alltypes_proto3_static_Limits_init_default, 0}
++#define alltypes_proto3_static_SubMessage_init_zero {"", 0, 0}
++#define alltypes_proto3_static_EmptyMessage_init_zero {0}
++#define alltypes_proto3_static_Limits_init_zero  {0, 0, 0, 0, 0, 0, 0, 0, _alltypes_proto3_static_HugeEnum_MIN, _alltypes_proto3_static_HugeEnum_MIN}
++#define alltypes_proto3_static_AllTypes_init_zero {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", {0, {0}}, false, alltypes_proto3_static_SubMessage_init_zero, _alltypes_proto3_static_MyEnum_MIN, false, alltypes_proto3_static_EmptyMessage_init_zero, {0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0, 0, 0, 0}, 0, {"", "", "", "", "", "", "", ""}, 0, {{0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}, {0, {0}}}, 0, {alltypes_proto3_static_SubMessage_init_zero, alltypes_proto3_static_SubMessage_init_zero, alltypes_proto3_static_SubMessage_init_zero, alltypes_proto3_static_SubMessage_init_zero, alltypes_proto3_static_SubMessage_init_zero, alltypes_proto3_static_SubMessage_init_zero, alltypes_proto3_static_SubMessage_init_zero, alltypes_proto3_static_SubMessage_init_zero}, 0, {_alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN, _alltypes_proto3_static_MyEnum_MIN}, 0, {alltypes_proto3_static_EmptyMessage_init_zero, alltypes_proto3_static_EmptyMessage_init_zero, alltypes_proto3_static_EmptyMessage_init_zero, alltypes_proto3_static_EmptyMessage_init_zero, alltypes_proto3_static_EmptyMessage_init_zero, alltypes_proto3_static_EmptyMessage_init_zero, alltypes_proto3_static_EmptyMessage_init_zero, alltypes_proto3_static_EmptyMessage_init_zero}, 0, {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}}, 0, {alltypes_proto3_static_SubMessage_init_zero}, alltypes_proto3_static_Limits_init_zero, 0}
++
++/* Field tags (for use in manual encoding/decoding) */
++#define alltypes_proto3_static_SubMessage_substuff1_tag 1
++#define alltypes_proto3_static_SubMessage_substuff2_tag 2
++#define alltypes_proto3_static_SubMessage_substuff3_tag 3
++#define alltypes_proto3_static_Limits_int32_min_tag 1
++#define alltypes_proto3_static_Limits_int32_max_tag 2
++#define alltypes_proto3_static_Limits_uint32_min_tag 3
++#define alltypes_proto3_static_Limits_uint32_max_tag 4
++#define alltypes_proto3_static_Limits_int64_min_tag 5
++#define alltypes_proto3_static_Limits_int64_max_tag 6
++#define alltypes_proto3_static_Limits_uint64_min_tag 7
++#define alltypes_proto3_static_Limits_uint64_max_tag 8
++#define alltypes_proto3_static_Limits_enum_min_tag 9
++#define alltypes_proto3_static_Limits_enum_max_tag 10
++#define alltypes_proto3_static_AllTypes_sng_int32_tag 1
++#define alltypes_proto3_static_AllTypes_sng_int64_tag 2
++#define alltypes_proto3_static_AllTypes_sng_uint32_tag 3
++#define alltypes_proto3_static_AllTypes_sng_uint64_tag 4
++#define alltypes_proto3_static_AllTypes_sng_sint32_tag 5
++#define alltypes_proto3_static_AllTypes_sng_sint64_tag 6
++#define alltypes_proto3_static_AllTypes_sng_bool_tag 7
++#define alltypes_proto3_static_AllTypes_sng_fixed32_tag 8
++#define alltypes_proto3_static_AllTypes_sng_sfixed32_tag 9
++#define alltypes_proto3_static_AllTypes_sng_float_tag 10
++#define alltypes_proto3_static_AllTypes_sng_fixed64_tag 11
++#define alltypes_proto3_static_AllTypes_sng_sfixed64_tag 12
++#define alltypes_proto3_static_AllTypes_sng_double_tag 13
++#define alltypes_proto3_static_AllTypes_sng_string_tag 14
++#define alltypes_proto3_static_AllTypes_sng_bytes_tag 15
++#define alltypes_proto3_static_AllTypes_sng_submsg_tag 16
++#define alltypes_proto3_static_AllTypes_sng_enum_tag 17
++#define alltypes_proto3_static_AllTypes_sng_emptymsg_tag 18
++#define alltypes_proto3_static_AllTypes_sng_fbytes_tag 19
++#define alltypes_proto3_static_AllTypes_rep_int32_tag 21
++#define alltypes_proto3_static_AllTypes_rep_int64_tag 22
++#define alltypes_proto3_static_AllTypes_rep_uint32_tag 23
++#define alltypes_proto3_static_AllTypes_rep_uint64_tag 24
++#define alltypes_proto3_static_AllTypes_rep_sint32_tag 25
++#define alltypes_proto3_static_AllTypes_rep_sint64_tag 26
++#define alltypes_proto3_static_AllTypes_rep_bool_tag 27
++#define alltypes_proto3_static_AllTypes_rep_fixed32_tag 28
++#define alltypes_proto3_static_AllTypes_rep_sfixed32_tag 29
++#define alltypes_proto3_static_AllTypes_rep_float_tag 30
++#define alltypes_proto3_static_AllTypes_rep_fixed64_tag 31
++#define alltypes_proto3_static_AllTypes_rep_sfixed64_tag 32
++#define alltypes_proto3_static_AllTypes_rep_double_tag 33
++#define alltypes_proto3_static_AllTypes_rep_string_tag 34
++#define alltypes_proto3_static_AllTypes_rep_bytes_tag 35
++#define alltypes_proto3_static_AllTypes_rep_submsg_tag 36
++#define alltypes_proto3_static_AllTypes_rep_enum_tag 37
++#define alltypes_proto3_static_AllTypes_rep_emptymsg_tag 38
++#define alltypes_proto3_static_AllTypes_rep_fbytes_tag 39
++#define alltypes_proto3_static_AllTypes_oneof_msg1_tag 60
++#define alltypes_proto3_static_AllTypes_oneof_msg2_tag 61
++#define alltypes_proto3_static_AllTypes_static_msg_tag 63
++#define alltypes_proto3_static_AllTypes_req_limits_tag 98
++#define alltypes_proto3_static_AllTypes_end_tag  999
++
++/* Struct field encoding specification for nanopb */
++#define alltypes_proto3_static_SubMessage_FIELDLIST(X, a) \
++X(a, STATIC,   SINGULAR, STRING,   substuff1,         1) \
++X(a, STATIC,   SINGULAR, INT32,    substuff2,         2) \
++X(a, STATIC,   SINGULAR, FIXED32,  substuff3,         3)
++#define alltypes_proto3_static_SubMessage_CALLBACK NULL
++#define alltypes_proto3_static_SubMessage_DEFAULT NULL
++
++#define alltypes_proto3_static_EmptyMessage_FIELDLIST(X, a) \
++
++#define alltypes_proto3_static_EmptyMessage_CALLBACK NULL
++#define alltypes_proto3_static_EmptyMessage_DEFAULT NULL
++
++#define alltypes_proto3_static_Limits_FIELDLIST(X, a) \
++X(a, STATIC,   SINGULAR, INT32,    int32_min,         1) \
++X(a, STATIC,   SINGULAR, INT32,    int32_max,         2) \
++X(a, STATIC,   SINGULAR, UINT32,   uint32_min,        3) \
++X(a, STATIC,   SINGULAR, UINT32,   uint32_max,        4) \
++X(a, STATIC,   SINGULAR, INT64,    int64_min,         5) \
++X(a, STATIC,   SINGULAR, INT64,    int64_max,         6) \
++X(a, STATIC,   SINGULAR, UINT64,   uint64_min,        7) \
++X(a, STATIC,   SINGULAR, UINT64,   uint64_max,        8) \
++X(a, STATIC,   SINGULAR, ENUM,     enum_min,          9) \
++X(a, STATIC,   SINGULAR, ENUM,     enum_max,         10)
++#define alltypes_proto3_static_Limits_CALLBACK NULL
++#define alltypes_proto3_static_Limits_DEFAULT NULL
++
++#define alltypes_proto3_static_AllTypes_FIELDLIST(X, a) \
++X(a, STATIC,   SINGULAR, INT32,    sng_int32,         1) \
++X(a, STATIC,   SINGULAR, INT64,    sng_int64,         2) \
++X(a, STATIC,   SINGULAR, UINT32,   sng_uint32,        3) \
++X(a, STATIC,   SINGULAR, UINT64,   sng_uint64,        4) \
++X(a, STATIC,   SINGULAR, SINT32,   sng_sint32,        5) \
++X(a, STATIC,   SINGULAR, SINT64,   sng_sint64,        6) \
++X(a, STATIC,   SINGULAR, BOOL,     sng_bool,          7) \
++X(a, STATIC,   SINGULAR, FIXED32,  sng_fixed32,       8) \
++X(a, STATIC,   SINGULAR, SFIXED32, sng_sfixed32,      9) \
++X(a, STATIC,   SINGULAR, FLOAT,    sng_float,        10) \
++X(a, STATIC,   SINGULAR, FIXED64,  sng_fixed64,      11) \
++X(a, STATIC,   SINGULAR, SFIXED64, sng_sfixed64,     12) \
++X(a, STATIC,   SINGULAR, DOUBLE,   sng_double,       13) \
++X(a, STATIC,   SINGULAR, STRING,   sng_string,       14) \
++X(a, STATIC,   SINGULAR, BYTES,    sng_bytes,        15) \
++X(a, STATIC,   OPTIONAL, MESSAGE,  sng_submsg,       16) \
++X(a, STATIC,   SINGULAR, UENUM,    sng_enum,         17) \
++X(a, STATIC,   OPTIONAL, MESSAGE,  sng_emptymsg,     18) \
++X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, sng_fbytes,       19) \
++X(a, STATIC,   REPEATED, INT32,    rep_int32,        21) \
++X(a, STATIC,   REPEATED, INT64,    rep_int64,        22) \
++X(a, STATIC,   REPEATED, UINT32,   rep_uint32,       23) \
++X(a, STATIC,   REPEATED, UINT64,   rep_uint64,       24) \
++X(a, STATIC,   REPEATED, SINT32,   rep_sint32,       25) \
++X(a, STATIC,   REPEATED, SINT64,   rep_sint64,       26) \
++X(a, STATIC,   REPEATED, BOOL,     rep_bool,         27) \
++X(a, STATIC,   REPEATED, FIXED32,  rep_fixed32,      28) \
++X(a, STATIC,   REPEATED, SFIXED32, rep_sfixed32,     29) \
++X(a, STATIC,   REPEATED, FLOAT,    rep_float,        30) \
++X(a, STATIC,   REPEATED, FIXED64,  rep_fixed64,      31) \
++X(a, STATIC,   REPEATED, SFIXED64, rep_sfixed64,     32) \
++X(a, STATIC,   REPEATED, DOUBLE,   rep_double,       33) \
++X(a, STATIC,   REPEATED, STRING,   rep_string,       34) \
++X(a, STATIC,   REPEATED, BYTES,    rep_bytes,        35) \
++X(a, STATIC,   REPEATED, MESSAGE,  rep_submsg,       36) \
++X(a, STATIC,   REPEATED, UENUM,    rep_enum,         37) \
++X(a, STATIC,   REPEATED, MESSAGE,  rep_emptymsg,     38) \
++X(a, STATIC,   REPEATED, FIXED_LENGTH_BYTES, rep_fbytes,       39) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,oneof_msg1,oneof.oneof_msg1),  60) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,oneof_msg2,oneof.oneof_msg2),  61) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,static_msg,oneof.static_msg),  63) \
++X(a, STATIC,   SINGULAR, MESSAGE,  req_limits,       98) \
++X(a, STATIC,   SINGULAR, INT32,    end,             999)
++#define alltypes_proto3_static_AllTypes_CALLBACK NULL
++#define alltypes_proto3_static_AllTypes_DEFAULT NULL
++#define alltypes_proto3_static_AllTypes_sng_submsg_MSGTYPE alltypes_proto3_static_SubMessage
++#define alltypes_proto3_static_AllTypes_sng_emptymsg_MSGTYPE alltypes_proto3_static_EmptyMessage
++#define alltypes_proto3_static_AllTypes_rep_submsg_MSGTYPE alltypes_proto3_static_SubMessage
++#define alltypes_proto3_static_AllTypes_rep_emptymsg_MSGTYPE alltypes_proto3_static_EmptyMessage
++#define alltypes_proto3_static_AllTypes_oneof_oneof_msg1_MSGTYPE alltypes_proto3_static_SubMessage
++#define alltypes_proto3_static_AllTypes_oneof_oneof_msg2_MSGTYPE alltypes_proto3_static_EmptyMessage
++#define alltypes_proto3_static_AllTypes_oneof_static_msg_MSGTYPE alltypes_proto3_static_SubMessage
++#define alltypes_proto3_static_AllTypes_req_limits_MSGTYPE alltypes_proto3_static_Limits
++
++extern const pb_msgdesc_t alltypes_proto3_static_SubMessage_msg;
++extern const pb_msgdesc_t alltypes_proto3_static_EmptyMessage_msg;
++extern const pb_msgdesc_t alltypes_proto3_static_Limits_msg;
++extern const pb_msgdesc_t alltypes_proto3_static_AllTypes_msg;
++
++/* Defines for backwards compatibility with code written before nanopb-0.4.0 */
++#define alltypes_proto3_static_SubMessage_fields &alltypes_proto3_static_SubMessage_msg
++#define alltypes_proto3_static_EmptyMessage_fields &alltypes_proto3_static_EmptyMessage_msg
++#define alltypes_proto3_static_Limits_fields &alltypes_proto3_static_Limits_msg
++#define alltypes_proto3_static_AllTypes_fields &alltypes_proto3_static_AllTypes_msg
++
++/* Maximum encoded size of messages (where known) */
++#define ALLTYPES_PROTO3_STATIC_ALLTYPES_PROTO3_STATIC_PB_H_MAX_SIZE alltypes_proto3_static_AllTypes_size
++#define alltypes_proto3_static_AllTypes_size     2375
++#define alltypes_proto3_static_EmptyMessage_size 0
++#define alltypes_proto3_static_Limits_size       100
++#define alltypes_proto3_static_SubMessage_size   49
++
++#ifdef __cplusplus
++} /* extern "C" */
++#endif
++
++#endif
+diff --git a/tests/fuzztest/alltypes_proto3_pointer.pb.c b/tests/fuzztest/alltypes_proto3_pointer.pb.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..5c9df651518273af2692df5e085f4d8169d44ef5
+--- /dev/null
++++ b/tests/fuzztest/alltypes_proto3_pointer.pb.c
+@@ -0,0 +1,33 @@
++/* Automatically generated nanopb constant definitions */
++/* Generated by nanopb-1.0.0-dev */
++
++#include "alltypes_proto3_pointer.pb.h"
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++PB_BIND(alltypes_proto3_pointer_SubMessage, alltypes_proto3_pointer_SubMessage, AUTO)
++
++
++PB_BIND(alltypes_proto3_pointer_EmptyMessage, alltypes_proto3_pointer_EmptyMessage, AUTO)
++
++
++PB_BIND(alltypes_proto3_pointer_Limits, alltypes_proto3_pointer_Limits, AUTO)
++
++
++PB_BIND(alltypes_proto3_pointer_AllTypes, alltypes_proto3_pointer_AllTypes, 2)
++
++
++
++
++
++
++
++#ifndef PB_CONVERT_DOUBLE_FLOAT
++/* On some platforms (such as AVR), double is really float.
++ * To be able to encode/decode double on these platforms, you need.
++ * to define PB_CONVERT_DOUBLE_FLOAT in pb.h or compiler command line.
++ */
++PB_STATIC_ASSERT(sizeof(double) == 8, DOUBLE_MUST_BE_8_BYTES)
++#endif
++
+diff --git a/tests/fuzztest/alltypes_proto3_pointer.pb.h b/tests/fuzztest/alltypes_proto3_pointer.pb.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..80f1561e6809ddba8fa3a85f9fb4eeff7a69a3b1
+--- /dev/null
++++ b/tests/fuzztest/alltypes_proto3_pointer.pb.h
+@@ -0,0 +1,316 @@
++/* Automatically generated nanopb header */
++/* Generated by nanopb-1.0.0-dev */
++
++#ifndef PB_ALLTYPES_PROTO3_POINTER_ALLTYPES_PROTO3_POINTER_PB_H_INCLUDED
++#define PB_ALLTYPES_PROTO3_POINTER_ALLTYPES_PROTO3_POINTER_PB_H_INCLUDED
++#include <pb.h>
++
++#if PB_PROTO_HEADER_VERSION != 40
++#error Regenerate this file with the current version of nanopb generator.
++#endif
++
++/* Enum definitions */
++typedef enum _alltypes_proto3_pointer_HugeEnum {
++    alltypes_proto3_pointer_HugeEnum_HE_Zero = 0,
++    alltypes_proto3_pointer_HugeEnum_Negative = -2147483647, /* protoc doesn't accept -2147483648 here */
++    alltypes_proto3_pointer_HugeEnum_Positive = 2147483647
++} alltypes_proto3_pointer_HugeEnum;
++
++typedef enum _alltypes_proto3_pointer_MyEnum {
++    alltypes_proto3_pointer_MyEnum_Zero = 0,
++    alltypes_proto3_pointer_MyEnum_First = 1,
++    alltypes_proto3_pointer_MyEnum_Second = 2,
++    alltypes_proto3_pointer_MyEnum_Truth = 42
++} alltypes_proto3_pointer_MyEnum;
++
++/* Struct definitions */
++typedef struct _alltypes_proto3_pointer_SubMessage {
++    char *substuff1;
++    int32_t *substuff2;
++    uint32_t *substuff3;
++} alltypes_proto3_pointer_SubMessage;
++
++typedef struct _alltypes_proto3_pointer_EmptyMessage {
++    char dummy_field;
++} alltypes_proto3_pointer_EmptyMessage;
++
++typedef struct _alltypes_proto3_pointer_Limits {
++    int32_t *int32_min;
++    int32_t *int32_max;
++    uint32_t *uint32_min;
++    uint32_t *uint32_max;
++    int64_t *int64_min;
++    int64_t *int64_max;
++    uint64_t *uint64_min;
++    uint64_t *uint64_max;
++    alltypes_proto3_pointer_HugeEnum *enum_min;
++    alltypes_proto3_pointer_HugeEnum *enum_max;
++} alltypes_proto3_pointer_Limits;
++
++typedef struct _alltypes_proto3_pointer_AllTypes {
++    int32_t *sng_int32;
++    int64_t *sng_int64;
++    uint32_t *sng_uint32;
++    uint64_t *sng_uint64;
++    int32_t *sng_sint32;
++    int64_t *sng_sint64;
++    bool *sng_bool;
++    uint32_t *sng_fixed32;
++    int32_t *sng_sfixed32;
++    float *sng_float;
++    uint64_t *sng_fixed64;
++    int64_t *sng_sfixed64;
++    double *sng_double;
++    char *sng_string;
++    pb_bytes_array_t *sng_bytes;
++    struct _alltypes_proto3_pointer_SubMessage *sng_submsg;
++    alltypes_proto3_pointer_MyEnum *sng_enum;
++    struct _alltypes_proto3_pointer_EmptyMessage *sng_emptymsg;
++    pb_byte_t (*sng_fbytes)[4];
++    pb_size_t rep_int32_count;
++    int32_t *rep_int32;
++    pb_size_t rep_int64_count;
++    int64_t *rep_int64;
++    pb_size_t rep_uint32_count;
++    uint32_t *rep_uint32;
++    pb_size_t rep_uint64_count;
++    uint64_t *rep_uint64;
++    pb_size_t rep_sint32_count;
++    int32_t *rep_sint32;
++    pb_size_t rep_sint64_count;
++    int64_t *rep_sint64;
++    pb_size_t rep_bool_count;
++    bool *rep_bool;
++    pb_size_t rep_fixed32_count;
++    uint32_t *rep_fixed32;
++    pb_size_t rep_sfixed32_count;
++    int32_t *rep_sfixed32;
++    pb_size_t rep_float_count;
++    float *rep_float;
++    pb_size_t rep_fixed64_count;
++    uint64_t *rep_fixed64;
++    pb_size_t rep_sfixed64_count;
++    int64_t *rep_sfixed64;
++    pb_size_t rep_double_count;
++    double *rep_double;
++    pb_size_t rep_string_count;
++    char **rep_string;
++    pb_size_t rep_bytes_count;
++    pb_bytes_array_t **rep_bytes;
++    pb_size_t rep_submsg_count;
++    struct _alltypes_proto3_pointer_SubMessage *rep_submsg;
++    pb_size_t rep_enum_count;
++    alltypes_proto3_pointer_MyEnum *rep_enum;
++    pb_size_t rep_emptymsg_count;
++    struct _alltypes_proto3_pointer_EmptyMessage *rep_emptymsg;
++    pb_size_t rep_fbytes_count;
++    pb_byte_t (*rep_fbytes)[4];
++    pb_size_t which_oneof;
++    union _alltypes_proto3_pointer_AllTypes_oneof {
++        struct _alltypes_proto3_pointer_SubMessage *oneof_msg1;
++        struct _alltypes_proto3_pointer_EmptyMessage *oneof_msg2;
++        alltypes_proto3_pointer_SubMessage static_msg;
++    } oneof;
++    /* Check that extreme integer values are handled correctly */
++    struct _alltypes_proto3_pointer_Limits *req_limits;
++    /* Just to make sure that the size of the fields has been calculated
++ properly, i.e. otherwise a bug in last field might not be detected. */
++    int32_t *end;
++} alltypes_proto3_pointer_AllTypes;
++
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* Helper constants for enums */
++#define _alltypes_proto3_pointer_HugeEnum_MIN alltypes_proto3_pointer_HugeEnum_Negative
++#define _alltypes_proto3_pointer_HugeEnum_MAX alltypes_proto3_pointer_HugeEnum_Positive
++#define _alltypes_proto3_pointer_HugeEnum_ARRAYSIZE ((alltypes_proto3_pointer_HugeEnum)(alltypes_proto3_pointer_HugeEnum_Positive+1))
++
++#define _alltypes_proto3_pointer_MyEnum_MIN alltypes_proto3_pointer_MyEnum_Zero
++#define _alltypes_proto3_pointer_MyEnum_MAX alltypes_proto3_pointer_MyEnum_Truth
++#define _alltypes_proto3_pointer_MyEnum_ARRAYSIZE ((alltypes_proto3_pointer_MyEnum)(alltypes_proto3_pointer_MyEnum_Truth+1))
++
++
++
++#define alltypes_proto3_pointer_Limits_enum_min_ENUMTYPE alltypes_proto3_pointer_HugeEnum
++#define alltypes_proto3_pointer_Limits_enum_max_ENUMTYPE alltypes_proto3_pointer_HugeEnum
++
++#define alltypes_proto3_pointer_AllTypes_sng_enum_ENUMTYPE alltypes_proto3_pointer_MyEnum
++#define alltypes_proto3_pointer_AllTypes_rep_enum_ENUMTYPE alltypes_proto3_pointer_MyEnum
++
++
++/* Initializer values for message structs */
++#define alltypes_proto3_pointer_SubMessage_init_default {NULL, NULL, NULL}
++#define alltypes_proto3_pointer_EmptyMessage_init_default {0}
++#define alltypes_proto3_pointer_Limits_init_default {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_proto3_pointer_AllTypes_init_default {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, {NULL}, NULL, NULL}
++#define alltypes_proto3_pointer_SubMessage_init_zero {NULL, NULL, NULL}
++#define alltypes_proto3_pointer_EmptyMessage_init_zero {0}
++#define alltypes_proto3_pointer_Limits_init_zero {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
++#define alltypes_proto3_pointer_AllTypes_init_zero {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, {NULL}, NULL, NULL}
++
++/* Field tags (for use in manual encoding/decoding) */
++#define alltypes_proto3_pointer_SubMessage_substuff1_tag 1
++#define alltypes_proto3_pointer_SubMessage_substuff2_tag 2
++#define alltypes_proto3_pointer_SubMessage_substuff3_tag 3
++#define alltypes_proto3_pointer_Limits_int32_min_tag 1
++#define alltypes_proto3_pointer_Limits_int32_max_tag 2
++#define alltypes_proto3_pointer_Limits_uint32_min_tag 3
++#define alltypes_proto3_pointer_Limits_uint32_max_tag 4
++#define alltypes_proto3_pointer_Limits_int64_min_tag 5
++#define alltypes_proto3_pointer_Limits_int64_max_tag 6
++#define alltypes_proto3_pointer_Limits_uint64_min_tag 7
++#define alltypes_proto3_pointer_Limits_uint64_max_tag 8
++#define alltypes_proto3_pointer_Limits_enum_min_tag 9
++#define alltypes_proto3_pointer_Limits_enum_max_tag 10
++#define alltypes_proto3_pointer_AllTypes_sng_int32_tag 1
++#define alltypes_proto3_pointer_AllTypes_sng_int64_tag 2
++#define alltypes_proto3_pointer_AllTypes_sng_uint32_tag 3
++#define alltypes_proto3_pointer_AllTypes_sng_uint64_tag 4
++#define alltypes_proto3_pointer_AllTypes_sng_sint32_tag 5
++#define alltypes_proto3_pointer_AllTypes_sng_sint64_tag 6
++#define alltypes_proto3_pointer_AllTypes_sng_bool_tag 7
++#define alltypes_proto3_pointer_AllTypes_sng_fixed32_tag 8
++#define alltypes_proto3_pointer_AllTypes_sng_sfixed32_tag 9
++#define alltypes_proto3_pointer_AllTypes_sng_float_tag 10
++#define alltypes_proto3_pointer_AllTypes_sng_fixed64_tag 11
++#define alltypes_proto3_pointer_AllTypes_sng_sfixed64_tag 12
++#define alltypes_proto3_pointer_AllTypes_sng_double_tag 13
++#define alltypes_proto3_pointer_AllTypes_sng_string_tag 14
++#define alltypes_proto3_pointer_AllTypes_sng_bytes_tag 15
++#define alltypes_proto3_pointer_AllTypes_sng_submsg_tag 16
++#define alltypes_proto3_pointer_AllTypes_sng_enum_tag 17
++#define alltypes_proto3_pointer_AllTypes_sng_emptymsg_tag 18
++#define alltypes_proto3_pointer_AllTypes_sng_fbytes_tag 19
++#define alltypes_proto3_pointer_AllTypes_rep_int32_tag 21
++#define alltypes_proto3_pointer_AllTypes_rep_int64_tag 22
++#define alltypes_proto3_pointer_AllTypes_rep_uint32_tag 23
++#define alltypes_proto3_pointer_AllTypes_rep_uint64_tag 24
++#define alltypes_proto3_pointer_AllTypes_rep_sint32_tag 25
++#define alltypes_proto3_pointer_AllTypes_rep_sint64_tag 26
++#define alltypes_proto3_pointer_AllTypes_rep_bool_tag 27
++#define alltypes_proto3_pointer_AllTypes_rep_fixed32_tag 28
++#define alltypes_proto3_pointer_AllTypes_rep_sfixed32_tag 29
++#define alltypes_proto3_pointer_AllTypes_rep_float_tag 30
++#define alltypes_proto3_pointer_AllTypes_rep_fixed64_tag 31
++#define alltypes_proto3_pointer_AllTypes_rep_sfixed64_tag 32
++#define alltypes_proto3_pointer_AllTypes_rep_double_tag 33
++#define alltypes_proto3_pointer_AllTypes_rep_string_tag 34
++#define alltypes_proto3_pointer_AllTypes_rep_bytes_tag 35
++#define alltypes_proto3_pointer_AllTypes_rep_submsg_tag 36
++#define alltypes_proto3_pointer_AllTypes_rep_enum_tag 37
++#define alltypes_proto3_pointer_AllTypes_rep_emptymsg_tag 38
++#define alltypes_proto3_pointer_AllTypes_rep_fbytes_tag 39
++#define alltypes_proto3_pointer_AllTypes_oneof_msg1_tag 60
++#define alltypes_proto3_pointer_AllTypes_oneof_msg2_tag 61
++#define alltypes_proto3_pointer_AllTypes_static_msg_tag 63
++#define alltypes_proto3_pointer_AllTypes_req_limits_tag 98
++#define alltypes_proto3_pointer_AllTypes_end_tag 999
++
++/* Struct field encoding specification for nanopb */
++#define alltypes_proto3_pointer_SubMessage_FIELDLIST(X, a) \
++X(a, POINTER,  SINGULAR, STRING,   substuff1,         1) \
++X(a, POINTER,  SINGULAR, INT32,    substuff2,         2) \
++X(a, POINTER,  SINGULAR, FIXED32,  substuff3,         3)
++#define alltypes_proto3_pointer_SubMessage_CALLBACK NULL
++#define alltypes_proto3_pointer_SubMessage_DEFAULT NULL
++
++#define alltypes_proto3_pointer_EmptyMessage_FIELDLIST(X, a) \
++
++#define alltypes_proto3_pointer_EmptyMessage_CALLBACK NULL
++#define alltypes_proto3_pointer_EmptyMessage_DEFAULT NULL
++
++#define alltypes_proto3_pointer_Limits_FIELDLIST(X, a) \
++X(a, POINTER,  SINGULAR, INT32,    int32_min,         1) \
++X(a, POINTER,  SINGULAR, INT32,    int32_max,         2) \
++X(a, POINTER,  SINGULAR, UINT32,   uint32_min,        3) \
++X(a, POINTER,  SINGULAR, UINT32,   uint32_max,        4) \
++X(a, POINTER,  SINGULAR, INT64,    int64_min,         5) \
++X(a, POINTER,  SINGULAR, INT64,    int64_max,         6) \
++X(a, POINTER,  SINGULAR, UINT64,   uint64_min,        7) \
++X(a, POINTER,  SINGULAR, UINT64,   uint64_max,        8) \
++X(a, POINTER,  SINGULAR, ENUM,     enum_min,          9) \
++X(a, POINTER,  SINGULAR, ENUM,     enum_max,         10)
++#define alltypes_proto3_pointer_Limits_CALLBACK NULL
++#define alltypes_proto3_pointer_Limits_DEFAULT NULL
++
++#define alltypes_proto3_pointer_AllTypes_FIELDLIST(X, a) \
++X(a, POINTER,  SINGULAR, INT32,    sng_int32,         1) \
++X(a, POINTER,  SINGULAR, INT64,    sng_int64,         2) \
++X(a, POINTER,  SINGULAR, UINT32,   sng_uint32,        3) \
++X(a, POINTER,  SINGULAR, UINT64,   sng_uint64,        4) \
++X(a, POINTER,  SINGULAR, SINT32,   sng_sint32,        5) \
++X(a, POINTER,  SINGULAR, SINT64,   sng_sint64,        6) \
++X(a, POINTER,  SINGULAR, BOOL,     sng_bool,          7) \
++X(a, POINTER,  SINGULAR, FIXED32,  sng_fixed32,       8) \
++X(a, POINTER,  SINGULAR, SFIXED32, sng_sfixed32,      9) \
++X(a, POINTER,  SINGULAR, FLOAT,    sng_float,        10) \
++X(a, POINTER,  SINGULAR, FIXED64,  sng_fixed64,      11) \
++X(a, POINTER,  SINGULAR, SFIXED64, sng_sfixed64,     12) \
++X(a, POINTER,  SINGULAR, DOUBLE,   sng_double,       13) \
++X(a, POINTER,  SINGULAR, STRING,   sng_string,       14) \
++X(a, POINTER,  SINGULAR, BYTES,    sng_bytes,        15) \
++X(a, POINTER,  OPTIONAL, MESSAGE,  sng_submsg,       16) \
++X(a, POINTER,  SINGULAR, UENUM,    sng_enum,         17) \
++X(a, POINTER,  OPTIONAL, MESSAGE,  sng_emptymsg,     18) \
++X(a, POINTER,  SINGULAR, FIXED_LENGTH_BYTES, sng_fbytes,       19) \
++X(a, POINTER,  REPEATED, INT32,    rep_int32,        21) \
++X(a, POINTER,  REPEATED, INT64,    rep_int64,        22) \
++X(a, POINTER,  REPEATED, UINT32,   rep_uint32,       23) \
++X(a, POINTER,  REPEATED, UINT64,   rep_uint64,       24) \
++X(a, POINTER,  REPEATED, SINT32,   rep_sint32,       25) \
++X(a, POINTER,  REPEATED, SINT64,   rep_sint64,       26) \
++X(a, POINTER,  REPEATED, BOOL,     rep_bool,         27) \
++X(a, POINTER,  REPEATED, FIXED32,  rep_fixed32,      28) \
++X(a, POINTER,  REPEATED, SFIXED32, rep_sfixed32,     29) \
++X(a, POINTER,  REPEATED, FLOAT,    rep_float,        30) \
++X(a, POINTER,  REPEATED, FIXED64,  rep_fixed64,      31) \
++X(a, POINTER,  REPEATED, SFIXED64, rep_sfixed64,     32) \
++X(a, POINTER,  REPEATED, DOUBLE,   rep_double,       33) \
++X(a, POINTER,  REPEATED, STRING,   rep_string,       34) \
++X(a, POINTER,  REPEATED, BYTES,    rep_bytes,        35) \
++X(a, POINTER,  REPEATED, MESSAGE,  rep_submsg,       36) \
++X(a, POINTER,  REPEATED, UENUM,    rep_enum,         37) \
++X(a, POINTER,  REPEATED, MESSAGE,  rep_emptymsg,     38) \
++X(a, POINTER,  REPEATED, FIXED_LENGTH_BYTES, rep_fbytes,       39) \
++X(a, POINTER,  ONEOF,    MESSAGE,  (oneof,oneof_msg1,oneof.oneof_msg1),  60) \
++X(a, POINTER,  ONEOF,    MESSAGE,  (oneof,oneof_msg2,oneof.oneof_msg2),  61) \
++X(a, STATIC,   ONEOF,    MESSAGE,  (oneof,static_msg,oneof.static_msg),  63) \
++X(a, POINTER,  SINGULAR, MESSAGE,  req_limits,       98) \
++X(a, POINTER,  SINGULAR, INT32,    end,             999)
++#define alltypes_proto3_pointer_AllTypes_CALLBACK NULL
++#define alltypes_proto3_pointer_AllTypes_DEFAULT NULL
++#define alltypes_proto3_pointer_AllTypes_sng_submsg_MSGTYPE alltypes_proto3_pointer_SubMessage
++#define alltypes_proto3_pointer_AllTypes_sng_emptymsg_MSGTYPE alltypes_proto3_pointer_EmptyMessage
++#define alltypes_proto3_pointer_AllTypes_rep_submsg_MSGTYPE alltypes_proto3_pointer_SubMessage
++#define alltypes_proto3_pointer_AllTypes_rep_emptymsg_MSGTYPE alltypes_proto3_pointer_EmptyMessage
++#define alltypes_proto3_pointer_AllTypes_oneof_oneof_msg1_MSGTYPE alltypes_proto3_pointer_SubMessage
++#define alltypes_proto3_pointer_AllTypes_oneof_oneof_msg2_MSGTYPE alltypes_proto3_pointer_EmptyMessage
++#define alltypes_proto3_pointer_AllTypes_oneof_static_msg_MSGTYPE alltypes_proto3_pointer_SubMessage
++#define alltypes_proto3_pointer_AllTypes_req_limits_MSGTYPE alltypes_proto3_pointer_Limits
++
++extern const pb_msgdesc_t alltypes_proto3_pointer_SubMessage_msg;
++extern const pb_msgdesc_t alltypes_proto3_pointer_EmptyMessage_msg;
++extern const pb_msgdesc_t alltypes_proto3_pointer_Limits_msg;
++extern const pb_msgdesc_t alltypes_proto3_pointer_AllTypes_msg;
++
++/* Defines for backwards compatibility with code written before nanopb-0.4.0 */
++#define alltypes_proto3_pointer_SubMessage_fields &alltypes_proto3_pointer_SubMessage_msg
++#define alltypes_proto3_pointer_EmptyMessage_fields &alltypes_proto3_pointer_EmptyMessage_msg
++#define alltypes_proto3_pointer_Limits_fields &alltypes_proto3_pointer_Limits_msg
++#define alltypes_proto3_pointer_AllTypes_fields &alltypes_proto3_pointer_AllTypes_msg
++
++/* Maximum encoded size of messages (where known) */
++/* alltypes_proto3_pointer_SubMessage_size depends on runtime parameters */
++/* alltypes_proto3_pointer_AllTypes_size depends on runtime parameters */
++#define ALLTYPES_PROTO3_POINTER_ALLTYPES_PROTO3_POINTER_PB_H_MAX_SIZE alltypes_proto3_pointer_Limits_size
++#define alltypes_proto3_pointer_EmptyMessage_size 0
++#define alltypes_proto3_pointer_Limits_size      100
++
++#ifdef __cplusplus
++} /* extern "C" */
++#endif
++
++#endif

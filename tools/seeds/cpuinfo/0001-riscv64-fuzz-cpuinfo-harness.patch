@@ -1,0 +1,95 @@
+0001-riscv64-fuzz-cpuinfo-harness.patch
+Fuzz harness.
+
+diff --git a/fuzz_cpuinfo.c b/fuzz_cpuinfo.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..9de200e2b8485d18acadc5c63293102d50bbccb4
+--- /dev/null
++++ b/fuzz_cpuinfo.c
+@@ -0,0 +1,86 @@
++                                                                   
++                                                                                  
++  
++                                                                     
++                                                                            
++                                                                     
++                                                                          
++                                                                           
++  
++                                                                          
++                                                                    
++                                                                            
++                                                                    
++                                                                       
++                                                                  
++  
++                                                                          
++                                                                          
++                                                                            
++                                                                           
++   
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <stdio.h>
++
++typedef bool (*cpuinfo_cpulist_callback)(uint32_t, uint32_t, void*);
++bool cpuinfo_linux_parse_cpulist(const char* filename, cpuinfo_cpulist_callback callback, void* context);
++typedef bool (*cpuinfo_smallfile_callback)(const char*, const char*, const char*, void*);
++bool cpuinfo_linux_parse_small_file(const char* filename, size_t buffer_size, cpuinfo_smallfile_callback, void* context);
++typedef bool (*cpuinfo_line_callback)(const char*, const char*, void*, uint64_t);
++bool cpuinfo_linux_parse_multiline_file(const char* filename, size_t buffer_size, cpuinfo_line_callback, void* context);
++
++                                                                          
++                                                                            
++                                    
++static volatile uint64_t sink;
++
++static bool cpulist_cb(uint32_t list_start, uint32_t list_end, void* context) {
++	(void)context;
++	sink += ((uint64_t)list_end << 32) | list_start;
++	return true;
++}
++
++static bool smallfile_cb(const char* filename, const char* text_start, const char* text_end, void* context) {
++	(void)filename;
++	(void)context;
++	for (const char* p = text_start; p != text_end; p++) {
++		sink = sink * 31 + (uint8_t)*p;
++	}
++	return true;
++}
++
++static bool multiline_cb(const char* line_start, const char* line_end, void* context, uint64_t line_number) {
++	(void)context;
++	sink += line_number;
++	for (const char* p = line_start; p != line_end; p++) {
++		sink = sink * 31 + (uint8_t)*p;
++	}
++	return true;
++}
++
++int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
++	const char* filename = "/tmp/libfuzzer.config";
++
++	FILE* fp = fopen(filename, "wb");
++	if (!fp) {
++		return 0;
++	}
++	if (size != 0 && fwrite(data, size, 1, fp) != 1) {
++		fclose(fp);
++		return 0;
++	}
++	fclose(fp);
++
++	                                                                       
++                                                                            
++	cpuinfo_linux_parse_multiline_file(filename, 2048, multiline_cb, NULL);
++	cpuinfo_linux_parse_small_file(filename, 32, smallfile_cb, NULL);
++	cpuinfo_linux_parse_cpulist(filename, cpulist_cb, NULL);
++
++	                                                                         
++                                                                         
++                                                                    
++	return 0;
++}

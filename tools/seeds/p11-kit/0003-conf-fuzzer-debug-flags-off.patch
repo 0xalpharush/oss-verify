@@ -1,0 +1,31 @@
+0003-conf-fuzzer-debug-flags-off.patch
+Harness output.
+
+diff --git a/fuzz/conf_fuzzer.c b/fuzz/conf_fuzzer.c
+index 3b40581566e9a4042f842c305c577b53b802dee6..af74e641555a1f6ffd2eca2f2705261880c6f96c 100644
+--- a/fuzz/conf_fuzzer.c
++++ b/fuzz/conf_fuzzer.c
+@@ -39,6 +39,7 @@
+ 
+ #include "fuzz/fuzz.h"
+ #include "lexer.h"
++#include "debug.h"
+ 
+ #include <stdlib.h>
+ #include <string.h>
+@@ -51,6 +52,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+     p11_lexer lexer;
+     bool failed;
+ 
++                                                                         
++                                                                        
++                                                                   
++                                                                           
++                                                                            
++                                                                          
++                                                                     
++    p11_debug_current_flags = 0;
++
+     p11_lexer_init(&lexer, "fuzz-input", (const char *)data, size);
+ 
+     while (p11_lexer_next(&lexer, &failed)) {

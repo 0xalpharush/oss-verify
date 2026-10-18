@@ -1,0 +1,35 @@
+0001-update-sh-pinned-openbsd-tree.patch
+Reproducible build.
+
+diff --git a/update.sh b/update.sh
+index 4b2c4ddf85ed4ac5c1defbc82e4b35a5205a027b..f924dd3891f70d481d217841032c0cc13ca5b77c 100755
+--- a/update.sh
++++ b/update.sh
+@@ -18,6 +18,19 @@ set -e
+ 
+ openbsd_branch=`cat OPENBSD_BRANCH`
+ 
++                                                                               
++                                                                                
++                                                                           
++                                                                           
++                                                                          
++            
++if [ "${LIBRESSL_OPENBSD_PINNED:-}" = 1 ]; then
++	echo "assembling from the pinned openbsd tree in ./openbsd (LIBRESSL_OPENBSD_PINNED=1)"
++	if [ ! -d openbsd/src/lib/libcrypto ]; then
++		echo "LIBRESSL_OPENBSD_PINNED=1 but ./openbsd has no src/lib/libcrypto" >&2
++		exit 1
++	fi
++else
+ # pull in latest upstream code
+ echo "pulling upstream openbsd source"
+ if [ ! -d openbsd ]; then
+@@ -46,6 +59,7 @@ else
+   git -C openbsd checkout $openbsd_branch
+   git -C openbsd pull
+ fi
++fi
+ 
+ # setup source paths
+ CWD=`pwd`

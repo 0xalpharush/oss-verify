@@ -1,0 +1,19 @@
+#!/bin/sh
+
+
+
+
+
+
+
+
+D=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+case "${1:-}" in
+  --version) echo 3.13.1 ;;
+  --cflags) echo "-I$D/geos/include" ;;
+  --clibs|--libs) echo "-L$D/geos/lib -lgeos_c" ;;
+  --ldflags) echo "-L$D/geos/lib" ;;
+  --includes) echo "$D/geos/include" ;;
+  --prefix) echo "$D/geos" ;;
+  *) echo "" ;;
+esac

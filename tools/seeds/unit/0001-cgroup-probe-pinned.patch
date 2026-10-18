@@ -1,0 +1,58 @@
+0001-cgroup-probe-pinned.patch
+Reproducible build.
+
+diff --git a/auto/cgroup b/auto/cgroup
+index 2262b2efe7ab8b5648e84cbaff98e27b4c234e0e..ac7487b6d341a3181a63d7d0f2b3beffa3abba24 100644
+--- a/auto/cgroup
++++ b/auto/cgroup
+@@ -1,15 +1,36 @@
+ # Copyright (C) Andrew Clayton
+ # Copyright (C) F5, Inc.
+ 
+-NXT_HAVE_CGROUP=NO
++                                                                            
++ 
++                                                                   
++ 
++                                                                       
++ 
++                                                                           
++                                                                          
++                                                                          
++                                                                             
++                                                                              
++                                                                          
++                                                                           
++                                                                        
++                                                                          
++                                                                        
++                                                                           
++                                                                         
++                                  
++ 
++                                                                        
++                                                                             
++                                                                            
++                                                                       
++                                       
+ 
+-if [ -f "/proc/mounts" ]; then
+-    CGROUP=$(grep cgroup2 /proc/mounts | head -n 1 | cut -d " " -f 2)
++NXT_HAVE_CGROUP=YES
++CGROUP=/sys/fs/cgroup
+ 
+-    if [ "$CGROUP" ]; then
+-        NXT_HAVE_CGROUP=YES
+-
+-        cat << END >> $NXT_AUTO_CONFIG_H
++cat << END >> $NXT_AUTO_CONFIG_H
+ 
+ #ifndef NXT_HAVE_CGROUP
+ #define NXT_HAVE_CGROUP  1
+@@ -17,6 +38,3 @@ if [ -f "/proc/mounts" ]; then
+ #endif
+ 
+ END
+-
+-    fi
+-fi

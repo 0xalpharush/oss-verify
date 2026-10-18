@@ -1,0 +1,13 @@
+#!/bin/sh
+
+
+
+
+
+case "${1:-}" in
+  --version) echo 2.13.8 ;;
+  --cflags) echo "-I/opt/musl-sysroot/usr/include/libxml2" ;;
+  --libs) echo "-L/opt/musl-sysroot/usr/lib -lxml2 -lz -llzma -lm" ;;
+  --prefix) echo "/opt/musl-sysroot/usr" ;;
+  *) echo "" ;;
+esac

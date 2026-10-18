@@ -74,7 +74,7 @@ When the Dockerfile lives in the project's own repository (`dockerfile:` in `pro
 
 Start from [templates/build.sh](../templates/build.sh).
 
-* Build the library statically with `$CC`, `$CXX`, `$CFLAGS` and `$CXXFLAGS`. CMake picks up `$CMAKE_TOOLCHAIN_FILE` by itself. Another build system needs the same things, the cross-compilers, the sysroot and static libraries, said its own way; so far the builder has been tried with CMake builds only ([STATUS.md](../STATUS.md)).
+* Build the library statically with `$CC`, `$CXX`, `$CFLAGS` and `$CXXFLAGS`. CMake picks up `$CMAKE_TOOLCHAIN_FILE` by itself. Another build system needs the same things, the cross-compilers, the sysroot and static libraries, said its own way. A `build.sh` written by hand has so far been tried with CMake only; the builds ported from oss-fuzz-theorems (below) also cover Meson, autotools, Makefile and header-only builds, with that release's recipes ([STATUS.md](../STATUS.md)).
 * Compile each fuzz target, and link it into `$OUT` through `$CC` or `$CXX` with `$LIB_FUZZING_ENGINE`:
 
       $CC $CFLAGS -c fuzz/example_fuzzer.c -o "$WORK/example_fuzzer.o"
@@ -126,7 +126,9 @@ A project seeded from oss-fuzz-theorems 2026.10.0-rc.2 can have its build ported
 * `sources`: where each source tree goes, as the release's source manifest says: a copy of the checkout per release target, any other tree or file pinned by commit or sha256, the release's own files for a target, and its build-only patches. It is the only place a dependency's pin is kept; a Dockerfile never holds one.
 * `build.sh`: for each fuzz target, the release's pin for it (its `build_lib`, `LIB_ARCHIVE` and helpers), run by [release-target.sh](../infra/base-builder/release-target.sh) with the release's recipes ([recipes.sh](../infra/base-builder/recipes.sh)), under `sh -e` as the release ran it.
 
-`release-target.sh` gives each target the layout the release built in: its tree in `/work/ext/<target>/src`, its build directory in `/work/build/lib/<build>/<target>`, the release's files for it in `/work/targets/<target>`, and compiler wrappers that give the compiler the neutral `/src/...` paths a binary records. The internal paths matter as well as the neutral ones: the source locations of UBSan's checks keep the internal path, so in an `asan-ubsan` build a header that both uses `__FILE__` and holds a UBSan check makes one string literal more, which the AddressSanitizer build instruments, than the same build at the neutral path. With that layout, a ported build reproduces the release's binaries; [STATUS.md](../STATUS.md) says for which projects that has been checked.
+`release-target.sh` gives each target the layout the release built in: its tree in `/work/ext/<target>/src`, its build directory in `/work/build/lib/<build>/<target>`, the release's files for it in `/work/targets/<target>`, and compiler wrappers that give the compiler the neutral `/src/...` paths a binary records. The internal paths matter as well as the neutral ones: the source locations of UBSan's checks keep the internal path, so in an `asan-ubsan` build a header that both uses `__FILE__` and holds a UBSan check makes one string literal more, which the AddressSanitizer build instruments, than the same build at the neutral path. With that layout, a ported build reproduces the release's binaries.
+
+`tools/verify_ports.py` ports each project and checks the port with `tools/check --lock`, against every `harness.yaml` of the release for its fuzz targets. [tools/seeds/builds.tsv](../tools/seeds/builds.tsv) holds its result for each project, and [docs/seeded-projects.tsv](seeded-projects.tsv) and [STATUS.md](../STATUS.md) repeat it. A draft keeps its port in `tools/seeds/<name>/` only if every binary is the release's.
 
 ## Patches
 

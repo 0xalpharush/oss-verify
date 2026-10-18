@@ -1,0 +1,41 @@
+0001-fuzzer-cardinality-assertions-abort.patch
+Harness reporting.
+
+diff --git a/fuzz/croaring_fuzzer.c b/fuzz/croaring_fuzzer.c
+index 8f65ac51db6ab0e45be535fa560f050b5add13e3..5b8391d9ca758a6e1ae801fcfd96148b6bedfd3a 100644
+--- a/fuzz/croaring_fuzzer.c
++++ b/fuzz/croaring_fuzzer.c
+@@ -42,7 +42,15 @@ int bitmap32(const char *data, size_t size) {
+             uint32_t new_cardinality = roaring_bitmap_get_cardinality(bitmap);
+             if (cardinality != new_cardinality) {
+                 printf("bug\n");
+-                exit(1);
++                                                                                                           
++                                                                                          
++                                                                                          
++                                                                                         
++                                                       
++                                                                                          
++                                                                                         
++                   
++                abort();
+             }
+         }
+         roaring_bitmap_free(bitmap);
+@@ -71,7 +79,15 @@ int bitmap64(const char *data, size_t size) {
+             uint64_t new_cardinality = roaring64_bitmap_get_cardinality(bitmap);
+             if (cardinality != new_cardinality) {
+                 printf("bug\n");
+-                exit(1);
++                                                                                                           
++                                                                                          
++                                                                                          
++                                                                                         
++                                                       
++                                                                                      
++                                                             
++                   
++                abort();
+             }
+         }
+         roaring64_bitmap_free(bitmap);

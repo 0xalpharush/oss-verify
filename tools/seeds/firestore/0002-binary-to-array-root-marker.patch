@@ -1,0 +1,22 @@
+0002-binary-to-array-root-marker.patch
+Reproducible build.
+
+diff --git a/scripts/binary_to_array.py b/scripts/binary_to_array.py
+index 3101806f9fb04674717dd1f442a7597f3273ba04..1e24b68bf644c13fd53d171418a7f330bdaf9f7a 100755
+--- a/scripts/binary_to_array.py
++++ b/scripts/binary_to_array.py
+@@ -229,7 +229,13 @@ def _get_repo_root():
+   assert os.path.basename(scripts_dir) == 'scripts'
+ 
+   root_dir = os.path.dirname(scripts_dir)
+-  assert os.path.isdir(os.path.join(root_dir, '.github'))
++
++
++
++
++
++
++  assert os.path.isdir(os.path.join(root_dir, 'Firestore'))
+ 
+   return root_dir
+ 

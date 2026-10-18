@@ -1,0 +1,39 @@
+0001-vcs-version-constant.patch
+Reproducible build.
+
+diff --git a/include/meson.build b/include/meson.build
+index e5971840c2b0fb0c583c7e4e3dda36ed3de51078..e68e3102889e1cb8b254d8a342251c9b6c282fdf 100644
+--- a/include/meson.build
++++ b/include/meson.build
+@@ -23,12 +23,27 @@
+ # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+ # Revision file (vcs_version.h) generation
++ 
++                                                                        
++                                     
++                                                                                          
++                                                                        
++                                                                               
++                                                                       
++                                                                             
++                                                                        
++                                                                              
++                                                                             
++                                                                           
++                                                                       
++                                                                                 
+ dav1d_git_dir = join_paths(dav1d_src_root, '.git')
+-rev_target = vcs_tag(command: [
+-        'git', '--git-dir', dav1d_git_dir, 'describe', '--long', '--always'
+-    ],
++oft_vcs_data = configuration_data()
++oft_vcs_data.set('VCS_TAG', '1.5.4-1-g52b9d3d3')
++rev_target = configure_file(
+     input: 'vcs_version.h.in',
+-    output: 'vcs_version.h'
++    output: 'vcs_version.h',
++    configuration: oft_vcs_data
+ )
+ 
+ subdir('dav1d')

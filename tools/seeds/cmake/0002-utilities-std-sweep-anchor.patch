@@ -1,0 +1,16 @@
+0002-utilities-std-sweep-anchor.patch
+Build adaptation.
+
+diff --git a/Utilities/std/cmOFTSweepAnchor.h b/Utilities/std/cmOFTSweepAnchor.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..9b1669ea7a42b6a42b8cecaf7f9c03a79396411b
+--- /dev/null
++++ b/Utilities/std/cmOFTSweepAnchor.h
+@@ -0,0 +1,7 @@
++                                                                           
++                                                                           
++                                                                               
++                                                                            
++                                                                             
++                                                            
++                                                

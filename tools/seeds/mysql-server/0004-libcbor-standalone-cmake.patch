@@ -1,0 +1,27 @@
+0004-libcbor-standalone-cmake.patch
+Build adaptation.
+
+diff --git a/extra/libcbor/libcbor-0.11.0/CMakeLists.txt b/extra/libcbor/libcbor-0.11.0/CMakeLists.txt
+index 6614efc8ad8e52c81e9cf62ec75c9f73e69b8ed7..535372dc1eef09d6c67a925f5162c1bfd19c7e05 100644
+--- a/extra/libcbor/libcbor-0.11.0/CMakeLists.txt
++++ b/extra/libcbor/libcbor-0.11.0/CMakeLists.txt
+@@ -1,6 +1,10 @@
+ #cmake_minimum_required(VERSION 3.0)
+ 
+ project(libcbor VERSION ${CBOR_VERSION} LANGUAGES C)
++                                                                           
++                                                                         
++macro(do_not_install)
++endmacro()
+ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/")
+ include(CTest)
+ include(GNUInstallDirs) # Provides CMAKE_INSTALL_ variables
+@@ -178,7 +182,7 @@ if (WITH_TESTS)
+ endif (WITH_TESTS)
+ 
+ if (WITH_EXAMPLES)
+-    add_subdirectory(examples)
++                                          
+     if(use_lto)
+         set_property(DIRECTORY examples PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+     endif(use_lto)

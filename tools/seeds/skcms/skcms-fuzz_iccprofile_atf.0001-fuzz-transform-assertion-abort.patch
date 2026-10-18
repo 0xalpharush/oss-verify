@@ -1,0 +1,33 @@
+0001-fuzz-transform-assertion-abort.patch
+Harness reporting.
+
+diff --git a/fuzz/fuzz_iccprofile_transform.c b/fuzz/fuzz_iccprofile_transform.c
+index 75555291b4b07d5bd72af7ce7080e8657ef8a005..1be396a9c40f03dd00438f2b655fff7639cc373d 100644
+--- a/fuzz/fuzz_iccprofile_transform.c
++++ b/fuzz/fuzz_iccprofile_transform.c
+@@ -9,6 +9,7 @@
+ // between a known profile and that profile.
+ 
+ #include "../src/skcms_public.h"
++#include <stdlib.h>                                                                
+ 
+ // This is profiles/sRGB_Facebook.icc, copied here (xxd -i ...) so that this
+ // binary does not need any files as input, other than the fuzzed input.
+@@ -71,7 +72,16 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+     if (!skcms_Parse(profiles_sRGB_Facebook_icc, sizeof(profiles_sRGB_Facebook_icc), &srgb)) {
+         // This should never happen, but if it does, we want to make
+         // a big fuss about it (exiting kills libfuzzer, as if it crashed).
+-        exit(1);
++                                                                                                   
++                                                                                  
++                                                                                  
++                                                                                 
++                                               
++                                                                                  
++                                                                                  
++                            
++           
++        abort();
+     }
+ 
+     for (int mode = 0; mode < 2; mode++) {

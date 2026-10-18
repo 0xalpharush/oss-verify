@@ -1,0 +1,26 @@
+                                                                   
+                                                                     
+                                                           
+#ifndef OFT_CUDA_ATOMIC_STUB_
+#define OFT_CUDA_ATOMIC_STUB_
+namespace cuda {
+enum thread_scope {
+  thread_scope_system, thread_scope_device, thread_scope_block, thread_scope_thread
+};
+enum memory_order {
+  memory_order_relaxed = __ATOMIC_RELAXED,
+  memory_order_acquire = __ATOMIC_ACQUIRE,
+  memory_order_release = __ATOMIC_RELEASE,
+  memory_order_acq_rel = __ATOMIC_ACQ_REL,
+  memory_order_seq_cst = __ATOMIC_SEQ_CST
+};
+template <class T, thread_scope S = thread_scope_system>
+struct atomic_ref {
+  T* p_;
+  explicit atomic_ref(T& r) : p_(&r) {}
+  void store(T v, memory_order o = memory_order_seq_cst) const { __atomic_store_n(p_, v, (int)o); }
+  T load(memory_order o = memory_order_seq_cst) const { return __atomic_load_n(p_, (int)o); }
+  T fetch_add(T v, memory_order o = memory_order_seq_cst) const { return __atomic_fetch_add(p_, v, (int)o); }
+};
+}
+#endif

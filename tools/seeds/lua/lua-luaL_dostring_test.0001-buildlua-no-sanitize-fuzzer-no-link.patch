@@ -1,0 +1,15 @@
+0001-buildlua-no-sanitize-fuzzer-no-link.patch
+Build adaptation.
+
+diff --git a/cmake/BuildLua.cmake b/cmake/BuildLua.cmake
+--- a/cmake/BuildLua.cmake
++++ b/cmake/BuildLua.cmake
+@@ -12,8 +12,6 @@ macro(build_lua LUA_VERSION)
+         AppendFlags(CFLAGS -DLUA_USE_APICHECK)
+     endif()
+     if(NOT ENABLE_CBMC_PROOFS)
+-        AppendFlags(CFLAGS -fsanitize=fuzzer-no-link)
+-        AppendFlags(LDFLAGS -fsanitize=fuzzer-no-link)
+     endif()
+     if (OSS_FUZZ)
+         AppendFlags(LDFLAGS ${CFLAGS})

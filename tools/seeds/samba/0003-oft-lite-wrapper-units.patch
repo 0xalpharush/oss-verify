@@ -1,0 +1,57 @@
+0003-oft-lite-wrapper-units.patch
+Build adaptation.
+
+diff --git a/oft_lite/oft_lzxpress.c b/oft_lite/oft_lzxpress.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..20b7d2ed91806ed940b9f68aeb81bde4af068e4e
+--- /dev/null
++++ b/oft_lite/oft_lzxpress.c
+@@ -0,0 +1,30 @@
++                                                                         
++                                                                              
++                                                                          
++                                                                   
++                                                                             
++                   
++#define _LIBREPLACE_REPLACE_H
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <stdbool.h>
++#include <string.h>
++#include <stddef.h>
++#include <sys/types.h>
++#ifndef _PUBLIC_
++#define _PUBLIC_
++#endif
++#ifndef MIN
++#define MIN(a,b) ((a)<(b)?(a):(b))
++#endif
++#ifndef MAX
++#define MAX(a,b) ((a)>(b)?(a):(b))
++#endif
++#ifndef likely
++#define likely(x) (x)
++#endif
++#ifndef unlikely
++#define unlikely(x) (x)
++#endif
++#include "../lib/compression/lzxpress.c"
+diff --git a/oft_lite/oft_tini.c b/oft_lite/oft_tini.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..cab6e64f34ef13620dd04dfd46ffa425f3a2e46f
+--- /dev/null
++++ b/oft_lite/oft_tini.c
+@@ -0,0 +1,4 @@
++                                                                             
++                                                                             
++                                                                    
++#include "../lib/util/tini.c"
+diff --git a/oft_lite/oft_tiniparser.c b/oft_lite/oft_tiniparser.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..5978aee3a1386f696cfe38c9a6b1c3c16c844d94
+--- /dev/null
++++ b/oft_lite/oft_tiniparser.c
+@@ -0,0 +1,2 @@
++                          
++#include "../lib/util/tiniparser.c"

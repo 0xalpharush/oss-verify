@@ -1,0 +1,27 @@
+0002-autogen-skips-present-list-submodule.patch
+Reproducible build.
+
+diff --git a/autogen.sh b/autogen.sh
+index aee0a7cb21fbb5a7135a7644757a3cd6021b3016..9c536bc2ac6df0d6c5a8bb44d1c3782eb2d87a5d 100755
+--- a/autogen.sh
++++ b/autogen.sh
+@@ -27,8 +27,17 @@ else
+   $GTKDOCIZE
+ fi
+ 
+-$GIT submodule init
+-$GIT submodule update
++                                                                             
++                                                                              
++                                                                         
++                                                                              
++                                                                  
++if test -f list/public_suffix_list.dat; then
++  echo "oft: list/public_suffix_list.dat present (vendored); skipping git submodule init/update"
++else
++  $GIT submodule init
++  $GIT submodule update
++fi
+ $AUTORECONF --install --force --symlink
+ 
+ echo

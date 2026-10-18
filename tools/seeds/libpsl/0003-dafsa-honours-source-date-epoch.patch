@@ -1,0 +1,25 @@
+0003-dafsa-honours-source-date-epoch.patch
+Reproducible build.
+
+diff --git a/src/psl-make-dafsa b/src/psl-make-dafsa
+index 4267fe23bb224a7f35f1576411baf57d4a7c0306..68ba7a11a71852b818fc4141eb1a1e80f0cd949b 100755
+--- a/src/psl-make-dafsa
++++ b/src/psl-make-dafsa
+@@ -513,7 +513,16 @@ def sha1_file(name):
+ def to_cxx_plus(data, codecs):
+   """Generates C/C++ code from a word list plus some variable assignments as needed by libpsl"""
+   text = to_cxx(data, codecs)
+-  text += b'static time_t _psl_file_time = %d;\n' % os.stat(psl_input_file).st_mtime
++
++
++
++
++
++
++
++  _sde = os.environ.get('SOURCE_DATE_EPOCH')
++  _psl_file_time = int(_sde) if _sde else int(os.stat(psl_input_file).st_mtime)
++  text += b'static time_t _psl_file_time = %d;\n' % _psl_file_time
+   text += b'static int _psl_nsuffixes = %d;\n' % psl_nsuffixes
+   text += b'static int _psl_nexceptions = %d;\n' % psl_nexceptions
+   text += b'static int _psl_nwildcards = %d;\n' % psl_nwildcards

@@ -1,0 +1,82 @@
+0001-drop-host-arch-ar-testdata.patch
+Build adaptation.
+
+diff --git a/util/ar/testdata/linux/bar.cc.o b/util/ar/testdata/linux/bar.cc.o
+deleted file mode 100644
+index 92e83a9a1108df10391db6c58497cd9bf06cdd2d..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/linux/bar.cc.o and /dev/null differ
+diff --git a/util/ar/testdata/linux/foo.c.o b/util/ar/testdata/linux/foo.c.o
+deleted file mode 100644
+index 6423c1d49bc09ac51932452bb8e306243fc83141..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/linux/foo.c.o and /dev/null differ
+diff --git a/util/ar/testdata/linux/libsample.a b/util/ar/testdata/linux/libsample.a
+deleted file mode 100644
+index cae6ae70c97f94667fb80becb0f420eccfa5d79b..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/linux/libsample.a and /dev/null differ
+diff --git a/util/ar/testdata/mac/bar.cc.o b/util/ar/testdata/mac/bar.cc.o
+deleted file mode 100644
+index 9c60798532a0f424ed427f2820c245e97dc03252..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/mac/bar.cc.o and /dev/null differ
+diff --git a/util/ar/testdata/mac/foo.c.o b/util/ar/testdata/mac/foo.c.o
+deleted file mode 100644
+index 0f96a0a018b82f5ee5e0208921ff90105bfc7487..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/mac/foo.c.o and /dev/null differ
+diff --git a/util/ar/testdata/mac/libsample.a b/util/ar/testdata/mac/libsample.a
+deleted file mode 100644
+index b7d8eb5ce0ff38cd7f9f1c5758ef4904865c4889..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/mac/libsample.a and /dev/null differ
+diff --git a/util/ar/testdata/sample/CMakeLists.txt b/util/ar/testdata/sample/CMakeLists.txt
+deleted file mode 100644
+index 9ea2fe8ee1715f8265a8bc9b4e5135028101ddb3..0000000000000000000000000000000000000000
+--- a/util/ar/testdata/sample/CMakeLists.txt
++++ /dev/null
+@@ -1,3 +0,0 @@
+-cmake_minimum_required(VERSION 3.0)
+-project(Sample)
+-add_library(sample STATIC foo.c bar.cc)
+diff --git a/util/ar/testdata/sample/bar.cc b/util/ar/testdata/sample/bar.cc
+deleted file mode 100644
+index a0ac7e14ab795097ded96826b4615b1fe1627eba..0000000000000000000000000000000000000000
+--- a/util/ar/testdata/sample/bar.cc
++++ /dev/null
+@@ -1,15 +0,0 @@
+-extern "C" {
+-void foo();
+-void bar() {}
+-}
+-
+-namespace bar_namespace {
+-
+-void SomeExternalFunction();
+-
+-void SomeFunction() {
+-  foo();
+-  SomeExternalFunction();
+-}
+-
+-}  // namespace bar_namespace
+diff --git a/util/ar/testdata/sample/foo.c b/util/ar/testdata/sample/foo.c
+deleted file mode 100644
+index fed596cbe2d78fac8669b669135d2fc499f6123d..0000000000000000000000000000000000000000
+--- a/util/ar/testdata/sample/foo.c
++++ /dev/null
+@@ -1,7 +0,0 @@
+-extern void external_symbol(void);
+-extern void bar(void);
+-
+-void foo(void) {
+-  external_symbol();
+-  bar();
+-}
+diff --git a/util/ar/testdata/windows/bar.cc.obj b/util/ar/testdata/windows/bar.cc.obj
+deleted file mode 100644
+index 4a315cdd6bbc2ff2bc3f6379ea2715823dc68977..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/windows/bar.cc.obj and /dev/null differ
+diff --git a/util/ar/testdata/windows/foo.c.obj b/util/ar/testdata/windows/foo.c.obj
+deleted file mode 100644
+index 9b4aad7a4294ae0b4a2e242c96c55a574441869e..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/windows/foo.c.obj and /dev/null differ
+diff --git a/util/ar/testdata/windows/sample.lib b/util/ar/testdata/windows/sample.lib
+deleted file mode 100644
+index efeebb24e5427b0bccc5d1ad7755d3dd964f15ea..0000000000000000000000000000000000000000
+Binary files a/util/ar/testdata/windows/sample.lib and /dev/null differ

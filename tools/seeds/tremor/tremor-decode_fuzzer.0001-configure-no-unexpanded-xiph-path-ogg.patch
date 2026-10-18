@@ -1,0 +1,22 @@
+0001-configure-no-unexpanded-xiph-path-ogg.patch
+Build adaptation.
+
+diff --git a/configure.ac b/configure.ac
+index 6c4b763598b2226bf0e6764259ad71b214e43b3c..8c3f64456cdad409adc3383845a93cf4df757a02 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -120,7 +120,13 @@ fi
+ if test "x$HAVE_OGG" = "xno"
+ then
+   dnl fall back to the old school test
+-  XIPH_PATH_OGG(, AC_MSG_ERROR(must have Ogg installed!))
++  dnl
++  dnl
++  dnl
++  dnl
++  dnl
++  dnl
++  AC_MSG_ERROR([must have Ogg installed! (pkg-config could not find ogg)])
+   libs_save=$LIBS
+   LIBS="$OGG_LIBS"
+   AC_CHECK_FUNC(oggpack_writealign, , AC_MSG_ERROR(Ogg >= 1.0 required !))

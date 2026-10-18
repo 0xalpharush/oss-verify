@@ -1,0 +1,3 @@
+0001-drop-windows-only-cmakelists.patch
+0002-configure-defaults-for-the-builder-image.patch
+0003-openvpn-sources-as-a-library.patch

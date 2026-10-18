@@ -1,0 +1,59 @@
+0002-meson-only-the-harness-dep-closure.patch
+Build adaptation.
+
+diff --git a/lib/meson.build b/lib/meson.build
+index 9e72dd15dee8cad4fa38c6bc12acb27eeb8b4ac3..25d874dadb3520fa19b17c08d82f8895ce79efbd 100644
+--- a/lib/meson.build
++++ b/lib/meson.build
+@@ -18,20 +18,27 @@
+ libinc = include_directories('.')
+ 
+ subdir('core')
+-subdir('third-party')
++                                                                            
++                       
+ subdir('proto')
+-subdir('dbi')
++                                                                            
++               
+ subdir('crypt')
+ subdir('ipfw')
+-subdir('tun')
++                                                                            
++               
+ subdir('app')
+-subdir('metrics')
+-subdir('sctp')
+-subdir('diameter')
++                                                                            
++                   
++                                                                            
++                
++                                                                            
++                    
+ subdir('asn1c')
+ subdir('ngap')
+ subdir('s1ap')
+ subdir('nas')
+ subdir('gtp')
+ subdir('pfcp')
+-subdir('sbi')
++                                                                            
++               
+diff --git a/meson.build b/meson.build
+index a88a0cd1a49643aceca2003faf4ea07bfc151303..3c68381428f08a5f88a0ac872bb8370e7df08b30 100644
+--- a/meson.build
++++ b/meson.build
+@@ -123,8 +123,10 @@ add_project_arguments(
+ 
+ subdir('configs')
+ subdir('lib')
+-subdir('src')
+-subdir('misc')
++                                                                                    
++               
++                                                                                    
++                
+ # Don't build the tests unless we can run them (either natively or in an exe wrapper)
+ build_tests = not meson.is_cross_build() or (meson.is_cross_build() and meson.has_exe_wrapper())
+ if build_tests

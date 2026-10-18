@@ -1,0 +1,35 @@
+0001-fuzz-harness-standard-includes.patch
+Build adaptation.
+
+--- a/lib/fuzzing/fuzz_tiniparser.c
++++ b/lib/fuzzing/fuzz_tiniparser.c
+@@ -16,7 +16,11 @@
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
+-#include "includes.h"
++                                                                          
++                                                                  
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdbool.h>                                  
+ #include "fuzzing.h"
+ #include "lib/util/tiniparser.h"
+ 
+--- a/lib/fuzzing/fuzz_lzxpress.c
++++ b/lib/fuzzing/fuzz_lzxpress.c
+@@ -16,8 +16,12 @@
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
+-#include "includes.h"
+-#include "fuzzing/fuzzing.h"
++                                                                          
++                                                                  
++#include <stdint.h>
++#include <stddef.h>
++#include <sys/types.h>                                      
++#include "fuzzing.h"
+ #include "lzxpress.h"
+ 
+ int LLVMFuzzerInitialize(int *argc, char ***argv)
