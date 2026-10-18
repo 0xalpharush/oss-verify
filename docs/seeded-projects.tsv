@@ -848,7 +848,7 @@ ntopng	no	-	-	-	no harness to seed: tokener_parse_ex_fuzzer (the release's patch
 ntp	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 ntpsec	yes	FuzzClient	reproduces	all binaries match the release's	FuzzClient: the harness is in OSS-Fuzz's repository, not the project's
 num-bigint	no	-	-	-	the release did not build it (status language-pending: rust)
-numactl	yes	fuzz_parse_str	not-ported	the port breaks the enrollment rules: 0001-autoreconf-output-for-the-tracked-aux-dir.patch is larger than 256 KiB (or not UTF-8 text)	fuzz_parse_str: the release applied 2 patch(es) to the library's tree (build adaptation), none to its own source; fuzz_parse_str: the release modified this harness
+numactl	yes	fuzz_parse_str	reproduces	all binaries match the release's	fuzz_parse_str: the release applied 2 patch(es) to the library's tree (build adaptation), none to its own source; fuzz_parse_str: the release modified this harness
 numexpr	no	-	-	-	the release did not build it (status language-pending: python)
 numpy	no	-	-	-	the release did not build it (status language-pending: python)
 oak	no	-	-	-	the release did not build it (status language-pending: rust)

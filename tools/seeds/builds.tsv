@@ -197,7 +197,7 @@ njs	reproduces	all binaries match the release's
 nokogiri	reproduces	all binaries match the release's
 nsmd	reproduces	all binaries match the release's
 ntpsec	reproduces	all binaries match the release's
-numactl	not-ported	the port breaks the enrollment rules: 0001-autoreconf-output-for-the-tracked-aux-dir.patch is larger than 256 KiB (or not UTF-8 text)
+numactl	reproduces	all binaries match the release's
 oatpp	reproduces	all binaries match the release's
 ocudu	reproduces	all binaries match the release's
 open5gs	reproduces	all binaries match the release's

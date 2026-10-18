@@ -1,0 +1,20 @@
+0002-fuzz-parse-str-declare-v2-symbol.patch
+Build adaptation.
+
+diff --git a/fuzz/fuzz_parse_str.c b/fuzz/fuzz_parse_str.c
+index 387655a4bd76b19646b7120c925a5d6eefed730d..9b2805a46a8b37a2e2bbae346eddc85aac5585f0 100644
+--- a/fuzz/fuzz_parse_str.c
++++ b/fuzz/fuzz_parse_str.c
+@@ -2,6 +2,12 @@
+ #include <stdlib.h>
+ #include "numa.h"
+ 
++                                                                   
++                                                                        
++                                                                       
++                                             
++extern int numa_node_to_cpus_v2(int node, struct bitmask *buffer);
++
+ 
+ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+     struct bitmask *mask = NULL;
