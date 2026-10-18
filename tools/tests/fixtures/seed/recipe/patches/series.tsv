@@ -1,0 +1,4 @@
+# the patches of each library, in the order they are applied
+series	order	patch	class	sha256	targets
+example.org/patched/4444444444444444444444444444444444444444	1	0001-lib-edit.patch	Portability.	-	patched-patched_fuzzer
+example.org/stamped/5555555555555555555555555555555555555555	1	0001-version.patch	Reproducible build.	-	stamped-stamped_fuzzer,stamped-stamped_two

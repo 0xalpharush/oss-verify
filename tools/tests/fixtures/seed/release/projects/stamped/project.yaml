@@ -1,0 +1,16 @@
+schema: oss-fuzz-theorems/project/1
+project: stamped
+homepage: https://example.org/stamped
+language: c
+status: available
+library:
+  name: stamped
+  repository: https://example.org/stamped.git
+  commit: 5555555555555555555555555555555555555555
+harnesses:
+- name: stamped_fuzzer
+  status: included
+  origin: upstream
+- name: stamped_two
+  status: included
+  origin: upstream

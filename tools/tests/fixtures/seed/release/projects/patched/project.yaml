@@ -1,0 +1,13 @@
+schema: oss-fuzz-theorems/project/1
+project: patched
+homepage: https://example.org/patched
+language: c++
+status: available
+library:
+  name: patched
+  repository: https://example.org/patched.git
+  commit: 4444444444444444444444444444444444444444
+harnesses:
+- name: patched_fuzzer
+  status: included
+  origin: upstream

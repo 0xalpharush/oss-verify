@@ -1,0 +1,33 @@
+schema: oss-fuzz-theorems/harness/1
+project: cee
+harness: cee_fuzzer
+origin: upstream
+source:
+  files:
+  - source/cee_fuzzer.c
+  from:
+    path: fuzz/cee_fuzzer.c
+  modified: false
+modifications:
+- A small driver reads the input file.
+builds:
+  plain:
+    file: cee_fuzzer.plain
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  ubsan:
+    file: cee_fuzzer.ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan:
+    file: cee_fuzzer.asan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan-ubsan:
+    file: cee_fuzzer.asan-ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc

@@ -1,0 +1,34 @@
+schema: oss-fuzz-theorems/harness/1
+project: patched
+harness: patched_fuzzer
+origin: upstream
+source:
+  files:
+  - source/patched_fuzzer.c
+  from:
+    path: fuzz/patched_fuzzer.c
+  modified: false
+modifications:
+- Linked against patched at commit 44444444 with 1 patch to the library (listed on the project page).
+- A small driver reads the input file.
+builds:
+  plain:
+    file: patched_fuzzer.plain
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  ubsan:
+    file: patched_fuzzer.ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan:
+    file: patched_fuzzer.asan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan-ubsan:
+    file: patched_fuzzer.asan-ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc

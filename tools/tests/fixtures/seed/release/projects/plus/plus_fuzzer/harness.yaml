@@ -1,0 +1,41 @@
+schema: oss-fuzz-theorems/harness/1
+project: plus
+harness: plus_fuzzer
+origin: oss-fuzz
+source:
+  files:
+  - source/plus_fuzzer.c
+  from:
+    path: projects/plus/plus_fuzzer.c
+  modified: false
+modifications:
+- A small driver reads the input file.
+builds:
+  plain:
+    file: plus_fuzzer.plain
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+    - name: libc++.a
+      kind: cxx-runtime
+  ubsan:
+    file: plus_fuzzer.ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+    - name: libc++.a
+      kind: cxx-runtime
+  asan:
+    file: plus_fuzzer.asan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+    - name: libc++.a
+      kind: cxx-runtime
+  asan-ubsan:
+    file: plus_fuzzer.asan-ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+    - name: libc++.a
+      kind: cxx-runtime

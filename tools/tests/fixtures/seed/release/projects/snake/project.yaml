@@ -1,0 +1,6 @@
+schema: oss-fuzz-theorems/project/1
+project: snake
+homepage: https://example.org/snake
+language: python
+status: language-pending
+reason: python

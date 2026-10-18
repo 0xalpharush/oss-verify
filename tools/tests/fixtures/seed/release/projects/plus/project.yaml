@@ -1,0 +1,12 @@
+schema: oss-fuzz-theorems/project/1
+project: plus
+homepage: https://example.org/plus
+language: c++
+status: available
+library:
+  name: plus
+  repository: https://example.org/plus.git
+  commit: 2222222222222222222222222222222222222222
+harnesses:
+- name: plus_fuzzer
+  status: included

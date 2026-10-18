@@ -1,0 +1,33 @@
+schema: oss-fuzz-theorems/harness/1
+project: odd
+harness: 1.0
+origin: upstream
+source:
+  files:
+  - source/one.cc
+  from:
+    path: fuzz/one.cc
+  modified: false
+modifications:
+- A small driver reads the input file.
+builds:
+  plain:
+    file: 1.0.plain
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  ubsan:
+    file: 1.0.ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan:
+    file: 1.0.asan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan-ubsan:
+    file: 1.0.asan-ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc

@@ -1,0 +1,30 @@
+schema: oss-fuzz-theorems/harness/1
+project: ours
+harness: ours_driver
+origin: this-repository
+source:
+  files:
+  modified: false
+modifications:
+- A small driver reads the input file.
+builds:
+  plain:
+    file: ours_driver.plain
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  ubsan:
+    file: ours_driver.ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan:
+    file: ours_driver.asan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  asan-ubsan:
+    file: ours_driver.asan-ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc

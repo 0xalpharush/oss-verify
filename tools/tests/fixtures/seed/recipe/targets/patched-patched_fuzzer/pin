@@ -1,0 +1,4 @@
+build_lib() {
+  oft_build_cmake
+  oft_build_harness "fuzz/patched_fuzzer.c"
+}

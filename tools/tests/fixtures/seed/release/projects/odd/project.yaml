@@ -1,0 +1,12 @@
+schema: oss-fuzz-theorems/project/1
+project: odd
+language: c++
+status: available
+library:
+  name: odd
+  repository: https://example.org/odd.git
+  commit: 6666666666666666666666666666666666666666
+harnesses:
+- name: 1.0
+  status: included
+  origin: upstream

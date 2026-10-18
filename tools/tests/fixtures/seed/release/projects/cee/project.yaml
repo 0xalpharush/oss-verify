@@ -1,0 +1,17 @@
+schema: oss-fuzz-theorems/project/1
+project: cee
+homepage: https://example.org/cee
+language: c++
+status: available
+library:
+  name: cee
+  repository: https://example.org/cee.git
+  commit: 1111111111111111111111111111111111111111
+  version: '1.0'
+harnesses:
+- name: api-driver
+  status: not-included
+  origin: this-repository
+- name: cee_fuzzer
+  status: included
+  origin: upstream

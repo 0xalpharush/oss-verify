@@ -1,0 +1,24 @@
+schema: oss-fuzz-theorems/harness/1
+project: stamped
+harness: stamped_two
+origin: upstream
+source:
+  files:
+  - source/stamped_two.c
+  from:
+    path: fuzz/stamped_two.c
+  modified: false
+modifications:
+- Linked against stamped at commit 55555555 with 1 patch to the library (listed on the project page).
+- A small driver reads the input file.
+builds:
+  plain:
+    file: stamped_two.plain
+    uninstrumented:
+    - name: crt1.o
+      kind: libc
+  ubsan:
+    file: stamped_two.ubsan
+    uninstrumented:
+    - name: crt1.o
+      kind: libc

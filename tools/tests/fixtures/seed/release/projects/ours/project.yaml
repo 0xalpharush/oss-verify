@@ -1,0 +1,12 @@
+schema: oss-fuzz-theorems/project/1
+project: ours
+homepage: https://example.org/ours
+language: c++
+status: available
+library:
+  name: ours
+  repository: https://example.org/ours.git
+  commit: 3333333333333333333333333333333333333333
+harnesses:
+- name: ours_driver
+  status: included
