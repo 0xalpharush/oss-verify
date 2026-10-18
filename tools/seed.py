@@ -31,9 +31,12 @@ Every file is checked with tools/validate.py before it is written.
 
 --branch makes draft-generic-oss-fuzz-<name> from the current main: main's tree plus projects/<name>/ (its project.yaml,
 and the build files in tools/seeds/<name>/ if there are any; those are kept there only once tools/check has built
-them), with README.md's projects table regenerated, as one commit whose parent is main. It uses git plumbing and leaves
-the working tree and the index alone; running it again replaces the branch. --trailer adds a line to the end of the
-commit message.
+them and reproduced the release's binaries), with README.md's projects table regenerated, as one commit whose parent
+is main. The commit message says how the project builds, from tools/seeds/builds.tsv (what tools/verify_ports.py found
+when it ported the release's build and checked it). It uses git plumbing and leaves the working tree and the index
+alone; running it again replaces the branch. --trailer adds a line to the end of the commit message.
+
+--report writes one row per project of the release, with tools/seeds/builds.tsv's result for each seedable one.
 
 Exit codes: 0 if everything asked for was done (or, with --check, every seeded project is up to date); 1 otherwise.
 """
@@ -46,6 +49,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 
 import yaml
 
@@ -55,6 +59,7 @@ import validate
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SEEDS = ROOT / "tools" / "seeds"
+BUILDS = SEEDS / "builds.tsv"
 RELEASE = "2026.10.0-rc.2"
 BRANCH = "draft-generic-oss-fuzz-{name}"
 HEADER = (
@@ -81,6 +86,14 @@ BUILD_NAMES = {
 BUILD_SUFFIXES = (".cmake", ".m4", ".am", ".ac", ".mk", ".py", ".sh", ".gn", ".gni", ".bzl", ".bazel")
 BUILD_DIRECTORIES = {"build-aux", "m4", "cmake", "auto"}
 VERSION_FILE = re.compile(r"[A-Z0-9_]*VERSION")
+# Libraries the release names by a URL that serves no git repository over https (it fetched them over git://), and the
+# https repository that serves the commit it built. A seeded project's repo must be one tools/check can fetch.
+REPOSITORIES = {
+    "https://thekelleys.org.uk/dnsmasq": "https://thekelleys.org.uk/git/dnsmasq",
+    "https://git.ghostscript.com/ghostpdl": "https://github.com/ArtifexSoftware/ghostpdl",
+    "https://git.ghostscript.com/jbig2dec": "https://github.com/ArtifexSoftware/jbig2dec",
+    "https://people.freedesktop.org/~dvdhrm/libtsm": "https://github.com/Aetf/libtsm",
+}
 # The release's classes of patch. Version stamps and generated constants are build-only by what they are; a patch
 # of any other class is build-only only if every file it edits is a build file or a harness.
 VERSION_STAMPS = "Reproducible build."
@@ -111,6 +124,7 @@ class Seed:
     kind: str = ""  # the reason, in a few words, for the report's counts
     notes: list = dataclasses.field(default_factory=list)
     repo: str = ""
+    release_repo: str = ""  # the repository as the release names it, which its patches are filed under
     commit: str = ""
     version: str = ""
     homepage: str = ""
@@ -261,6 +275,10 @@ def assess(name, checkout, recipe):
     if not validate.FULL_COMMIT.fullmatch(seed.commit):
         seed.reason, seed.kind = "the release records no full commit for its library", "no full commit"
         return seed
+    seed.release_repo, seed.repo = seed.repo, REPOSITORIES.get(seed.repo, seed.repo)
+    if seed.repo != seed.release_repo:
+        seed.notes.append(f"repo: the release names {seed.release_repo}, which serves no git repository over https; "
+                          f"{seed.repo} serves the commit it built")
     homepage = project.get("homepage")
     if isinstance(homepage, str) and validate.is_https_url(homepage):
         seed.homepage = homepage
@@ -268,7 +286,7 @@ def assess(name, checkout, recipe):
         seed.notes.append("homepage is not an https URL: left out")
 
     patches, recipe_targets = recipe if recipe else ({}, {})
-    own = patches.get(series_of(seed.repo, seed.commit), [])
+    own = patches.get(series_of(seed.release_repo, seed.commit), [])
     included = [entry for entry in project.get("harnesses") or [] if entry.get("status") == "included"]
     kept, cxx, all_c, sanitizers, left_out = [], False, True, None, []
     for entry in included:
@@ -450,11 +468,44 @@ def seed_files(name, seeds=SEEDS):
     return files
 
 
-def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS):
+def read_builds(path=BUILDS):
+    """What tools/verify_ports.py found for each project it ported and checked: {name: (result, detail)}."""
+    builds = {}
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line and not line.startswith(("#", "project\t")):
+                name, result, detail = (line.split("\t") + ["", ""])[:3]
+                builds[name] = (result, detail)
+    return builds
+
+
+def build_status(name, builds, seeds=SEEDS):
+    """What a draft's commit message says of its build files."""
+    result, detail = builds.get(name, ("", ""))
+    if seed_files(name, seeds):
+        if result != "reproduces":
+            raise SeedError(f"tools/seeds/{name}/ has build files, but tools/seeds/builds.tsv does not say they "
+                            "reproduce the release's binaries")
+        return ("Build files: tools/check builds them and reproduces the release's binaries of these fuzz targets "
+                "byte for byte.")
+    if result == "reproduces":
+        raise SeedError(f"{name}: its port reproduces the release's binaries, but tools/seeds/{name}/ has no build files")
+    why = {
+        "differs": "the build ported from the release's builds, but not every binary is the release's",
+        "fails": "the build ported from the release's fails",
+        "not-ported": "tools/port.py cannot port the release's build",
+    }.get(result)
+    if why is None:
+        return "No build files yet: the release's build has not been ported and checked."
+    return f"No build files yet: {why} ({detail})." if detail and detail != "-" else f"No build files yet: {why}."
+
+
+def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS, builds=None):
     """(Re)create the draft branch of one project with git plumbing. Return (branch, commit)."""
     main = git("rev-parse", "--verify", "refs/heads/main", root=root).strip()
     if git("ls-tree", main, "--", f"projects/{name}", root=root).strip():
         raise SeedError(f"projects/{name} is on main already: a draft is for a project main does not have")
+    status = build_status(name, read_builds() if builds is None else builds, seeds)
     files = {"project.yaml": (text.encode(), "100644"), **seed_files(name, seeds)}
     with tempfile.TemporaryDirectory(prefix="seed-branch.") as scratch:
         scratch = pathlib.Path(scratch)
@@ -492,7 +543,7 @@ def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS):
         blob = git("hash-object", "-w", "--stdin", root=root, data=readme.encode()).decode().strip()
         git("update-index", "--add", "--cacheinfo", f"100644,{blob},README.md", root=root, env=env)
         tree = git("write-tree", root=root, env=env).strip()
-    message = f"Draft: seed projects/{name} from oss-fuzz-theorems {RELEASE}\n"
+    message = f"Draft: seed projects/{name} from oss-fuzz-theorems {RELEASE}\n\n{textwrap.fill(status, 72)}\n"
     if trailers:
         message += "\n" + "\n".join(trailers) + "\n"
     commit = git("commit-tree", tree, "-p", main, "-F", "-", root=root, data=message).strip()
@@ -540,19 +591,24 @@ def check(checkout, recipe, offline, projects=validate.PROJECTS):
     return differing
 
 
-def report(checkout, recipe, path):
-    """Write the TSV of every project of the release: whether it can be seeded, its fuzz targets, and why."""
-    rows = ["# generated by tools/seed.py from oss-fuzz-theorems 2026.10.0-rc.2; do not edit",
-            "project\tseedable\tfuzz_targets\treason or notes"]
+def report(checkout, recipe, path, builds=None):
+    """Write the TSV of every project of the release: whether it can be seeded, its fuzz targets, how its build ported
+    from the release's fares (`builds`, as read_builds() reads them), and why."""
+    builds = read_builds() if builds is None else builds
+    rows = ["# generated by tools/seed.py from oss-fuzz-theorems 2026.10.0-rc.2 and tools/seeds/builds.tsv; do not edit",
+            "project\tseedable\tfuzz_targets\tbuild\tbuild notes\treason or notes"]
     counts = {}
     for project_file in sorted((checkout / "projects").glob("*/project.yaml")):
         seed = assess(project_file.parent.name, checkout, recipe)
         if seed.reason:
-            rows.append(f"{seed.name}\tno\t-\t{seed.reason}")
+            rows.append(f"{seed.name}\tno\t-\t-\t-\t{seed.reason}")
             key = seed.kind or seed.reason
         else:
-            rows.append(f"{seed.name}\tyes\t{','.join(seed.targets)}\t{'; '.join(seed.notes) or '-'}")
+            result, detail = builds.get(seed.name, ("not checked", "-"))
+            rows.append(f"{seed.name}\tyes\t{','.join(seed.targets)}\t{result}\t{detail or '-'}\t"
+                        f"{'; '.join(seed.notes) or '-'}")
             key = "seedable"
+            counts[f"seedable, build {result}"] = counts.get(f"seedable, build {result}", 0) + 1
         counts[key] = counts.get(key, 0) + 1
     pathlib.Path(path).write_text("\n".join(row.replace("\n", " ") for row in rows) + "\n", encoding="utf-8")
     return counts
