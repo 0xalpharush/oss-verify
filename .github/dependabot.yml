@@ -1,0 +1,9 @@
+# Adapted from OSS Scanner's .github/dependabot.yml (https://github.com/anthropics/oss-scanner), Copyright 2026
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: the comment.
+# Keeps the pinned GitHub Actions of the workflows up to date. There are no other package manifests in this repository.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

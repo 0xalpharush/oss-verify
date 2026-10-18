@@ -1,0 +1,43 @@
+# Adapted from OSS Scanner's .github/workflows/terms.yaml (https://github.com/anthropics/oss-scanner), Copyright 2026
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: the OSS Verifier terms, and the repository's
+# maintainers recognised by their association with it rather than by a list of logins.
+name: "Terms"
+# An enrollment pull request must accept the OSS Verifier terms: the box in the pull request template, ticked in the
+# description. This check fails until it is, and runs again whenever the description is edited.
+#
+# pull_request_target, not pull_request: with pull_request the workflow file is taken from the pull request itself, so
+# a contributor could edit this check away. This job reads only the event's description, never the pull request's
+# code, and gets no token at all. The description reaches the script through an environment variable, never by
+# ${{ }} substitution into the script, so its text cannot become shell.
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  terms-accepted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: The description accepts the OSS Verifier terms
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          ASSOCIATION: ${{ github.event.pull_request.author_association }}
+        run: |
+          # Bots, and the repository's own maintainers (as GitHub relates them to it), do not enroll through this form.
+          case "$AUTHOR" in
+            dependabot\[bot\]|github-actions\[bot\])
+              echo "Opened by $AUTHOR, a bot: no terms box needed."; exit 0 ;;
+          esac
+          case "$ASSOCIATION" in
+            OWNER|MEMBER|COLLABORATOR)
+              echo "Opened by a maintainer of this repository ($ASSOCIATION): no terms box needed."; exit 0 ;;
+          esac
+          if printf '%s\n' "$BODY" | grep -qiE '^[[:space:]]*[-*][[:space:]]+\[[xX]\][[:space:]]+I accept the \[OSS Verifier terms\]\(https://theorem\.dev/oss-verifier/terms/?\)'; then
+            echo "The OSS Verifier terms are accepted in the description."
+          else
+            echo "::error::Tick 'I accept the OSS Verifier terms' in the pull request description. Editing the description runs this check again."
+            exit 1
+          fi

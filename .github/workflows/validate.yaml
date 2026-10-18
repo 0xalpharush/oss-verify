@@ -1,0 +1,177 @@
+# Adapted from OSS Scanner's .github/workflows/build.yaml (https://github.com/anthropics/oss-scanner), Copyright 2026
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: a new workflow that runs tools/validate.py on the
+# projects/<name>/ of an enrollment pull request, taken from it as build.yaml takes it, and this repository's own
+# tests on its own branches.
+name: "Validate"
+# Two jobs:
+#   enrollment  checks the projects/<name>/ an enrollment pull request adds or changes against the enrollment rules,
+#               with the base branch's tools/validate.py. As in build.yaml: pull_request_target, so the pull request
+#               cannot edit this workflow or the validator; the checkout is the base branch; only the files directly
+#               inside one projects/<name>/ are taken from the pull request, as regular files written from git's
+#               object store, and they are read as data, never run.
+#   repository  runs this repository's tests, checks every project and checks that README.md's generated table is up
+#               to date, on main and on pull requests from branches of this repository. It runs that branch's code,
+#               so it never runs for a pull request from a fork.
+#
+# Neither job gets a secret, a cache, an artifact or a write permission. Never add one.
+#
+# To validate a pull request's project by number, or this branch with no number:
+#   gh workflow run validate.yaml -f pr=123
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    paths: ["projects/**"]
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Number of the pull request whose project to validate (empty: run this branch's tests)"
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: validate-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.pr || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  enrollment:
+    if: github.event_name == 'pull_request_target' || (github.event_name == 'workflow_dispatch' && inputs.pr != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
+        with:
+          persist-credentials: false
+
+      # The same step as in build.yaml.
+      - name: Take projects/<name>/ from the pull request, and nothing else
+        id: project
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C  # a-z below is ASCII only
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          [[ $PR =~ ^[0-9]+$ ]] || fail "Not a pull request number."
+          pull=$(gh api "repos/$REPO/pulls/$PR")
+          sha=$(jq -r .head.sha <<< "$pull")
+          [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Could not read the pull request's head commit."
+          # Only one page of changed files is read below.
+          [ "$(jq -r .changed_files <<< "$pull")" -le 100 ] || fail "This pull request changes more than 100 files."
+
+          # Every changed path, a renamed file under both names, must be directly inside one projects/<name>/.
+          gh api "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/paths"
+          name="" outside=0
+          while IFS= read -r path; do
+            if [[ $path =~ ^projects/([^/]+)/[^/]+$ ]]; then
+              [[ -z $name || $name == "${BASH_REMATCH[1]}" ]] || fail "This pull request changes more than one project. One project per pull request."
+              name=${BASH_REMATCH[1]}
+              continue
+            fi
+            outside=1
+            # Print only plain paths: the runner could read any other as a workflow command.
+            if [[ $path =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              echo "outside projects/<name>/: $path"
+            else
+              echo "outside projects/<name>/: (a path with unusual characters)"
+            fi
+          done < "$RUNNER_TEMP/paths"
+
+          if [ -z "$name" ]; then
+            echo "This pull request changes no project: nothing to validate."
+            exit 0
+          fi
+          # Same rule as NAME in tools/validate.py.
+          [[ $name =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || fail "The directory name under projects/ must be a-z 0-9 . _ - (starting with a letter or digit, at most 63)."
+          [ "$outside" = 0 ] || fail "This pull request changes files outside projects/$name/ (listed above). An enrollment changes nothing else."
+
+          # Fetch the pull request's commit. Nothing is checked out.
+          git fetch --quiet --no-tags --depth=1 origin "$sha"
+          git ls-tree -r -z "$sha" -- "projects/$name/" > "$RUNNER_TEMP/tree"
+          if [ ! -s "$RUNNER_TEMP/tree" ]; then
+            echo "This pull request removes projects/$name/: nothing to validate."
+            exit 0
+          fi
+
+          # Replace projects/<name>/ with the pull request's files.
+          rm -rf "projects/$name"
+          mkdir "projects/$name"
+          while IFS= read -r -d '' entry; do
+            read -r mode _ blob <<< "${entry%%$'\t'*}"
+            file=${entry#*$'\t'}
+            file=${file#"projects/$name/"}
+            # 100644 and 100755 are regular files. A file in a subdirectory has a / in its name. Same rule as
+            # FILE_NAME in tools/validate.py.
+            if [[ $mode != 100644 && $mode != 100755 ]] || ! [[ $file =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
+              fail "projects/$name/ may hold only regular files with plain names: no directories, symbolic links or submodules."
+            fi
+            git cat-file blob "$blob" > "projects/$name/$file"
+          done < "$RUNNER_TEMP/tree"
+
+          echo "Validating projects/$name/ as it is at $sha:"
+          ls -l "projects/$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check projects/<name>/ with tools/validate.py
+        if: steps.project.outputs.name != ''
+        env:
+          NAME: ${{ steps.project.outputs.name }}
+          SHA: ${{ steps.project.outputs.sha }}
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+          # Until the token is printed again, the runner reads none of the validator's output as a workflow command.
+          resume="$(openssl rand -hex 16)"
+          echo "::stop-commands::$resume"
+          code=0
+          python3 tools/validate.py "projects/$NAME" < /dev/null || code=$?
+          echo "::$resume::"
+
+          case $code in
+            0) result="passes tools/validate.py" ;;
+            1) result="breaks the enrollment rules (the log lists them)" ;;
+            *) result="could not be checked: tools/validate.py exited $code" ;;
+          esac
+          echo "\`projects/$NAME/\` at \`${SHA:0:7}\` $result." >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" = 0 ] || echo "::error::projects/$NAME/ $result."
+          exit "$code"
+
+  repository:
+    if: >-
+      github.event_name == 'push'
+      || (github.event_name == 'workflow_dispatch' && inputs.pr == '')
+      || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+
+      # The Docker tests (tools/tests/test_builder.py) need the toolchain image and are skipped here.
+      - name: The tests in tools/tests
+        run: python3 -m unittest discover -s tools/tests
+
+      - name: Every project passes tools/validate.py
+        run: python3 tools/validate.py < /dev/null
+
+      - name: README.md's projects table is up to date
+        run: python3 tools/projects_table.py --check
