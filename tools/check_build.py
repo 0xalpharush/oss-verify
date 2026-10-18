@@ -222,8 +222,10 @@ def compile_build(tag, build, sanitizer, out):
     step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
     empty_directory(out, tag)
     owner = f"{os.getuid()}:{os.getgid()}"
+    # The number of parallel jobs, if set here, for recipes that read it; it does not change the bytes.
+    jobs = ["-e", "OFT_MAKE_JOBS"] if os.environ.get("OFT_MAKE_JOBS") else []
     code = run("docker", "run", "--rm", "--init", "--network=none", "-e", f"SANITIZER={sanitizer}",
-               "-e", f"OV_OWNER={owner}", "-v", f"{out}:/out", tag, "compile")
+               "-e", f"OV_OWNER={owner}", *jobs, "-v", f"{out}:/out", tag, "compile")
     if code != 0:
         raise Failed(f"compile exited {code} in the {build} build")
 
