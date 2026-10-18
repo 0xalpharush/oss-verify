@@ -230,6 +230,11 @@ class Port(unittest.TestCase):
         sources = port.plan("demo", self.release)[0]["sources"]
         self.assertIn(f"git\text/demo/src/gnulib\thttps://git.savannah.gnu.org/git/gnulib.git\t{'5' * 40}\n", sources)
         self.assertNotIn("demo-fuzz", sources)
+        # The project's own tree, which the release also took recipe files from.
+        manifest.write_text(manifest.read_text().replace('demo-demo_fuzzer=ext/demo-demo_fuzzer/src,',
+                                                         'demo-demo_fuzzer=ext/demo-demo_fuzzer/src,demo-demo_fuzzer=recipe,')
+                            .replace('{"materialise":["checkout"]}', '{"materialise":["checkout","recipe-file"]}', 1))
+        self.assertEqual(port.plan("demo", self.release)[0]["sources"], sources)
         manifest.write_text(manifest.read_text().replace("git://git.sv.gnu.org/", "git://example.org/"))
         with self.assertRaisesRegex(port.Unsupported, "not over https"):
             port.plan("demo", self.release)

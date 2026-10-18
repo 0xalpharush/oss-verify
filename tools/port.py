@@ -186,14 +186,16 @@ def layouts(name, seeded, rows, order):
     main, items = {}, {target: [] for target in order}
     for row in rows:
         detail = json.loads(row.get("detail") or "{}")
-        materialise = detail.get("materialise", [])
+        # What the release laid out from the tree. A tree it also took recipe files from (recipe_files() fetches those)
+        # or kept for provenance (OSS-Fuzz's directory) is laid out for the rest only.
+        materialise = [how for how in detail.get("materialise", []) if how not in ("provenance", "recipe-file")]
         placed = {}
         for pin in row.get("pins", "").split(","):
             target, _, where = pin.partition("=")
-            if target in order:
+            if target in order and where not in ("provenance", "recipe"):
                 placed[target] = where
         kind = row["kind"]
-        if kind == "gitlink" or (kind in ("git", "git-subtree") and set(materialise) <= {"provenance", "recipe-file"}):
+        if kind == "gitlink" or (kind in ("git", "git-subtree") and not materialise):
             continue  # a submodule's commit (its tree is a row of its own), or where recipe files came from
         if kind == "git" and row["id"] == seeded.commit and materialise == ["checkout"]:
             for target, where in placed.items():
