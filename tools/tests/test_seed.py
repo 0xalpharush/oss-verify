@@ -241,13 +241,13 @@ class Repository(unittest.TestCase):
         self.run_git("update-ref", f"refs/remotes/origin/{branch}", again)
         _, kept = seed.make_branch("cee", text, [], root=self.root, seeds=self.seeds, builds=self.builds)
         self.assertEqual(kept, again)
-        # Once main has moved on, the new draft also descends from what was pushed: pushing it is a fast-forward.
+        # Once main has moved on, the new draft is one commit on the new main, which replaces what was pushed.
         (self.root / "NOTES").write_text("more\n")
         self.run_git("add", "NOTES")
         self.run_git("commit", "-q", "-m", "more")
         main = self.run_git("rev-parse", "main").strip()
         _, moved = seed.make_branch("cee", text, [], root=self.root, seeds=self.seeds, builds=self.builds)
-        self.assertEqual(self.run_git("rev-list", "--parents", "-n1", moved).split()[1:], [main, again])
+        self.assertEqual(self.run_git("rev-list", "--parents", "-n1", moved).split()[1:], [main])
         self.assertEqual(self.run_git("diff", "--name-only", main, moved).split(),
                          ["README.md", "projects/cee/Dockerfile", "projects/cee/build.sh", "projects/cee/project.yaml"])
         with self.assertRaises(seed.SeedError):
