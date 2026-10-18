@@ -1,0 +1,8 @@
+# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's
+# maintainers: provisional (STATUS.md). To adopt it, set primary_contact and remove these lines.
+repo: https://github.com/tink-crypto/tink-cc#527baad6ccd9957da349a4dbd46428110db54974
+primary_contact: n/a
+homepage: https://developers.google.com/tink
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [tink_encrypt_fuzzer]

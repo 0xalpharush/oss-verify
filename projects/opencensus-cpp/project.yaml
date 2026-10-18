@@ -1,0 +1,8 @@
+# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's
+# maintainers: provisional (STATUS.md). To adopt it, set primary_contact and remove these lines.
+repo: https://github.com/census-instrumentation/opencensus-cpp#50eb5de762e5f87e206c011a4f930adb1a1775b1
+primary_contact: n/a
+homepage: https://opencensus.io
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [b3_fuzzer, cloud_trace_context_fuzzer, grpc_tags_bin_fuzzer, grpc_trace_bin_fuzzer, trace_context_fuzzer]
