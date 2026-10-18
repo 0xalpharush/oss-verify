@@ -16,7 +16,6 @@ from unittest import mock
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-import projects_table  # noqa: E402
 import seed  # noqa: E402
 import validate  # noqa: E402
 
@@ -27,7 +26,7 @@ IDENTITY = {"GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.org",
             "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.org"}
 CEE = (
     "# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's\n"
-    "# maintainers: provisional (STATUS.md). To adopt it, set primary_contact and remove these lines.\n"
+    "# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/enrollment.md).\n"
     "repo: https://example.org/cee#1111111111111111111111111111111111111111\n"
     "primary_contact: n/a\n"
     "homepage: https://example.org/cee\n"
@@ -187,7 +186,7 @@ class Repository(unittest.TestCase):
             "repo: https://example.org/enrolled\nprimary_contact: security@example.org\nlanguage: c\n")
         (projects / "Dockerfile").write_text("FROM x\n")
         (projects / "build.sh").write_text("#!/bin/bash\n")
-        (self.root / "README.md").write_text(f"# A test\n\n{projects_table.BEGIN}\n{projects_table.END}\n")
+        (self.root / "README.md").write_text("# A test\n")
         self.seeds = pathlib.Path(self.scratch.name) / "seeds"
         self.builds = {"cee": ("reproduces", "all binaries match the release's"),
                        "plus": ("fails", "configure: no C compiler")}
@@ -222,9 +221,9 @@ class Repository(unittest.TestCase):
         self.assertEqual(files["projects/cee/Dockerfile"], "100644")
         self.assertIn("projects/enrolled/project.yaml", files)
         self.assertEqual(self.run_git("show", f"{commit}:projects/cee/project.yaml"), text)
-        readme = self.run_git("show", f"{commit}:README.md")
-        self.assertIn("| [cee](projects/cee/) | https://example.org/cee |", readme)
-        self.assertIn("| [enrolled](projects/enrolled/) |", readme)
+        # The draft differs from main only in projects/cee/.
+        self.assertEqual(self.run_git("diff", "--name-only", main, commit).split(),
+                         ["projects/cee/Dockerfile", "projects/cee/build.sh", "projects/cee/project.yaml"])
         message = self.run_git("log", "-1", "--format=%B", commit)
         self.assertTrue(message.startswith("Draft: seed projects/cee from oss-fuzz-theorems 2026.10.0-rc.2\n\n"
                                            "Build files: tools/check builds them and reproduces"))
@@ -249,7 +248,7 @@ class Repository(unittest.TestCase):
         _, moved = seed.make_branch("cee", text, [], root=self.root, seeds=self.seeds, builds=self.builds)
         self.assertEqual(self.run_git("rev-list", "--parents", "-n1", moved).split()[1:], [main])
         self.assertEqual(self.run_git("diff", "--name-only", main, moved).split(),
-                         ["README.md", "projects/cee/Dockerfile", "projects/cee/build.sh", "projects/cee/project.yaml"])
+                         ["projects/cee/Dockerfile", "projects/cee/build.sh", "projects/cee/project.yaml"])
         with self.assertRaises(seed.SeedError):
             seed.make_branch("enrolled", text, [], root=self.root, seeds=self.seeds, builds=self.builds)
 

@@ -32,11 +32,11 @@ Every file is checked with tools/validate.py before it is written.
 
 --branch makes draft-generic-oss-fuzz-<name> from the current main: main's tree plus projects/<name>/ (its project.yaml,
 and the build files in tools/seeds/<name>/ if there are any; those are kept there only once tools/check has built
-them and reproduced the release's binaries), with README.md's projects table regenerated, as one commit whose parent
-is main. A draft pushed to origin exactly as it would be made again is kept; any other replaces the branch, and is
-pushed with --force-with-lease, never --force. The commit message says how the project builds, from tools/seeds/builds.tsv (what tools/verify_ports.py found
-when it ported the release's build and checked it). It uses git plumbing and leaves the working tree and the index
-alone; running it again replaces the branch. --trailer adds a line to the end of the commit message.
+them and reproduced the release's binaries), as one commit whose parent is main. A draft pushed to origin exactly as
+it would be made again is kept; any other replaces the branch, and is pushed with --force-with-lease, never --force.
+The commit message says how the project builds, from tools/seeds/builds.tsv (what tools/verify_ports.py found when it
+ported the release's build and checked it). It uses git plumbing and leaves the working tree and the index alone;
+running it again replaces the branch. --trailer adds a line to the end of the commit message.
 
 --report writes one row per project of the release, with tools/seeds/builds.tsv's result for each seedable one.
 
@@ -56,7 +56,6 @@ import textwrap
 import yaml
 
 import check_build
-import projects_table
 import validate
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -67,7 +66,7 @@ BRANCH = "draft-generic-oss-fuzz-{name}"
 REMOTE = "origin"  # where drafts are pushed
 HEADER = (
     "# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's\n"
-    "# maintainers: provisional (STATUS.md). To adopt it, set primary_contact and remove these lines.\n"
+    "# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/enrollment.md).\n"
 )
 LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
@@ -520,22 +519,8 @@ def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS, builds=None):
     files = {"project.yaml": (text.encode(), "100644"), **seed_files(name, seeds)}
     with tempfile.TemporaryDirectory(prefix="seed-branch.") as scratch:
         scratch = pathlib.Path(scratch)
-        projects = scratch / "projects"
-        projects.mkdir()
-        for line in git("ls-tree", "-r", "-z", main, "--", "projects", root=root).split("\0"):
-            if not line:
-                continue
-            meta, path = line.split("\t", 1)
-            mode, kind, blob = meta.split()
-            if kind != "blob":
-                continue
-            target = scratch / path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(git("cat-file", "blob", blob, root=root, data=b""))
-            if mode == "100755":
-                target.chmod(0o755)
-        draft = projects / name
-        draft.mkdir()
+        draft = scratch / "projects" / name
+        draft.mkdir(parents=True)
         for file, (data, mode) in files.items():
             (draft / file).write_bytes(data)
             if mode == "100755":
@@ -543,7 +528,6 @@ def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS, builds=None):
         problems, _, _ = validate.check_project(draft)
         if problems:
             raise SeedError(f"{name}: the draft's projects/{name}/ breaks the rules: {'; '.join(problems)}")
-        readme = projects_table.render(git("show", f"{main}:README.md", root=root), projects)
 
         # A scratch index: the working tree and the repository's own index are never touched.
         env = {**os.environ, "GIT_INDEX_FILE": str(scratch / "index")}
@@ -551,8 +535,6 @@ def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS, builds=None):
         for file, (data, mode) in files.items():
             blob = git("hash-object", "-w", "--stdin", root=root, data=data).decode().strip()
             git("update-index", "--add", "--cacheinfo", f"{mode},{blob},projects/{name}/{file}", root=root, env=env)
-        blob = git("hash-object", "-w", "--stdin", root=root, data=readme.encode()).decode().strip()
-        git("update-index", "--add", "--cacheinfo", f"100644,{blob},README.md", root=root, env=env)
         tree = git("write-tree", root=root, env=env).strip()
     message = f"Draft: seed projects/{name} from oss-fuzz-theorems {RELEASE}\n\n{textwrap.fill(status, 72)}\n"
     if trailers:

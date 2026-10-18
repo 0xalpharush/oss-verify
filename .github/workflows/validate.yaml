@@ -9,9 +9,8 @@ name: "Validate"
 #               cannot edit this workflow or the validator; the checkout is the base branch; only the files directly
 #               inside one projects/<name>/ are taken from the pull request, as regular files written from git's
 #               object store, and they are read as data, never run.
-#   repository  runs this repository's tests, checks every project and checks that README.md's generated table is up
-#               to date, on main and on pull requests from branches of this repository. It runs that branch's code,
-#               so it never runs for a pull request from a fork.
+#   repository  runs this repository's tests and checks every project, on main and on pull requests from branches of
+#               this repository. It runs that branch's code, so it never runs for a pull request from a fork.
 #
 # Neither job gets a secret, a cache, an artifact or a write permission. Never add one.
 #
@@ -172,6 +171,3 @@ jobs:
 
       - name: Every project passes tools/validate.py
         run: python3 tools/validate.py < /dev/null
-
-      - name: README.md's projects table is up to date
-        run: python3 tools/projects_table.py --check
