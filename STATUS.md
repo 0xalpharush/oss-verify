@@ -35,7 +35,7 @@ This repository is being prepared and is not open for enrollment yet. This page 
 
 ### On main: a provisional set
 
-Provisional: the launch set is not decided. These are cjson, the pilot, and the libraries whose proofs are furthest along that can be seeded.
+Provisional: the launch set is not decided. These are cjson, the pilot, and nine candidates for that set that `tools/seed.py` can seed.
 
 | project | fuzz targets | build files |
 |---|---|---|
@@ -50,9 +50,9 @@ Provisional: the launch set is not decided. These are cjson, the pilot, and the 
 | powerdns | fuzz_target_dnslabeltext_parseRFC1035CharString | not yet |
 | tink-cc | tink_encrypt_fuzzer (from OSS-Fuzz's repository) | not yet |
 
-Not on main, though their proofs are as far along:
+Candidates not on main yet:
 
-* **boost-json**: the fuzz target its proofs are about is not the one the release built for it.
+* **boost-json**: which of its fuzz targets to verify first is not decided.
 * **resiprocate** and **simdutf**: the release's build patches the library's own source (`rutil/Log.cxx`; `include/simdutf/internal/isadetection.h`), so its binaries are not of the library as upstream wrote it.
 
 Fuzz targets we wrote ourselves for some of these libraries are left out until their sources are published.
