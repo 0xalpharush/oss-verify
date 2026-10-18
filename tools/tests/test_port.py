@@ -215,6 +215,21 @@ class Port(unittest.TestCase):
         with self.assertRaisesRegex(port.Unsupported, "names a tree other than the project's"):
             port.plan("demo", self.release)
 
+    def test_trees_fetched_over_git_protocol_and_recipe_file_trees(self):
+        manifest = self.fixture.assets / "demo-src.MANIFEST.tsv"
+        manifest.write_text(manifest.read_text() + "\n".join([
+            f"demo-src/git/gnulib\tgit\tgit://git.sv.gnu.org/gnulib.git\t{'5' * 40}\tdemo=ext/demo/src/gnulib"
+            '\t{"materialise":["checkout"]}',
+            f"demo-src/git/fuzz\tgit\thttps://github.com/example/demo-fuzz.git\t{'6' * 40}\tdemo=recipe"
+            '\t{"materialise":["recipe-file"]}',
+        ]) + "\n")
+        sources = port.plan("demo", self.release)[0]["sources"]
+        self.assertIn(f"git\text/demo/src/gnulib\thttps://git.savannah.gnu.org/git/gnulib.git\t{'5' * 40}\n", sources)
+        self.assertNotIn("demo-fuzz", sources)
+        manifest.write_text(manifest.read_text().replace("git://git.sv.gnu.org/", "git://example.org/"))
+        with self.assertRaisesRegex(port.Unsupported, "not over https"):
+            port.plan("demo", self.release)
+
     def test_a_dependency_from_another_repository(self):
         manifest = self.fixture.assets / "demo-src.MANIFEST.tsv"
         manifest.write_text(manifest.read_text().replace(",demo-dep-lib=ext/demo-dep-lib/src", "") +
