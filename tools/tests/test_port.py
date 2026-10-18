@@ -244,9 +244,15 @@ class Port(unittest.TestCase):
         recipe_manifest.write_text(recipe_manifest.read_text() +
                                    f"targets/demo-shared_fuzzer/shims/x/y.h\t{'8' * 64}\t10\t644\tupstream\tsrc-asset git "
                                    f"https://github.com/google/oss-fuzz.git {OSS_FUZZ} projects/demo/shims/x/y.h {BLOB}\n")
+        recipe_manifest.write_text(recipe_manifest.read_text() +
+                                   f"targets/demo-shared_fuzzer/lib.h\t{'9' * 64}\t10\t644\tupstream\tsrc-asset git "
+                                   f"https://gitlab.com/group/sub/lib.git {OSS_FUZZ} include/lib.h {BLOB}\n")
         self.release = port.Release(self.fixture.checkout, self.fixture.recipe, self.fixture.assets)
+        sources = port.plan("demo", self.release)[0]["sources"]
         self.assertIn(f"file\ttargets/demo-shared_fuzzer/shims/x/y.h\thttps://raw.githubusercontent.com/google/oss-fuzz/"
-                      f"{OSS_FUZZ}/projects/demo/shims/x/y.h\t{'8' * 64}\n", port.plan("demo", self.release)[0]["sources"])
+                      f"{OSS_FUZZ}/projects/demo/shims/x/y.h\t{'8' * 64}\n", sources)
+        self.assertIn(f"file\ttargets/demo-shared_fuzzer/lib.h\thttps://gitlab.com/group/sub/lib/-/raw/{OSS_FUZZ}/"
+                      f"include/lib.h\t{'9' * 64}\n", sources)
 
     def test_a_harness_with_no_recorded_source_is_found_by_its_name(self):
         harness = self.fixture.checkout / "projects/demo/first-fuzzer/harness.yaml"
