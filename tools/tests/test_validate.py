@@ -84,6 +84,12 @@ class ValidProjects(unittest.TestCase):
         self.assertEqual(problems, [])
         self.assertTrue(any("primary_contact is n/a" in warning for warning in warnings))
 
+    def test_seeded_project_without_build_files_warns(self):
+        problems, warnings, summary = check(MINIMAL.replace("security@example.org", "n/a"), {})
+        self.assertEqual(problems, [])
+        self.assertTrue(any("no build files yet" in warning for warning in warnings))
+        self.assertIn("Dockerfile: none yet", summary)
+
     def test_dockerfile_without_build_sh_warns(self):
         problems, warnings, _ = check(MINIMAL, {"Dockerfile": "FROM x\n"})
         self.assertEqual(problems, [])

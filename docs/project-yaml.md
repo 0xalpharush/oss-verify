@@ -9,7 +9,7 @@ The field names are OSS Scanner's where it has the field, then OSS-Fuzz's, and o
 | `repo` | yes | One git repository, as an `https://` URL. Add `#<ref>`: a branch or tag to follow, or a full commit id to verify exactly that commit. | the default branch |
 | `primary_contact` | yes | The one address findings and build problems go to. It is public. | |
 | `language` | yes | `c` or `c++`: the language of the code we build. | |
-| `dockerfile` | unless a `Dockerfile` is beside `project.yaml` | The Dockerfile's path in your repository. | |
+| `dockerfile` | unless a `Dockerfile` is beside `project.yaml` | The Dockerfile's path in your repository. A project we seeded may have no build files yet. | |
 | `auto_ccs` | no | Addresses we copy on every report. Not with `pgp`. | none |
 | `homepage` | no | The project's home page. | |
 | `pgp` | no | Your armored OpenPGP public key. Reports are then encrypted to it and go to `primary_contact` only. | |
@@ -32,6 +32,8 @@ No other field is allowed. Some settings are the operators' to make, never a pul
 **`language`.** `c` or `c++`, the language of the library and its fuzz targets as we build them.
 
 **`dockerfile`.** Leave it out when the `Dockerfile` and `build.sh` sit beside `project.yaml`: the build context is then `projects/<name>/`, and the Dockerfile fetches your source. Set it when they live in your repository (we suggest `.oss-verifier/Dockerfile`): the build context is then your repository at the commit being built, and `build.sh` is expected beside the Dockerfile, unless the Dockerfile creates `$SRC/build.sh` itself. In that case harness sources and patches belong in your repository too, and nothing but `project.yaml` and `patch_style.md` may sit here.
+
+A project we seeded ourselves (`primary_contact: n/a`) may have no build files yet: we add a `Dockerfile` and a `build.sh` only once they have been checked to build. `tools/validate.py` warns about such a project, and `tools/check` cannot build it. [STATUS.md](../STATUS.md) lists them.
 
 **`sanitizers`.** Each build is a separate set of binaries with its own statements:
 

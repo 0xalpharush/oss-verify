@@ -18,7 +18,8 @@ Fields allowed in project.yaml:
                                                    follow, or a full commit id to verify exactly that commit
     primary_contact: a@b.c              required   n/a only for a project we seeded (a warning)
     language: c | c++                   required
-    dockerfile: <path in your repo>     required   unless a Dockerfile is next to project.yaml (no default)
+    dockerfile: <path in your repo>     required   unless a Dockerfile is next to project.yaml (no default); a
+                                                   project we seeded may have neither yet (a warning)
     auto_ccs: [a@b.c, ...]              optional   cannot be combined with pgp
     homepage: https://...               optional
     pgp: <armored public key>           optional   if set, reports are encrypted to this key
@@ -309,7 +310,8 @@ def check_files(config, files):
 
     # In YAML, an empty `dockerfile:` (or `~`, or `null`) means the key is not set.
     in_repo = config.get("dockerfile") is not None
-    if "Dockerfile" not in files and not in_repo:
+    # A project we seeded may wait for build files that have been verified (config_warnings says so).
+    if "Dockerfile" not in files and not in_repo and config.get("primary_contact") != NO_CONTACT:
         yield (
             "a Dockerfile is required, in exactly one place: beside project.yaml (with its build.sh), or in your "
             "repository at the path you give as dockerfile: (there is no default path)"
@@ -370,6 +372,8 @@ def config_warnings(config, files):
         ref = repo.split("#", 1)[1]
         if SHORT_COMMIT.fullmatch(ref) and not FULL_COMMIT.fullmatch(ref):
             warnings.append(f"#{ref} looks like a shortened commit id; give a commit in full, or this names a branch or tag")
+    if "Dockerfile" not in files and config.get("dockerfile") is None:
+        warnings.append("no build files yet (a seeded project): it cannot be built until a Dockerfile and build.sh are added")
     if "Dockerfile" in files and "build.sh" not in files:
         warnings.append("there is a Dockerfile but no build.sh beside it: the Dockerfile must create $SRC/build.sh itself")
     for name in sorted(files):
@@ -457,7 +461,12 @@ def check_project(directory):
     if problems:
         return problems, [], None
 
-    where = "beside project.yaml" if "Dockerfile" in files else f"in the repository at {config['dockerfile']}"
+    if "Dockerfile" in files:
+        where = "beside project.yaml"
+    elif config.get("dockerfile") is not None:
+        where = f"in the repository at {config['dockerfile']}"
+    else:
+        where = "none yet"
     targets = ", ".join(config["fuzz_targets"]) if config.get("fuzz_targets") else "all"
     summary = (
         f"{name:<24} {config['repo']}  -> {config['primary_contact']}  "
