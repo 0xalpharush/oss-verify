@@ -205,6 +205,34 @@ class Port(unittest.TestCase):
         ])
         self.assertIn("file\text/demo/vendor-archives/ab\thttps://example.org/zlib.tar.gz\tab", lines)
 
+    def test_a_project_with_no_source_manifest(self):
+        (self.fixture.assets / "demo-src.MANIFEST.tsv").unlink()
+        sources = port.plan("demo", self.release)[0]["sources"]
+        self.assertIn("# The release published no source manifest for this project", sources)
+        self.assertIn("tree\text/demo-dep-lib/src\tupstream/demo\n", sources)
+        pin = self.fixture.recipe / "targets/demo-dep-lib/pin"
+        pin.write_text(pin.read_text().replace("https://github.com/example/demo.git", "https://github.com/example/dep"))
+        with self.assertRaisesRegex(port.Unsupported, "names a tree other than the project's"):
+            port.plan("demo", self.release)
+
+    def test_a_dependency_from_another_repository(self):
+        manifest = self.fixture.assets / "demo-src.MANIFEST.tsv"
+        manifest.write_text(manifest.read_text().replace(",demo-dep-lib=ext/demo-dep-lib/src", "") +
+                            f"demo-src/git/dep\tgit\thttps://github.com/example/dep.git\t{'7' * 40}\t"
+                            'demo-dep-lib=ext/demo-dep-lib/src\t{"materialise":["checkout"]}\n')
+        lines = [line for line in port.plan("demo", self.release)[0]["sources"].splitlines() if not line.startswith("#")]
+        self.assertEqual(lines[0], f"git\text/demo-dep-lib/src\thttps://github.com/example/dep.git\t{'7' * 40}")
+        self.assertEqual(lines[1], "tree\text/demo-demo_fuzzer/src\tupstream/demo")
+
+    def test_upstream_files_in_subdirectories_of_the_recipe(self):
+        recipe_manifest = self.fixture.recipe / "MANIFEST.tsv"
+        recipe_manifest.write_text(recipe_manifest.read_text() +
+                                   f"targets/demo-shared_fuzzer/shims/x/y.h\t{'8' * 64}\t10\t644\tupstream\tsrc-asset git "
+                                   f"https://github.com/google/oss-fuzz.git {OSS_FUZZ} projects/demo/shims/x/y.h {BLOB}\n")
+        self.release = port.Release(self.fixture.checkout, self.fixture.recipe, self.fixture.assets)
+        self.assertIn(f"file\ttargets/demo-shared_fuzzer/shims/x/y.h\thttps://raw.githubusercontent.com/google/oss-fuzz/"
+                      f"{OSS_FUZZ}/projects/demo/shims/x/y.h\t{'8' * 64}\n", port.plan("demo", self.release)[0]["sources"])
+
     def test_a_harness_with_no_recorded_source_is_found_by_its_name(self):
         harness = self.fixture.checkout / "projects/demo/first-fuzzer/harness.yaml"
         harness.write_text(harness.read_text().replace("source: {files: [source/x.c], from: {path: fuzz/first.c}}",
@@ -255,10 +283,15 @@ class LayOutSources(unittest.TestCase):
 
 
 def lay_out_sources():
-    """infra/base-builder/lay-out-sources, loaded as a module."""
+    """infra/base-builder/lay-out-sources, loaded as a module (writing no bytecode beside it, in the builder's
+    directory)."""
     loader = importlib.machinery.SourceFileLoader("lay_out_sources", str(BUILDER / "lay-out-sources"))
     module = types.ModuleType(loader.name)
-    loader.exec_module(module)
+    writes, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = writes
     return module
 
 

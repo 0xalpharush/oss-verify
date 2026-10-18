@@ -70,10 +70,9 @@ class Release:
         return path.read_text(encoding="utf-8")
 
     def manifest(self, name):
+        """The rows of the project's source manifest, or None if the release published none."""
         path = self.assets / f"{name}-src.MANIFEST.tsv"
-        if not path.is_file():
-            raise Unsupported(f"no {path.name} among the assets")
-        return read_tsv(path)
+        return read_tsv(path) if path.is_file() else None
 
 
 def target_files(release, target):
@@ -100,8 +99,6 @@ def recipe_files(release, target):
         if not path.startswith(prefix):
             continue
         name = path[len(prefix):]
-        if "/" in name:
-            raise Unsupported(f"{target}: an upstream file in a subdirectory of the recipe ({name})")
         match = re.match(r"src-asset git (\S+) ([0-9a-f]{40}) (\S+) [0-9a-f]{40}", why)
         github = GITHUB.fullmatch(match.group(1)) if match else None
         if not github:
@@ -186,7 +183,10 @@ def layouts(name, seeded, rows, order):
             url = https(row["source"], f"the tree at {row['id'][:12]}")
             for target, where in placed.items():
                 extra = ("archive",) if materialise == ["git-archive"] else ()
-                items[target].append((placement(where, target), ("git", url, row["id"], *extra)))
+                if placement(where, target) == "src":
+                    main[target] = ("git", url, row["id"], *extra)  # a dependency's own tree
+                else:
+                    items[target].append((placement(where, target), ("git", url, row["id"], *extra)))
             continue
         if kind == "vendor-file":
             url = https(row["source"], "a vendored file")
@@ -217,6 +217,20 @@ def layouts(name, seeded, rows, order):
     return main, items
 
 
+def checkout_layouts(name, seeded, release, order):
+    """Layouts for a project the release published no source manifest for: each target's tree is the project's
+    checkout, and nothing else. Only targets whose pins name the project's own repository and commit are laid out so;
+    tools/check then says whether that was the release's tree."""
+    for target in order:
+        pin = release.pin(target)
+        url, commit = re.search(r"^URL=(\S+)", pin, re.M), re.search(r"^COMMIT=(\S+)", pin, re.M)
+        if not (url and commit and seed.series_of(url.group(1), commit.group(1)) ==
+                seed.series_of(seeded.release_repo, seeded.commit)):
+            raise Unsupported(f"no {name}-src.MANIFEST.tsv among the assets, and the pin of {target} names a tree "
+                              "other than the project's")
+    return {target: ("tree", f"upstream/{name}") for target in order}, {target: [] for target in order}
+
+
 def plan(name, release):
     """Everything the port of one project writes: ({file name: text or bytes}, {names of executable files})."""
     seeded = seed.assess(name, release.checkout, (release.patches, release.harnesses))
@@ -231,8 +245,10 @@ def plan(name, release):
             if needed not in order:
                 order.append(needed)
 
-    main, items = layouts(name, seeded, release.manifest(name), order)
-    tree_id = seed.series_of(seeded.repo, seeded.commit)
+    rows = release.manifest(name)
+    main, items = layouts(name, seeded, rows, order) if rows is not None else \
+        checkout_layouts(name, seeded, release, order)
+    tree_id = seed.series_of(seeded.release_repo, seeded.commit)
     patched = {target: tuple(patch for _, patch, applies in patches_for(release, tree_id, order) if target in applies)
                for target in order}
     for target in order:
@@ -251,8 +267,7 @@ def plan(name, release):
         else:
             shared[key] = target
             kind, *rest = main[target]
-            sources.append("\t".join([kind, f"ext/{target}/src", *rest]) if kind == "tree"
-                           else "\t".join(["archive", f"ext/{target}/src", *rest]))
+            sources.append("\t".join([kind, f"ext/{target}/src", *rest]))
             for path, directive in inside:
                 sources.append("\t".join([directive[0], f"ext/{target}/{path}", *directive[1:]]))
             for patch in patched[target]:
@@ -279,7 +294,10 @@ def plan(name, release):
             sources.append(f"file\ttargets/{target}/{file_name}\t{url}\t{sha256}")
     if series:
         files["series"] = "".join(f"{patch}\n" for patch in series)
-    files["sources"] = (f"# {GENERATED}\n# kind\tpath\targuments: see lay-out-sources\n" + "\n".join(sources) + "\n")
+    unrecorded = "" if rows is not None else (
+        "# The release published no source manifest for this project: each tree is the checkout its pin names.\n")
+    files["sources"] = (f"# {GENERATED}\n{unrecorded}# kind\tpath\targuments: see lay-out-sources\n" +
+                        "\n".join(sources) + "\n")
     files["Dockerfile"] = dockerfile(name)
     files["build.sh"] = build_script(name, mapped, dependencies, release)
     executable.add("build.sh")

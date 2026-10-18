@@ -145,10 +145,11 @@ def in_checkout(checkout, path):
 
 
 def tree_hash(directory):
-    """A hash of every file under `directory`: its relative path, its mode and its bytes."""
+    """A hash of every file under `directory` (less Python's bytecode caches): its relative path, its mode and its
+    bytes."""
     digest = hashlib.sha256()
     for path in sorted(directory.rglob("*")):
-        if path.is_file():
+        if path.is_file() and "__pycache__" not in path.relative_to(directory).parts:
             digest.update(f"{path.relative_to(directory)}\0{path.stat().st_mode & 0o111:o}\0".encode())
             digest.update(path.read_bytes() + b"\0")
     return digest.hexdigest()
