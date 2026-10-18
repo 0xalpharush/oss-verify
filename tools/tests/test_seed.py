@@ -6,6 +6,7 @@ They run offline, on fixtures/seed: a made-up release checkout (release/) and bu
 """
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -49,6 +50,17 @@ class Rules(unittest.TestCase):
         found = seed.assess("plus", RELEASE, RECIPE)
         self.assertEqual((found.reason, found.language, found.targets), ("", "c++", ["plus_fuzzer"]))
         self.assertIn("plus_fuzzer: the harness is in OSS-Fuzz's repository, not the project's", found.notes)
+
+    def test_a_harness_built_from_another_commit_is_left_out(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            release = pathlib.Path(scratch) / "release"
+            shutil.copytree(RELEASE, release)
+            harness = release / "projects/stamped/stamped_two/harness.yaml"
+            harness.write_text(harness.read_text() + "library: {repository: 'https://example.org/stamped', commit: '"
+                               + "6" * 40 + "'}\n")
+            found = seed.assess("stamped", release, RECIPE)
+        self.assertEqual(found.targets, ["stamped_fuzzer"])
+        self.assertIn("left out: stamped_two (built from another commit of the library, 666666666666)", found.notes)
 
     def test_our_own_harnesses_are_left_out(self):
         found = seed.assess("ours", RELEASE, RECIPE)

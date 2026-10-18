@@ -20,7 +20,8 @@ targets whose binaries were built from the library as upstream wrote it:
   - The release built the project (status available) from an https repository at a full commit.
   - fuzz_targets: the harnesses the release included that come from the project or from OSS-Fuzz. Harnesses we wrote
     are not published yet, so they are left out. So is a harness whose build applied a patch that edits the library's
-    own source; a patch to build files, version stamps or generated files, or to a harness, is allowed and noted.
+    own source; a patch to build files, version stamps or generated files, or to a harness, is allowed and noted. So
+    is a harness the release built from another commit of the library than the project's.
   - repo: the repository at the tag v<version> or <version> if it names the commit the release built (git ls-remote;
     with --offline nothing is looked up), else at that commit.
   - language: c++ if a harness is C++ or a build links the C++ library (libc++), c if every harness is C and no build
@@ -309,6 +310,10 @@ def assess(name, checkout, recipe):
         builds = details.get("builds") or {}
         if "plain" not in builds:
             left_out.append(f"{harness} (no plain build)")
+            continue
+        built_from = str((details.get("library") or {}).get("commit") or seed.commit)
+        if built_from != seed.commit:
+            left_out.append(f"{harness} (built from another commit of the library, {built_from[:12]})")
             continue
         counted = sum(int(match) for line in details.get("modifications") or []
                       for match in LIBRARY_PATCHES.findall(str(line)))
