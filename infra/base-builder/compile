@@ -16,7 +16,7 @@
 # It sets up that build's compilers and flags (toolchain.sh), compiles the driver ($LIB_FUZZING_ENGINE), and runs
 # $SRC/build.sh with bash -eux from the image's working directory. build.sh builds each fuzz target into $OUT, as
 # under OSS-Fuzz, by linking it with $LIB_FUZZING_ENGINE through $CC or $CXX. A link that names
-# $LIB_ALLOCATION_FAILURE_ENGINE instead makes an allocation-failure fuzz target (docs/exit-codes.md).
+# $LIB_ALLOCATION_FAILURE_ENGINE instead makes an allocation-failure fuzz target (docs/build-contract.md).
 #
 # Such a link is made twice (link-fuzz-target): once as asked, with symbols, and once with --strip-all. The binaries
 # in $OUT keep their symbols, so that a fuzz target is found by its symbol table (an executable that defines
@@ -75,7 +75,7 @@ LIB_FUZZING_ENGINE=$OV/libFuzzingEngine.a
 "$DRVCC" $BASE_CFLAGS -c -I"$LIB/driver" "$LIB/driver/allocation_failure.c" -o "$OV/allocation_failure.o"
 "$DRVCC" $BASE_CFLAGS -DOV_ALLOCATION_COUNTING -c -I"$LIB/driver" "$LIB/driver/allocation_failure.c" \
   -o "$OV/allocation_counting.o"
-printf 'Not an archive: link an allocation-failure fuzz target with $CC or $CXX (docs/exit-codes.md).\n' \
+printf 'Not an archive: link an allocation-failure fuzz target with $CC or $CXX (docs/build-contract.md).\n' \
   | tee "$OV/libAllocationFailureEngine.a" > "$OV/libAllocationCountingEngine.a"
 LIB_ALLOCATION_FAILURE_ENGINE=$OV/libAllocationFailureEngine.a
 LIB_ALLOCATION_COUNTING_ENGINE=$OV/libAllocationCountingEngine.a

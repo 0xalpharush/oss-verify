@@ -19,9 +19,9 @@
 # It links twice: the output the link asked for, with its symbols, and the same link with --strip-all, saved under
 # the sha256 of the first for compile to collect.
 #
-# A link that names $LIB_ALLOCATION_FAILURE_ENGINE makes an allocation-failure fuzz target (docs/exit-codes.md): the
-# same link, with allocation_failure.o in place of the adapter, and with copies of the object files and archives it
-# names, whose calls of the allocators are renamed to allocation_failure.c's. Those are the only changes.
+# A link that names $LIB_ALLOCATION_FAILURE_ENGINE makes an allocation-failure fuzz target (docs/build-contract.md):
+# the same link, with allocation_failure.o in place of the adapter, and with copies of the object files and archives
+# it names, whose calls of the allocators are renamed to allocation_failure.c's. Those are the only changes.
 # $LIB_ALLOCATION_COUNTING_ENGINE makes the same, with counting mode on (allocation_counting.o), for sweep and test
 # builds.
 set -euo pipefail

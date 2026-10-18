@@ -28,7 +28,7 @@ $CC $CFLAGS -c "$build/src/fuzzing/cjson_read_fuzzer.c" -o "$WORK/cjson_read_fuz
 $CC $CFLAGS "$WORK/cjson_read_fuzzer.o" -o "$OUT/cjson_read_fuzzer" $LIB_FUZZING_ENGINE "$build/cmk/libcjson.a"
 
 # The same fuzz target, with cJSON's allocations (and the harness's) failing as the input's allocation mask says
-# (docs/exit-codes.md#allocation-failure). cJSON returns NULL when an allocation fails, and the harness then returns 0.
+# (docs/build-contract.md). cJSON returns NULL when an allocation fails, and the harness then returns 0.
 $CC $CFLAGS "$WORK/cjson_read_fuzzer.o" -o "$OUT/cjson_read_fuzzer_allocation_failure" $LIB_ALLOCATION_FAILURE_ENGINE \
   "$build/cmk/libcjson.a"
 $CC $CFLAGS "$WORK/cjson_read_fuzzer.o" -o "$OUT/cjson_read_fuzzer_allocation_counting" $LIB_ALLOCATION_COUNTING_ENGINE \

@@ -12,7 +12,7 @@ $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer" $LIB_FUZZING_ENGIN
 $CXX $CXXFLAGS -I. -c fuzz/example_fuzzer.cc -o "$WORK/example_fuzzer_cc.o"
 $CXX $CXXFLAGS "$WORK/example_fuzzer_cc.o" -o "$OUT/example_fuzzer_cc" $LIB_FUZZING_ENGINE "$WORK/build/libexample.a"
 
-# The allocation-failure variants of both (docs/exit-codes.md#allocation-failure): the same objects, linked with
+# The allocation-failure variants of both (docs/build-contract.md): the same objects, linked with
 # $LIB_ALLOCATION_FAILURE_ENGINE, and with $LIB_ALLOCATION_COUNTING_ENGINE, as a sweep or test build would be.
 $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer_af" $LIB_ALLOCATION_FAILURE_ENGINE "$WORK/build/libexample.a"
 $CXX $CXXFLAGS "$WORK/example_fuzzer_cc.o" -o "$OUT/example_fuzzer_cc_af" $LIB_ALLOCATION_FAILURE_ENGINE \

@@ -7,8 +7,8 @@ toolchain image (and, for cJSON, the network):
 
 The fixture's Dockerfile and build.sh are templates/Dockerfile and templates/build.sh (in its C and C++ forms). Its
 fuzz targets do one thing per first input byte, and the test checks the exit status of each in every build against
-docs/exit-codes.md. Running the riscv64 binaries needs qemu-riscv64 (static) on this machine; without it, that part is
-skipped.
+docs/build-contract.md. Running the riscv64 binaries needs qemu-riscv64 (static) on this machine; without it, that part
+is skipped.
 """
 import os
 import pathlib

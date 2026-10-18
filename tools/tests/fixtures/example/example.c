@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * One behaviour per first byte, so that the test can check every exit status the driver documents
- * (docs/exit-codes.md) in every build. */
+ * (docs/build-contract.md) in every build. */
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>

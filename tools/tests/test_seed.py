@@ -26,7 +26,7 @@ IDENTITY = {"GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.org",
             "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.org"}
 CEE = (
     "# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's\n"
-    "# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/enrollment.md).\n"
+    "# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).\n"
     "repo: https://example.org/cee#1111111111111111111111111111111111111111\n"
     "primary_contact: n/a\n"
     "homepage: https://example.org/cee\n"

@@ -1,6 +1,6 @@
 ---
 name: add-project
-description: Enroll an open-source project in OSS Verifier with its maintainer. Use when a maintainer asks to add, enroll or sign up a project for formal verification. Also use it to write fuzz targets that say what "correct" means for a library, or to choose which patches OSS Verifier sends. Also use it to port an OSS-Fuzz build to the OSS Verifier builder. Makes projects/<name>/ (project.yaml, Dockerfile, build.sh, fuzz targets) and a pull request that the maintainer opens.
+description: Enroll an open-source project in OSS Verifier with its maintainer. Use when a maintainer asks to add, enroll or sign up a project for formal verification. Also use it to write fuzz targets that say what "correct" means for a library, or to write a patch_style.md about findings, reports and patches. Also use it to port an OSS-Fuzz build to the OSS Verifier builder. Makes projects/<name>/ (project.yaml, Dockerfile, build.sh, fuzz targets, patch_style.md) and a pull request that the maintainer opens.
 ---
 
 # Enroll a project in OSS Verifier
@@ -9,7 +9,7 @@ This skill is for a coding agent that helps a maintainer enroll a project. It gi
 
 The result is one directory, `projects/<name>/`, and a pull request that the maintainer opens. Theorem then proves theorems about the binaries that these files build. Each answer about what "correct" means goes into the code and comments of the fuzz targets. No separate document holds it.
 
-Before you start, read these documents: `docs/enrollment.md`, `docs/project-yaml.md`, `docs/build-contract.md`, `docs/exit-codes.md` and `docs/patches.md`. Work only in `projects/<name>/`.
+Before you start, read these documents: `README.md`, `docs/project-yaml.md`, `docs/build-contract.md` and `docs/what-gets-proven.md`. Work only in `projects/<name>/`.
 
 ## 1. Ask what "correct" means
 
@@ -18,24 +18,25 @@ Ask the maintainer each question. Do not guess an answer.
 1. **Untrusted input.** Which functions get input that an attacker controls, for example a parser, a decoder or a protocol handler? Which inputs are trusted, for example the configuration?
 2. **Input size.** How large can a real input be? The driver refuses an input file of 64 MiB or more.
 3. **Expected outcomes.** Which outcomes are expected, for example an error code for malformed input, a size limit or a refused option? Each one must end as `return 0`. A statement accepts only the exit statuses 0 and 2.
-4. **Refused allocations.** Must the library survive a refused allocation? If yes, add an allocation-failure fuzz target (`docs/exit-codes.md`, "Allocation failure").
+4. **Refused allocations.** Must the library survive a refused allocation? If yes, add an allocation-failure fuzz target (`docs/build-contract.md`, "Allocation-failure fuzz targets").
 5. **Properties.** Which properties must always be true, apart from "no crash"? Examples are a round trip (`decode(encode(x)) == x`), an invariant of a data structure, agreement between two APIs, and a limit on the size of an output.
 
-## 2. Ask which patches to send
+## 2. Ask about findings, reports and patches
 
-Ask each question. Write each answer into `project.yaml` (`docs/patches.md`). Leave out a key if the maintainer accepts its default.
+Ask the maintainer about each topic below. Write the answers in `patch_style.md`, as free text. Our AI reads this file before it sends a report or writes a patch. These topics are suggestions only. Leave out a topic that the maintainer does not care about.
 
-1. Do you want findings without patches? If yes, set `disable_remediation: true`. Then skip the other questions in this step.
-2. `findings`: patches only for failures that a fuzz target can cause (`fuzz_failures`), or also for bugs that we find while we prove (`all`)?
-3. `out_of_scope`: a fuzz target gets to behaviour that you do not support. Make the fuzz target narrower (`harness`), or change the library (`library`)?
-4. `allocation_failure`: the same choice for a refused allocation (`harness` or `library`).
-5. `documentation`: also patches that change only the documentation (`true` or `false`)?
-6. `refactoring`: changes that make the code easier to verify. None (`none`), only changes that keep the behaviour (`equivalent`), or also changes to behaviour that looks like a bug (`minor`)?
-7. `equivalence_proof`: send a refactoring patch only with a proof that the behaviour does not change (`required`), or also without one (`not_required`)?
-8. Does the project have a contribution policy, for example about AI-generated patches? Our agents obey it. Record a link to it in `patch_style.md`.
-9. Which code style, tests and commit format must a patch have? Write the answer in `patch_style.md`, as free text.
+1. **Severity.** Do you want only security-critical findings, or all of them? How do you rate severity?
+2. **Findings without a patch.** Do you want findings that come without a patch, or only findings with a patch?
+3. **Reports.** Do you have other report preferences, for example one report for a group of related findings?
+4. **Bugs that no fuzz target can hit.** We can find such bugs while we prove. Do you want patches for them, or only for bugs that a fuzz target can hit?
+5. **Behaviour that you do not support.** A fuzz target can get to such behaviour, for example a refused allocation. Do you want a narrower fuzz target, or a library that handles the behaviour?
+6. **Documentation.** Do you want patches that change only the documentation?
+7. **Refactoring.** Do you want changes that make the code easier to verify? Only changes that keep the behaviour, or also minor changes that can fix bugs?
+8. **Proof of the same behaviour.** Must a refactoring come with a proof that the behaviour does not change?
+9. **Contribution policy.** Does the project have a policy on AI-generated contributions? Our agents obey it. Record a link to it.
+10. **Form.** Which code style, tests and commit format must a patch have? Do you want its text in Simplified Technical English (ASD-STE100): commit messages, comments and documentation?
 
-Do not repeat in `patch_style.md` a choice that a field in `project.yaml` gives.
+Tell the maintainer that findings and patches are generated by AI models, and they can be wrong or incomplete. We do not promise that a person reviews them before we send them.
 
 ## 3. Write the fuzz targets
 
@@ -74,10 +75,10 @@ Start from `templates/project.yaml` (`docs/project-yaml.md`). Fill in these fiel
 - `primary_contact`, the security contact, which is public;
 - `language`, from the list in `docs/project-yaml.md`;
 - `fuzz_targets`, each fuzz target that you wrote or kept;
-- the answers to step 2: `disable_remediation` and `patches`;
-- each other field that the maintainer wants, for example `auto_ccs`, `pgp`, `patch_style` and `publish`.
+- `patch_style`, if `patch_style.md` is in the project's repository;
+- each other field that the maintainer wants, for example `auto_ccs`, `pgp` and `publish`.
 
-Ask about `publish`: `after_fixes` (the default), `eager` or `never` (`docs/publishing.md`).
+Ask about `publish`: `after_fixes` (the default), `eager` or `never` (`docs/project-yaml.md`).
 
 ## 6. Check
 

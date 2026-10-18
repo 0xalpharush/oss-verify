@@ -24,4 +24,4 @@ Theorem maintains this repository. To report a vulnerability in this repository,
 
 ## Findings about an enrolled project
 
-A finding is a failure that we find in an enrolled project while we work on a proof. We send it privately to the project's `primary_contact`. We set no disclosure deadline, and we do not publish findings ([docs/disclosure.md](docs/disclosure.md)).
+A finding is a failure that we find in an enrolled project while we work on a proof. We send it privately to the project's `primary_contact`. We set no disclosure deadline, and we do not publish findings ([docs/what-gets-proven.md](docs/what-gets-proven.md#findings)).

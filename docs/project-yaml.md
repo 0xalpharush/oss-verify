@@ -20,12 +20,10 @@ The field names come from OSS Scanner if it has the field, then from OSS-Fuzz. W
 | `disabled` | no | `true` pauses the project | `false` |
 | `sanitizers` | no | the sanitizer builds in addition to `plain` | `[address, undefined]` |
 | `fuzz_targets` | no | the fuzz targets to verify | each fuzz target that the build makes |
-| `patch_style` | no | the path of your `patch_style.md` in your repository | |
-| `disable_remediation` | no | `true`: send findings without patches | `false` |
-| `patches` | no | which patches our agents write ([below](#patches)) | the defaults in [patches.md](patches.md) |
+| `patch_style` | no | the path of your `patch_style.md` in your repository ([below](#patch_style)) | |
 | `budgets` | no | the memory budgets of the statements | today's values |
-| `proofs` | no | where we publish the proofs | the proofs repository |
-| `publish` | no | when we publish the proofs: `eager`, `after_fixes` or `never` | `after_fixes` |
+| `proofs` | no | where we publish the proofs ([below](#proofs)) | the proofs repository |
+| `publish` | no | when we publish the proofs: `eager`, `after_fixes` or `never` ([below](#publish)) | `after_fixes` |
 
 `tools/validate.py` refuses each field that is not in this table.
 
@@ -48,9 +46,9 @@ These fields work as they do in OSS Scanner.
 * `auto_ccs` lists more addresses. Each report goes to them too.
 * `pgp` holds your armored OpenPGP public key. We then encrypt each report to this key, and send it to `primary_contact` only. Thus you cannot use `pgp` with `auto_ccs`.
 
-The addresses are public. Use an address that you are glad to publish, such as a security alias.
+The addresses are public. Use an address that you are glad to publish, such as a security alias. We send each finding privately to these addresses ([what-gets-proven.md](what-gets-proven.md#findings)).
 
-A seeded project has `primary_contact: n/a` until a maintainer adopts it. `tools/validate.py` warns about it, and the triage comment on a pull request shows it.
+A seeded project has `primary_contact: n/a` until a maintainer adopts it ([below](#seeded-projects)).
 
 ### language
 
@@ -98,27 +96,21 @@ The manifest and the lock record the list that a build used. Thus "each fuzz tar
 
 ### patch_style
 
-Give the path of your `patch_style.md` in your repository. Do not use this field if `patch_style.md` is in the project directory. `patch_style.md` holds free text about how you want patches: code style, tests and commit format ([patches.md](patches.md#patch-style)).
+Give the path of your `patch_style.md` in your repository. Do not use this field if `patch_style.md` is in the project directory.
 
-### disable_remediation
+`patch_style.md` covers your report preferences and your patch style. It is free text for our AI, which reads it before it sends you a report or writes a patch. Start from [templates/patch_style.md](../templates/patch_style.md). It suggests these topics:
 
-Set `disable_remediation: true` to get findings without patches. OSS-Fuzz uses the same name. If you do not give this field, we send a patch with each finding when we have one.
+* only security-critical findings, or all of them, and how you rate severity;
+* findings that come without a patch, or only findings with a patch;
+* other report preferences, for example one report for a group of related findings;
+* patches for bugs that no fuzz target can hit, or only for bugs that a fuzz target can hit;
+* a narrower fuzz target, or a library that handles behaviour that you do not support, in particular refused allocations;
+* patches that change only the documentation;
+* refactoring that makes the code easier to verify, and whether it needs a proof that the behaviour does not change;
+* your policy on AI-generated contributions, which we follow;
+* the code style, tests and commit format of a patch, and Simplified Technical English (ASD-STE100) for its text.
 
-### patches
-
-This block tells our agents which patches to write. Each key is optional. [patches.md](patches.md) tells how to choose.
-
-```yaml
-patches:
-  findings: fuzz_failures       # or all
-  out_of_scope: harness         # or library
-  allocation_failure: harness   # or library
-  documentation: false          # or true
-  refactoring: none             # or equivalent, or minor
-  equivalence_proof: required   # or not_required
-```
-
-The values in this example are the defaults. `tools/validate.py` refuses an unknown key or value. It warns you if you give `patches` with `disable_remediation: true`.
+These are suggestions only. Write about the topics that matter to you.
 
 ### budgets
 
@@ -136,11 +128,38 @@ Give a size as a positive number of bytes, or as a number followed by `KiB`, `Mi
 
 ### proofs
 
-Give the place where we publish the proofs: `repo`, an `https://` URL with `#<branch>`, and `path`, a directory in that repository. Most projects do not use this field. [publishing.md](publishing.md) gives the default.
+Give the place where we publish the proofs: `repo`, an `https://` URL with `#<branch>`, and `path`, a directory in that repository. Most projects do not use this field. By default, we publish to the branch with the project's name in [oss-verifier-proofs](https://github.com/theorem-labs/oss-verifier-proofs), in the directory `projects/<name>`:
+
+```yaml
+proofs:
+  repo: https://github.com/theorem-labs/oss-verifier-proofs#<name>
+  path: projects/<name>
+```
 
 ### publish
 
-Tell us when to publish the proofs ([publishing.md](publishing.md)).
+Tell us when to publish the proofs:
+
+| value | we publish the proofs |
+|---|---|
+| `after_fixes` (the default) | when each patch that we sent you is public or in your project |
+| `eager` | while we work on them |
+| `never` | never outside Theorem |
+
+With each value, we hold back each statement that shows a finding that is not public yet ([what-gets-proven.md](what-gets-proven.md#publishing)).
+
+## Seeded projects
+
+We seeded some projects ourselves from oss-fuzz-theorems 2026.10.0-rc.2, on branches named `draft-generic-oss-fuzz-<name>`. A seeded project has `primary_contact: n/a`. Its `project.yaml` starts with two comment lines that tell that we seeded it. `tools/validate.py` warns about `n/a`, and the triage comment on a pull request shows it.
+
+A core maintainer can adopt a seeded project:
+
+1. Copy its `projects/<name>/` into a branch of your fork.
+2. Set `primary_contact` to the project's security contact.
+3. Remove the two comment lines.
+4. Do the steps in the [README](../README.md#enroll-a-project) from step 3.
+
+The build files of a draft branch come from the build recipe of that release (`tools/port.py`). They make that release's binaries again, byte for byte. Keep them, or write your own. If a draft branch has no build files, its commit message tells why. Add a `Dockerfile` and a `build.sh` before you open the pull request.
 
 ## The files in the project directory
 
@@ -156,7 +175,7 @@ Tell us when to publish the proofs ([publishing.md](publishing.md)).
 
 `series` lists the build patches, one file name on each line, in the order in which we apply them. We ignore empty lines and lines that start with `#`. List each patch exactly once.
 
-A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the project directory ([patches.md](patches.md)).
+A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the project directory. We send it to you as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).
 
 Each file must obey these rules:
 

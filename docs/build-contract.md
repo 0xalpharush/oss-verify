@@ -1,6 +1,6 @@
 # The build contract
 
-This page tells what the builder gives a build, and what a project's `Dockerfile` and `build.sh` must do. It is for the person who ports a project's build to OSS Verifier.
+This page tells what the builder gives a build, what a project's `Dockerfile` and `build.sh` must do, and how the driver runs a fuzz target. It is for the person who ports a project's build to OSS Verifier, and for people who run our binaries.
 
 The `Dockerfile` and `build.sh` follow the conventions of OSS-Fuzz, on our builder in place of OSS-Fuzz's base image. `tools/check` builds a project exactly as we do.
 
@@ -49,8 +49,8 @@ We check builds ported from oss-fuzz-theorems against the release's binaries, on
 | `$CC`, `$CXX` | clang and clang++ for this build: cross-compilers for `riscv64-linux-musl`, with the sanitizer runtime of this build |
 | `$CFLAGS` | the common flags, the sanitizer flags of this build, `-Wno-unused-command-line-argument` and `-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION` |
 | `$CXXFLAGS` | `$CFLAGS -stdlib=libc++` |
-| `$LIB_FUZZING_ENGINE` | the driver, which takes the place of libFuzzer in each fuzz target ([exit-codes.md](exit-codes.md)) |
-| `$LIB_ALLOCATION_FAILURE_ENGINE` | the driver of an allocation-failure fuzz target ([exit-codes.md](exit-codes.md#allocation-failure)) |
+| `$LIB_FUZZING_ENGINE` | the driver, which takes the place of libFuzzer in each fuzz target ([below](#the-driver)) |
+| `$LIB_ALLOCATION_FAILURE_ENGINE` | the driver of an allocation-failure fuzz target ([below](#allocation-failure-fuzz-targets)) |
 | `$LIB_ALLOCATION_COUNTING_ENGINE` | the same, with counting mode on, for sweep and test builds that we never publish |
 | `$SANITIZER` | `none`, `undefined`, `address` or `address-undefined` |
 | `$ARCHITECTURE`, `$FUZZING_ENGINE` | `riscv64`; `none`, the OSS-Fuzz name for a driver that runs inputs from files |
@@ -145,11 +145,116 @@ A link through `$CC` or `$CXX` that names `$LIB_FUZZING_ENGINE` goes to [link-fu
 
 `link-fuzz-target` links two times. The first link makes the file that `build.sh` asked for, with its symbols, so that we can find the fuzz target by its symbol table. The second link adds `-Wl,--strip-all`, and its output is the published binary. `compile` keeps it as `$OUT/.stripped/<sha256 of the first>`.
 
+## The driver
+
+The driver takes the place of libFuzzer. Each fuzz target is linked with it through `$LIB_FUZZING_ENGINE` ([infra/base-builder/driver/](../infra/base-builder/driver/)). A binary takes one argument, the input file:
+
+    <binary> <input file>
+
+The driver reads the whole input file. It divides the file into four parts:
+
+    [u16 config word][config bytes][u32 allocation mask][payload]
+
+The two integers are little-endian.
+
+* The low 15 bits of the config word give the length of the config bytes. The top bit, bit 15, asks for counting mode ([below](#counting-mode)).
+* The driver calls `LLVMFuzzerTestOneInput` on the payload `(config[0] & 3) + 1` times. With no config bytes, it calls it once.
+* The driver writes each return value on standard output.
+* A fuzz target linked with `$LIB_FUZZING_ENGINE` ignores the allocation mask. An allocation-failure fuzz target uses it ([below](#allocation-failure-fuzz-targets)).
+
+Thus an OSS-Fuzz testcase needs six zero bytes in front of it: `00 00 00 00 00 00`.
+
+### Exit statuses
+
+| status | meaning |
+|---:|---|
+| 0 | each call of the fuzz target returned 0 or -1 |
+| 2 | the driver refused the input and did not call the fuzz target |
+| 77 | the fuzz target called `exit()` |
+| 78 | a call of the fuzz target returned a value that is not 0 or -1 |
+| 132 | `SIGILL`: an UndefinedBehaviorSanitizer check failed (the check traps in these builds) |
+| 134 | `abort()`: a failed `assert()`, an AddressSanitizer detection, or an uncaught C++ exception |
+| 139 | `SIGSEGV`: a crash |
+
+A statement accepts only the statuses 0 and 2 ([what-gets-proven.md](what-gets-proven.md#what-a-statement-accepts)). The driver refuses the input with status 2 for these causes:
+
+* the number of arguments is not one;
+* it cannot open or read the input file;
+* the file is shorter than its six-byte header;
+* the file is 64 MiB or larger;
+* it gets no memory to read the file into.
+
+A sanitizer detection writes nothing. AddressSanitizer aborts silently. UndefinedBehaviorSanitizer has no runtime and traps ([above](#the-builds)).
+
+`tools/tests/test_builder.py` checks each status in all four builds, on a C fuzz target and a C++ fuzz target. It also shows a special case: UndefinedBehaviorSanitizer does not check a `volatile` access for a null pointer. Thus a load through a `volatile` null pointer crashes with 139 in each build. A load through a pointer that is not `volatile` traps with 132 in the UBSan builds.
+
+### What the driver does not intercept
+
+The driver changes a call of `exit()`, during a call of the fuzz target, into status 77. An `atexit` handler does this. The driver does not intercept `_exit`, `_Exit` or `quick_exit`, which do not run `atexit` handlers. A fuzz target that calls one of them ends the process with the status that it gave. `test_builder.py` shows this.
+
+> **WARNING:** Do not install a handler for `SIGABRT`, `SIGSEGV` or another signal in a fuzz target. A handler hides a sanitizer detection.
+
+The driver itself never intercepts a signal or `abort()`.
+
+## Allocation-failure fuzz targets
+
+An allocation-failure fuzz target shows that the library survives refused allocations. In it, the allocations fail as the allocation mask of the input tells them to. The other fuzz targets do not get refused allocations ([what-gets-proven.md](what-gets-proven.md#allocation-failure)).
+
+The fuzz target must change an out-of-memory stop into a normal exit, and only that stop. To do this, catch `std::bad_alloc`, or use the library's own hooks for allocation failure.
+
+> **WARNING:** Do not catch all exceptions. Do not install a `SIGABRT` handler. Such code hides failures that the statements must show.
+
+To make an allocation-failure fuzz target, link the object files of a fuzz target again, into a different binary, with `$LIB_ALLOCATION_FAILURE_ENGINE`:
+
+    $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer_allocation_failure" $LIB_ALLOCATION_FAILURE_ENGINE libexample.a
+
+The fuzz target that you link with `$LIB_FUZZING_ENGINE` does not change. The allocation-failure link is different in two ways ([link-fuzz-target](../infra/base-builder/link-fuzz-target)):
+
+* The driver uses [allocation_failure.c](../infra/base-builder/driver/allocation_failure.c) in place of `adapter.c`.
+* The link uses copies of its object files and archives. In these copies, each call of an allocation function goes to the driver. These are the allocation functions:
+
+      malloc calloc realloc reallocarray aligned_alloc posix_memalign memalign strdup strndup
+      operator new, operator new[] (C++), with their nothrow and aligned forms
+
+Compile the sources of the fuzz target before the link. Then link the object files. The link refuses a source file.
+
+While `LLVMFuzzerTestOneInput` runs, the driver counts these calls from 0, over all calls of the fuzz target in a run. Call n fails if bit n of the allocation mask is set:
+
+* `malloc` and the other functions return `NULL` and set `errno` to `ENOMEM`;
+* `posix_memalign` returns `ENOMEM`;
+* `operator new` throws `std::bad_alloc`, and its nothrow form returns `NULL`.
+
+Calls after the 32nd never fail. The driver counts no other allocations. It does not count its own allocations, or those of `LLVMFuzzerInitialize`. It does not count the allocations that the C or C++ library makes inside a function that the project called. Thus an input makes the same calls fail in all four builds. The builds compile with `-fno-builtin-malloc` and the related flags, so the compiler keeps each call.
+
+### Counting mode
+
+In counting mode, the driver exits with a count in place of the status of the fuzz target. A statement accepts only 0 and 2. Thus a published allocation-failure fuzz target ignores counting mode: with `$LIB_ALLOCATION_FAILURE_ENGINE`, it exits as it does without counting mode.
+
+A fuzz target linked with `$LIB_FUZZING_ENGINE` counts nothing. In counting mode it exits with 0, whatever it returned.
+
+To find which allocations an input makes, link a sweep or test build with `$LIB_ALLOCATION_COUNTING_ENGINE`. We never publish such a build. It is the same as `$LIB_ALLOCATION_FAILURE_ENGINE`, with one difference. In counting mode, it exits with the number of calls that it counted, or 251 if there were more.
+
+`tools/tests/test_builder.py` checks the mask, counting mode and `std::bad_alloc` in all four builds, with each engine. It also builds cJSON's fuzz target with both engines ([tools/tests/fixtures/cjson](../tools/tests/fixtures/cjson/build.sh)). The test shows three results. The fuzz target keeps the release's bytes. An input that makes 21 allocations gets the same count in each build. If any one allocation fails, or all fail, the fuzz target still exits with 0.
+
 ## The fuzz targets
 
 A fuzz target is an executable in the `$OUT` of a build whose ELF symbol table defines `LLVMFuzzerTestOneInput`. This is the OSS-Fuzz rule, but we read the symbol table in place of the bytes of the file. A fuzz target must be in each build.
 
 `fuzz_targets` in `project.yaml` names the fuzz targets to verify. Without it, we verify each fuzz target that we find. `tools/check` copies the published binary of each fuzz target to `out/<target>/<target>.<build>`. It ignores each other file in `$OUT`.
+
+## Run a binary
+
+Each binary is a static Linux program for riscv64. Run it on a riscv64 machine, or with `qemu-riscv64` on another Linux machine:
+
+    qemu-riscv64 out/<target>/<target>.<build> <input file>
+
+To give it an OSS-Fuzz testcase, put six zero bytes in front of the testcase:
+
+    { printf '\0\0\0\0\0\0'; cat testcase; } > input
+
+> **WARNING:** Do not limit the address space of an `asan` or `asan-ubsan` binary, for example with `ulimit -v`. At start, the AddressSanitizer runtime reserves more than 100 GiB of address space. If it cannot, it waits forever.
+
+The exit status tells the result ([above](#exit-statuses)).
 
 ## The manifest
 
@@ -162,16 +267,36 @@ A fuzz target is an executable in the `$OUT` of a build whose ELF symbol table d
 * `builds` and `fuzz_targets`: what we built, with "each fuzz target" written as a list;
 * `targets.<target>.builds.<build>`: the `file`, `bytes` and `sha256` of each binary, in the format of the `builds:` section of an oss-fuzz-theorems `harness.yaml`.
 
-We will write the lock in the proofs repository from the manifest. The lock is the only place that records the commit. `tools/check --lock <file>` builds the commit that a lock names, and compares each binary with the lock ([reproducing.md](reproducing.md)). The lock can be a manifest or an oss-fuzz-theorems `harness.yaml`.
+We will write the lock in the proofs repository from the manifest. The lock is the only place that records the commit. `tools/check --lock <file>` builds the commit that a lock names, and compares each binary with the lock ([below](#check-a-binary-against-a-lock)). The lock can be a manifest or an oss-fuzz-theorems `harness.yaml`.
 
 ## Reproducibility
 
-`tools/check --twice` builds everything a second time from the start, with `docker build --no-cache`, a new fetch and a new compile of each build. It fails if a byte is different. We found that these items decide the bytes:
+`tools/check --twice` builds everything a second time from the start, with `docker build --no-cache`, a new fetch and a new compile of each build. It fails if a byte is different. We pin only binaries that two clean builds reproduce. The Build check of a pull request runs `tools/check --twice` too.
+
+We found that these items decide the bytes:
 
 * **The source paths.** An AddressSanitizer build records the path of each source file that it instruments. A file compiled at `/src/a/x.c` and at `/src/b/x.c` makes different binaries. The plain and UBSan builds do not depend on the path.
 * **The order of the link.** The driver comes first and the seals come last. `$LIB_FUZZING_ENGINE` arranges this.
 * **The layout of the archives.** OSS-Fuzz links the object of the fuzz target before the archives of the library. The release linked one archive that holds the library and the fuzz target. The two layouts can make different programs. A port that must match the release's bytes links as the release did.
 * **Stripping at the link.** A strip after the link gives bytes that are different from `-Wl,--strip-all`.
+
+## Check a binary against a lock
+
+These steps rebuild a binary and compare it with its lock in the proofs repository.
+
+> **WARNING:** `tools/check` builds the project's `Dockerfile` with network access, as `docker build` does. Use it only on a project that you trust ([SECURITY.md](../SECURITY.md)).
+
+1. Get the project's lock from the proofs repository.
+2. Check out this repository at the commit that the lock gives in `oss_verifier.commit`.
+3. Run `tools/check --no-shell --lock <lock> <name>`.
+4. Read the last line of the output.
+
+`tools/check` builds the commit that the lock names, with the toolchain that the lock names. It then compares the SHA-256 of each binary with the lock:
+
+* `matches the lock` tells you that each binary that the lock pins has the same bytes.
+* `DIFFERENT FROM THE LOCK` lists each binary that has different bytes.
+
+`tools/check` also accepts a `harness.yaml` of oss-fuzz-theorems 2026.10.0-rc.2 as a lock. Use this to check a binary of that release. If the bytes differ, open an issue in this repository. Include the output of `tools/check`.
 
 ## Builds ported from oss-fuzz-theorems
 
@@ -194,4 +319,4 @@ The internal paths matter too. The source locations of the UBSan checks keep the
 
 ## Build patches
 
-A build patch in the project directory can only change how the project builds: static linking, cross-compilation, a version stamp or a generated file. `series` lists the build patches in the order of application. A change that fixes a bug is not a build patch. It never goes in the project directory. We send it to the project as a patch ([patches.md](patches.md)).
+A build patch in the project directory can only change how the project builds: static linking, cross-compilation, a version stamp or a generated file. `series` lists the build patches in the order of application. A change that fixes a bug is not a build patch. It never goes in the project directory. We send it to the project as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).

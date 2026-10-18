@@ -66,7 +66,7 @@ BRANCH = "draft-generic-oss-fuzz-{name}"
 REMOTE = "origin"  # where drafts are pushed
 HEADER = (
     "# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's\n"
-    "# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/enrollment.md).\n"
+    "# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).\n"
 )
 LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 

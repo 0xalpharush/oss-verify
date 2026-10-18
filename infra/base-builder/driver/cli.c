@@ -13,7 +13,7 @@
  *
  * Exit status 2 means the driver refused the input without calling the target: a wrong argument count, an input
  * it cannot open or read, one shorter than its header, one of 64 MiB or more, or no memory to read it into.
- * docs/exit-codes.md lists the other statuses.
+ * docs/build-contract.md lists the other statuses.
  *
  * From the oss-fuzz-theorems 2026.10.0-rc.2 release recipe (src/cli.c). The code is unchanged; the comments are new.
  */

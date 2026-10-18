@@ -5,7 +5,7 @@ This page tells which contributions this repository accepts. It is for maintaine
 
 We accept one type of pull request: a pull request that enrolls, changes, pauses or removes one project under `projects/<name>/`. We do not accept other changes, for example to `tools/`, `templates/`, `infra/` or `docs/`.
 
-To enroll a project, follow [docs/enrollment.md](docs/enrollment.md), or tell a coding agent to read [AGENTS.md](AGENTS.md). To adopt a project that we seeded, follow [docs/enrollment.md](docs/enrollment.md#adopt-a-seeded-project).
+To enroll a project, follow the [README](README.md), or tell a coding agent to read [AGENTS.md](AGENTS.md). To adopt a project that we seeded, follow [docs/project-yaml.md](docs/project-yaml.md#seeded-projects).
 
 You make contributions under the Apache License 2.0 ([LICENSE](LICENSE), section 5). There is no separate contributor licence agreement.
 

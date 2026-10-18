@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * The adapter of an allocation-failure fuzz target, which $LIB_ALLOCATION_FAILURE_ENGINE links in place of adapter.c
- * (docs/exit-codes.md#allocation-failure). link-fuzz-target links copies of the object files and archives the link
- * names, the project's code, with their calls of these allocators renamed to the ones below:
+ * (docs/build-contract.md, Allocation-failure fuzz targets). link-fuzz-target links copies of the object files and
+ * archives the link names, the project's code, with their calls of these allocators renamed to the ones below:
  *
  *     malloc calloc realloc reallocarray aligned_alloc posix_memalign memalign strdup strndup
  *     operator new and operator new[], each with its nothrow and aligned forms

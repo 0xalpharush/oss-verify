@@ -23,7 +23,7 @@ $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer" $LIB_FUZZING_ENGIN
 # $CXX $CXXFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer" $LIB_FUZZING_ENGINE "$WORK/build/libexample.a"
 
 # Optional: an allocation-failure fuzz target, in which allocations fail as the input says
-# (docs/exit-codes.md#allocation-failure). The same object, linked with $LIB_ALLOCATION_FAILURE_ENGINE into a binary
-# of its own.
+# (docs/build-contract.md, Allocation-failure fuzz targets). The same object, linked with
+# $LIB_ALLOCATION_FAILURE_ENGINE into a binary of its own.
 # $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer_allocation_failure" $LIB_ALLOCATION_FAILURE_ENGINE \
 #   "$WORK/build/libexample.a"
