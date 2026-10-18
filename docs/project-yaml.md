@@ -73,7 +73,7 @@ This table is the only list of languages in these documents.
 Use `dockerfile` only if the `Dockerfile` is in your repository. We recommend the path `.oss-verifier/Dockerfile`.
 
 * If the `Dockerfile` and `build.sh` are in the project directory, do not set `dockerfile`. The build context is then the project directory.
-* If you set `dockerfile`, the build context is your repository at the commit that we build. Put `build.sh` next to the `Dockerfile`, unless the `Dockerfile` makes `$SRC/build.sh`. Then put your harness sources, patches and `sources` file in your repository too. Only `project.yaml` and `patch_style.md` can then be in the project directory.
+* If you set `dockerfile`, the build context is your repository at the commit that we build. Put `build.sh` next to the `Dockerfile`, unless the `Dockerfile` makes `$SRC/build.sh`. Then put your fuzz target sources, build patches and `sources` file in your repository too. Only `project.yaml` and `patch_style.md` can then be in the project directory.
 
 A seeded project can have no build files yet. `tools/validate.py` warns about it, and `tools/check` cannot build it.
 
@@ -164,7 +164,7 @@ Each file must obey these rules:
 * Its name uses only `A-Z a-z 0-9 . _ -` and starts with a letter or digit.
 * It is UTF-8 text.
 * Its size is at most 128 KiB for `project.yaml`.
-* Its size is at most 256 KiB for `build.sh`, a harness source or a patch.
+* Its size is at most 256 KiB for `build.sh`, a fuzz target source or a build patch.
 * Its size is at most 64 KiB for each other file.
 
 The project directory holds at most 64 files. Its name uses only `a-z 0-9 . _ -`, starts with a letter or digit, and has at most 63 characters.
