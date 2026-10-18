@@ -204,8 +204,9 @@ def target_of(project, harness, source, recipe_targets):
         return f"{project}-{harness}"
     if not source:
         return None
+    # The release named some targets after the project alone (its first harness), or after the harness less a suffix.
     candidates = [target for target, files in recipe_targets.items()
-                  if target.startswith(f"{project}-") and source in files]
+                  if (target == project or target.startswith(f"{project}-")) and source in files]
     return candidates[0] if len(candidates) == 1 else None
 
 
@@ -566,6 +567,7 @@ def main():
     mode.add_argument("--report", type=pathlib.Path, help="write which projects can be seeded, and why, to this file")
     mode.add_argument("--branch", action="store_true", help="(re)create draft-generic-oss-fuzz-<name> for each name")
     parser.add_argument("--trailer", action="append", default=[], help="a line to end each draft commit's message with")
+    parser.add_argument("--out", type=pathlib.Path, help="write NAME/project.yaml under OUT instead of projects/")
     options = parser.parse_args()
 
     if not (options.checkout / "projects").is_dir():
@@ -594,7 +596,7 @@ def main():
                 branch, commit = make_branch(name, text, options.trailer)
                 print(f"{branch}: {commit}")
             else:
-                directory = validate.PROJECTS / name
+                directory = (options.out or validate.PROJECTS) / name
                 directory.mkdir(parents=True, exist_ok=True)
                 (directory / "project.yaml").write_text(text, encoding="utf-8")
                 print(f"projects/{name}/project.yaml")
