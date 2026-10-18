@@ -1,0 +1,71 @@
+# Adapted from OSS Scanner's templates/project.yaml (https://github.com/anthropics/oss-scanner), Copyright 2026
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: OSS Verifier's fields and files.
+#
+# Copy this file to projects/<name>/project.yaml and fill in the fields below. docs/project-yaml.md describes each.
+
+# REQUIRED. The ONE git repository to build, as an https:// URL. Add #branch or #tag to follow one, or
+# #<full commit id> to verify exactly that commit. Without one, the repository's default branch.
+repo: https://github.com/example/project#v1.2.3
+
+# REQUIRED. Who we send findings and build problems to, and contact for questions (one address). It is public.
+primary_contact: security@example.org
+
+# Optional. Additional email addresses we will CC on every report.
+auto_ccs:
+  - maintainer@example.org
+
+# Optional. The project's home page.
+homepage: https://example.org
+
+# Optional. Your armored OpenPGP public key. When set, every report is encrypted to it and goes to primary_contact only
+# (so it cannot be combined with auto_ccs).
+# Paste the whole block, including the BEGIN line and END line.
+# pgp: |
+#   -----BEGIN PGP PUBLIC KEY BLOCK-----
+#   mDMEZ...
+#   -----END PGP PUBLIC KEY BLOCK-----
+
+# Optional. true pauses the project without removing it; false (or omitting it) keeps it active.
+disabled: false
+
+# REQUIRED. The language of the code we build: c or c++.
+language: c
+
+# Optional. The sanitizer builds besides the plain one: a subset of [address, undefined]. With both there is also an
+# asan-ubsan build. This is the default.
+sanitizers: [address, undefined]
+
+# Optional. The fuzz targets to verify, as build.sh names them in $OUT. Omit it to verify every fuzz target the build
+# produces; tools/check lists them.
+fuzz_targets:
+  - example_fuzzer
+
+# REQUIRED: a Dockerfile and a build.sh (start from templates/) in one of two places:
+#   - in this repository, next to this file, as projects/<name>/Dockerfile and projects/<name>/build.sh, in which
+#     case you should delete the line below; or
+#   - in your repository, in which case you should give the Dockerfile's path below and keep build.sh beside it.
+dockerfile: .oss-verifier/Dockerfile
+
+# Optional: a patch_style.md (start from templates/patch_style.md) says how you want patches. It goes in one of two
+# places:
+#   - in your repository, in which case you should give its path below; or
+#   - in this repository, next to this file, as projects/<name>/patch_style.md, in which case you should delete the
+#     line below.
+patch_style: .oss-verifier/patch_style.md
+
+# Optional. When we publish the proofs about your project (docs/publishing.md):
+#   after_fixes  (the default) once every patch we sent you is public or upstreamed
+#   eager        as the proofs progress
+#   never        never outside Theorem
+# publish: after_fixes
+
+# Optional, and rarely needed: the memory budgets of the statements (docs/memory-policy.md), and where the proofs are
+# published (docs/publishing.md). Set only what you want to change.
+# budgets:
+#   halts: 16GiB
+#   agrees:
+#     address: [2GiB, 512GiB]
+#     undefined: [16GiB, 512GiB]
+# proofs:
+#   repo: https://github.com/theorem-labs/oss-verifier-proofs#<name>
+#   path: projects/<name>
