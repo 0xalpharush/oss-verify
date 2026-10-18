@@ -41,6 +41,7 @@ mkdir -p "$OUT" "$WORK"
 if [ -n "${OV_OWNER:-}" ]; then
   trap 'chown -R "$OV_OWNER" "$OUT" 2>/dev/null || true' EXIT
 fi
+export -n OV_OWNER
 
 echo "compile: the $BUILD build (SANITIZER=$SANITIZER)"
 

@@ -117,6 +117,16 @@ The lock in the proofs repository is to be written from the manifest, and it is 
 * **The layout of the archives.** Linking the fuzz target's object before the library's archives, as OSS-Fuzz does, can lay out the program differently from linking one archive that holds the library and the fuzz target, as the release did. A port that must match the release's bytes links the way it did.
 * **Stripping at link time.** Stripping the binary afterwards gives different bytes from `-Wl,--strip-all`.
 
+## Builds ported from oss-fuzz-theorems
+
+A project seeded from oss-fuzz-theorems 2026.10.0-rc.2 can have its build ported from that release's recipe by `tools/port.py`, which writes three generated files beside `project.yaml`:
+
+* `Dockerfile`: fetches the project at `COMMIT` into `$SRC/upstream/<name>`, then runs `lay-out-sources` on `sources`.
+* `sources`: where each source tree goes, as the release's source manifest says: a copy of the checkout per release target, any other tree or file pinned by commit or sha256, the release's own files for a target, and its build-only patches. It is the only place a dependency's pin is kept; a Dockerfile never holds one.
+* `build.sh`: for each fuzz target, the release's pin for it (its `build_lib`, `LIB_ARCHIVE` and helpers), run by [release-target.sh](../infra/base-builder/release-target.sh) with the release's recipes ([recipes.sh](../infra/base-builder/recipes.sh)), under `sh -e` as the release ran it.
+
+`release-target.sh` gives each target the layout the release built in: its tree in `/work/ext/<target>/src`, its build directory in `/work/build/lib/<build>/<target>`, the release's files for it in `/work/targets/<target>`, and compiler wrappers that give the compiler the neutral `/src/...` paths a binary records. The internal paths matter as well as the neutral ones: the source locations of UBSan's checks keep the internal path, so in an `asan-ubsan` build a header that both uses `__FILE__` and holds a UBSan check makes one string literal more, which the AddressSanitizer build instruments, than the same build at the neutral path. With that layout, a ported build reproduces the release's binaries; [STATUS.md](../STATUS.md) says for which projects that has been checked.
+
 ## Patches
 
 A patch beside `project.yaml` may only change how the project builds: static linking, cross-compilation, a version stamp, a generated file. `series` lists the patches in the order they are applied. A patch that fixes a bug never goes here: it goes to the project ([disclosure.md](disclosure.md)).

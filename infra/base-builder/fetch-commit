@@ -31,8 +31,13 @@ git() { command git -c credential.helper= -c protocol.allow=never -c protocol.ht
 
 git init -q "$dir"
 git -C "$dir" remote add origin "$REPO"
-git -C "$dir" fetch -q --depth 1 origin "$COMMIT"
-git -C "$dir" checkout -q --detach FETCH_HEAD
+if git -C "$dir" fetch -q --depth 1 origin "$COMMIT"; then
+  git -C "$dir" checkout -q --detach FETCH_HEAD
+else
+  # A server that will not serve a commit by its id: fetch its branches and tags, then check the commit out.
+  git -C "$dir" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*'
+  git -C "$dir" checkout -q --detach "$COMMIT"
+fi
 head=$(git -C "$dir" rev-parse HEAD)
 [ "$head" = "$COMMIT" ] || { echo "fetch-commit: checked out $head, not $COMMIT" >&2; exit 1; }
 if [ "$submodules" = 1 ]; then

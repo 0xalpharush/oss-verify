@@ -11,8 +11,10 @@
 #     <compiler> -static -no-pie -Wl,--gc-sections <driver> [<silent reports>] <the link's own arguments> <seals>
 #
 # The driver (cli.o, adapter.o) comes first, in place of $LIB_FUZZING_ENGINE wherever the link named it, and the
-# seals (getenv, mkstemp and getpid, each wrapped) come last: both positions change the bytes. In the AddressSanitizer
-# builds, --defsym=__sanitizer_silent_reports=1 makes a detection abort without printing a report.
+# seals (getenv, mkstemp and getpid, each wrapped) come last: both positions change the bytes. A link that already
+# wraps one of those functions has its own seals (a build ported from the release's recipe adds them where its pin
+# did), and gets none added. In the AddressSanitizer builds, --defsym=__sanitizer_silent_reports=1 makes a detection
+# abort without printing a report.
 #
 # It links twice: the output the link asked for, with its symbols, and the same link with --strip-all, saved under
 # the sha256 of the first for compile to collect.
@@ -25,9 +27,13 @@ real=$1
 shift
 out=a.out
 args=()
+seals=$OV_SEALS
 while [ $# -gt 0 ]; do
   case "$1" in
     "$OV_LFE") ;;
+    -Wl,--wrap=getenv|-Wl,--wrap=getpid|-Wl,--wrap=mkstemp)
+      seals=""
+      args+=("$1") ;;
     -o)
       [ $# -ge 2 ] || { echo "link-fuzz-target: -o needs a file name" >&2; exit 1; }
       out=$2
@@ -40,7 +46,7 @@ done
 
 link() {
   # shellcheck disable=SC2086 # the lists in link.env are meant to be split
-  $real -static -no-pie -Wl,--gc-sections "$@" $OV_DRIVER $OV_SILENT_LD ${args[@]+"${args[@]}"} $OV_SEALS
+  $real -static -no-pie -Wl,--gc-sections "$@" $OV_DRIVER $OV_SILENT_LD ${args[@]+"${args[@]}"} $seals
 }
 
 link -o "$out"

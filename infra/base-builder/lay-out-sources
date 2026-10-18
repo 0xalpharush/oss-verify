@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+"""lay-out-sources <sources file> [<root>]: lay out a project's source trees under <root> ($SRC unless given).
+
+A ported project's Dockerfile checks out the project's own repository at COMMIT with fetch-commit, then runs this on
+the `sources` file beside it. Each line is a directive, its fields separated by tabs; # starts a comment. Paths are
+relative to <root>, except a tree's checkout, which is relative to $SRC; a project file is one copied from
+projects/<name>/ to the directory the sources file is in. A build ported from the oss-fuzz-theorems release lays its
+trees out under /work, where the release's build had them.
+
+    tree     <path>  <checkout>               a copy of a checkout ($SRC/<checkout>), without its .git
+    link     <path>  <path laid out before>   a symbolic link to it
+    git      <path>  <url>  <commit>          that commit of a git repository, without its .git
+    file     <path>  <url>  <sha256>          one file, downloaded over https and checked
+    archive  <path>  <url>  <sha256>  <strip> [<pattern> ...]
+                                              a tar archive, downloaded and checked, unpacked into <path> less its
+                                              first <strip> path components; a pattern !<name> leaves out a top-level
+                                              member of that name
+    copy     <path>  <project file>           one of the project's files, under another name
+    patch    <path>  <project file>           a build-only patch, applied to the tree at <path> with git apply
+
+The directives run in order, and the patches in the order the project's series file lists them, which must be the
+order they appear here. A commit and a sha256 are the pins of a project's dependencies: this file is their only home
+(a Dockerfile never holds one).
+
+Only https is used. A checksum or commit that does not match stops the build.
+"""
+import hashlib
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.request
+
+SRC = pathlib.Path(os.environ.get("SRC", "/src"))
+GIT = ["git", "-c", "credential.helper=", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always"]
+
+
+class Failed(Exception):
+    """A directive that cannot be carried out."""
+
+
+def under(root, text):
+    """A path under `root`, refusing absolute paths and .. components."""
+    path = pathlib.PurePosixPath(text)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        raise Failed(f"{text}: not a relative path")
+    return root / path
+
+
+def fresh(path):
+    """Make sure nothing is at `path`, and that its parent exists."""
+    if path.exists() or path.is_symlink():
+        raise Failed(f"{path} is laid out twice")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def download(url, sha256):
+    """The bytes at an https URL, checked against their sha256."""
+    if not url.startswith("https://"):
+        raise Failed(f"{url}: only https is used")
+    with urllib.request.urlopen(url, timeout=300) as response:
+        data = response.read()
+    got = hashlib.sha256(data).hexdigest()
+    if got != sha256:
+        raise Failed(f"{url}: sha256 {got}, expected {sha256}")
+    return data
+
+
+def without_git(source, destination):
+    """Copy a tree, symbolic links as links, leaving out its .git."""
+    shutil.copytree(source, destination, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+
+
+def tree(path, checkout):
+    fresh(path)
+    without_git(under(SRC, checkout), path)
+
+
+def link(path, target, root):
+    fresh(path)
+    target = under(root, target)
+    if not target.exists():
+        raise Failed(f"link {path} -> {target}: nothing is laid out there yet")
+    path.symlink_to(target)
+
+
+def git(path, url, commit):
+    if not url.startswith("https://"):
+        raise Failed(f"{url}: only https is used")
+    fresh(path)
+    with tempfile.TemporaryDirectory(dir=SRC) as scratch:
+        run = lambda *args: subprocess.run([*GIT, "-C", scratch, *args], check=True, stdin=subprocess.DEVNULL)
+        run("init", "-q")
+        if subprocess.run([*GIT, "-C", scratch, "fetch", "-q", "--depth", "1", "--", url, commit],
+                          stdin=subprocess.DEVNULL).returncode != 0:
+            # A server that will not serve a commit by its id: fetch its branches and tags instead.
+            run("fetch", "-q", "--tags", "--", url, "+refs/heads/*:refs/remotes/origin/*")
+            run("checkout", "-q", "--detach", commit)
+        else:
+            run("checkout", "-q", "--detach", "FETCH_HEAD")
+        head = subprocess.run([*GIT, "-C", scratch, "rev-parse", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+        if head != commit:
+            raise Failed(f"{url}: checked out {head}, not {commit}")
+        without_git(scratch, path)
+
+
+def file(path, url, sha256):
+    fresh(path)
+    path.write_bytes(download(url, sha256))
+
+
+def archive(path, url, sha256, strip, *patterns):
+    strip, left_out = int(strip), {pattern[1:] for pattern in patterns if pattern.startswith("!")}
+    unknown = [pattern for pattern in patterns if not pattern.startswith("!")]
+    if unknown:
+        raise Failed(f"{url}: patterns other than !<name> are not supported: {unknown}")
+    fresh(path)
+    path.mkdir()
+    with tempfile.TemporaryFile() as handle:
+        handle.write(download(url, sha256))
+        handle.seek(0)
+        with tarfile.open(fileobj=handle) as tar:
+            for member in tar.getmembers():
+                parts = pathlib.PurePosixPath(member.name).parts[strip:]
+                if not parts or parts[0] in left_out:
+                    continue
+                if member.issym() or member.islnk():
+                    if pathlib.PurePosixPath(member.linkname).is_absolute() or ".." in pathlib.PurePosixPath(member.linkname).parts:
+                        raise Failed(f"{url}: {member.name} links outside the archive")
+                member.name = str(pathlib.PurePosixPath(*parts))
+                if member.islnk():
+                    member.linkname = str(pathlib.PurePosixPath(*pathlib.PurePosixPath(member.linkname).parts[strip:]))
+                tar.extract(member, path, filter="tar")
+
+
+def copy(path, name, files):
+    fresh(path)
+    shutil.copy2(files / name, path)
+
+
+def patch(path, name, files):
+    subprocess.run(["git", "apply", "--whitespace=nowarn", "-p1", str(files / name)], cwd=path, check=True,
+                   stdin=subprocess.DEVNULL)
+
+
+def main():
+    if len(sys.argv) not in (2, 3):
+        sys.exit("usage: lay-out-sources <sources file> [<root>]")
+    sources = pathlib.Path(sys.argv[1])
+    root = pathlib.Path(sys.argv[2]) if len(sys.argv) == 3 else SRC
+    root.mkdir(parents=True, exist_ok=True)
+    files = sources.parent
+    series = files / "series"
+    order = [line.strip() for line in series.read_text().splitlines()
+             if line.strip() and not line.startswith("#")] if series.exists() else []
+    patches = []
+    for number, line in enumerate(sources.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        kind, where, *args = line.split("\t")
+        try:
+            destination = under(root, where)
+            if kind == "tree" and len(args) == 1:
+                tree(destination, *args)
+            elif kind == "link" and len(args) == 1:
+                link(destination, args[0], root)
+            elif kind == "git" and len(args) == 2:
+                git(destination, *args)
+            elif kind == "file" and len(args) == 2:
+                file(destination, *args)
+            elif kind == "archive" and len(args) >= 2:
+                archive(destination, *args)
+            elif kind == "copy" and len(args) == 1:
+                copy(destination, args[0], files)
+            elif kind == "patch" and len(args) == 1:
+                patches.append(args[0])
+                patch(destination, args[0], files)
+            else:
+                raise Failed(f"not a directive this tool knows, with these fields: {line!r}")
+        except (Failed, OSError, subprocess.CalledProcessError, tarfile.TarError) as error:
+            sys.exit(f"lay-out-sources: {sources}:{number}: {error}")
+        print(f"lay-out-sources: {kind} {where}")
+    if patches != order:
+        sys.exit(f"lay-out-sources: the patches here ({patches}) are not those series lists, in its order ({order})")
+
+
+if __name__ == "__main__":
+    main()
