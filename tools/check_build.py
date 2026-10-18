@@ -218,6 +218,10 @@ def empty_directory(path, tag):
     path.mkdir(parents=True)
 
 
+# The status docker run exits with when it cannot run the container at all.
+DOCKER_FAILED = 125
+
+
 def compile_build(tag, build, sanitizer, out):
     """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`."""
     step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
@@ -225,8 +229,14 @@ def compile_build(tag, build, sanitizer, out):
     owner = f"{os.getuid()}:{os.getgid()}"
     # The number of parallel jobs, if set here, for recipes that read it; it does not change the bytes.
     jobs = ["-e", "OFT_MAKE_JOBS"] if os.environ.get("OFT_MAKE_JOBS") else []
-    code = run("docker", "run", "--rm", "--init", "--network=none", "-e", f"SANITIZER={sanitizer}",
-               "-e", f"OV_OWNER={owner}", *jobs, "-v", f"{out}:/out", tag, "compile")
+    command = ["docker", "run", "--rm", "--init", "--network=none", "-e", f"SANITIZER={sanitizer}",
+               "-e", f"OV_OWNER={owner}", *jobs, "-v", f"{out}:/out", tag, "compile"]
+    code = run(*command)
+    if code == DOCKER_FAILED:
+        # docker run itself failed (the daemon could not start the container), not the build: once more, afresh.
+        say(f"docker run exited {DOCKER_FAILED}: starting the {build} build again")
+        empty_directory(out, tag)
+        code = run(*command)
     if code != 0:
         raise Failed(f"compile exited {code} in the {build} build")
 
