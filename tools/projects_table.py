@@ -24,10 +24,10 @@ def cell(text):
     return validate.printable(str(text)).replace("|", "\\|").replace("`", "'")
 
 
-def rows():
-    """One row per valid project, in name order."""
+def rows(projects=validate.PROJECTS):
+    """One row per valid project under `projects`, in name order."""
     lines = []
-    for directory in sorted(path for path in validate.PROJECTS.glob("*") if path.is_dir() and not path.is_symlink()):
+    for directory in sorted(path for path in projects.glob("*") if path.is_dir() and not path.is_symlink()):
         problems, _, _ = validate.check_project(directory)
         if problems:
             continue
@@ -49,9 +49,9 @@ def rows():
     return lines
 
 
-def table():
+def table(projects=validate.PROJECTS):
     """The generated table, with its markers."""
-    body = rows()
+    body = rows(projects)
     head = ["| project | repository | ref | fuzz targets | build files | enrolled by |", "|---|---|---|---|---|---|"]
     if not body:
         head = ["No project is enrolled yet."]
@@ -59,12 +59,13 @@ def table():
     return "\n".join([BEGIN, *head, *body, END])
 
 
-def render(text):
-    """README.md's text with its table replaced. Raise ValueError if the markers are missing."""
+def render(text, projects=validate.PROJECTS):
+    """README.md's text with its table replaced by the one for `projects`. Raise ValueError if the markers are
+    missing."""
     start, end = text.find(BEGIN), text.find(END)
     if start < 0 or end < start:
         raise ValueError(f"README.md has no table markers ({BEGIN} ... {END})")
-    return text[:start] + table() + text[end + len(END):]
+    return text[:start] + table(projects) + text[end + len(END):]
 
 
 def main():
