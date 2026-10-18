@@ -26,5 +26,8 @@ pins in build.sh, a target's own files, and the build-only patches. Where such a
 copy of its harness that the release edited, or a patch that writes a file generated from the project's sources),
 that text keeps the project's licence; the recipe's UPSTREAM-CARRIED.tsv names each, with its origin and licence.
 
+What this repository takes from that build recipe is Theorem's own code, which the release's recipe also publishes
+under the MIT licence. Here it is under the Apache License, Version 2.0, as the rest of this repository is.
+
 A file under projects/<name>/ copied from a project's own repository keeps that project's licence, which the file
 names in its header.
