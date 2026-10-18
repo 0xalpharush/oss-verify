@@ -64,7 +64,7 @@ class ValidProjects(unittest.TestCase):
             f"pgp: |\n  {KEY.replace(chr(10), chr(10) + '  ')}\n"
         )
         files = {
-            "Dockerfile": "FROM x\n", "build.sh": "#!/bin/bash\n", "patch_style.md": "# Patches\n",
+            "Dockerfile": "FROM x\n", "build.sh": "#!/bin/bash\n", "patch_style.md": "# Patches\n", "sources": "# none\n",
             "driver.c": "int x;\n", "driver.h": "", "more.cpp": "", "0001-static.patch": "--- a\n+++ b\n",
             "series": "# order\n0001-static.patch\n",
         }
@@ -196,7 +196,8 @@ class Problems(unittest.TestCase):
         self.assertProblem(MINIMAL, "a file name may use only", {**base, "-x.c": "x"})
         self.assertProblem(MINIMAL, "Dockerfile is empty", {**base, "Dockerfile": " \n"})
         self.assertProblem(MINIMAL, "build.sh is empty", {**base, "build.sh": ""})
-        self.assertProblem(MINIMAL, "larger than 64 KiB", {**base, "build.sh": "x" * (64 * 1024 + 1)})
+        self.assertProblem(MINIMAL, "larger than 64 KiB", {**base, "Dockerfile": "x" * (64 * 1024 + 1)})
+        self.assertProblem(MINIMAL, "larger than 256 KiB", {**base, "build.sh": "x" * (256 * 1024 + 1)})
         self.assertProblem(MINIMAL, "larger than 256 KiB", {**base, "big.c": "x" * (256 * 1024 + 1)})
         self.assertProblem(MINIMAL, "not UTF-8", {**base, "bad.c": b"\xff\xfe"})
         many = {**base, **{f"f{i}.c": "" for i in range(validate.MAX_FILES)}}

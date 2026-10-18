@@ -31,7 +31,7 @@ No other field is allowed. Some settings are the operators' to make, never a pul
 
 **`language`.** `c` or `c++`, the language of the library and its fuzz targets as we build them.
 
-**`dockerfile`.** Leave it out when the `Dockerfile` and `build.sh` sit beside `project.yaml`: the build context is then `projects/<name>/`, and the Dockerfile fetches your source. Set it when they live in your repository (we suggest `.oss-verifier/Dockerfile`): the build context is then your repository at the commit being built, and `build.sh` is expected beside the Dockerfile, unless the Dockerfile creates `$SRC/build.sh` itself. In that case harness sources and patches belong in your repository too, and nothing but `project.yaml` and `patch_style.md` may sit here.
+**`dockerfile`.** Leave it out when the `Dockerfile` and `build.sh` sit beside `project.yaml`: the build context is then `projects/<name>/`, and the Dockerfile fetches your source. Set it when they live in your repository (we suggest `.oss-verifier/Dockerfile`): the build context is then your repository at the commit being built, and `build.sh` is expected beside the Dockerfile, unless the Dockerfile creates `$SRC/build.sh` itself. In that case harness sources, patches and a `sources` file belong in your repository too, and nothing but `project.yaml` and `patch_style.md` may sit here.
 
 A project we seeded ourselves (`primary_contact: n/a`) may have no build files yet: we add a `Dockerfile` and a `build.sh` only once they have been checked to build. `tools/validate.py` warns about such a project, and `tools/check` cannot build it. [STATUS.md](../STATUS.md) lists them.
 
@@ -75,7 +75,8 @@ A size is a positive number of bytes, or a number followed by `KiB`, `MiB`, `GiB
 | `patch_style.md` | optional, unless `patch_style:` is set |
 | `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp` | optional: harness sources of your own, such as a fuzz target that checks a property |
 | `*.patch` and `series` | optional: patches that change only how the project builds |
+| `sources` | optional: the project's other source trees and files, each pinned by commit or sha256, for the Dockerfile to lay out with `lay-out-sources` ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
 
 `series` lists the patches, one file name per line, in the order they are applied; blank lines and lines starting with `#` are ignored. Every patch must be listed exactly once. A patch here may make the build static, cross-compile, fix a version stamp or generate a file; a patch that fixes a bug never goes here.
 
-Every file must be a regular file (no symbolic links, no subdirectories) with a plain name (`A-Z a-z 0-9 . _ -`, starting with a letter or digit), UTF-8 text, and at most 128 KiB for `project.yaml`, 256 KiB for a harness source or a patch, and 64 KiB for anything else. A project's directory holds at most 64 files. Its name is `a-z 0-9 . _ -`, starting with a letter or digit, at most 63 characters.
+Every file must be a regular file (no symbolic links, no subdirectories) with a plain name (`A-Z a-z 0-9 . _ -`, starting with a letter or digit), UTF-8 text, and at most 128 KiB for `project.yaml`, 256 KiB for `build.sh`, a harness source or a patch, and 64 KiB for anything else. A project's directory holds at most 64 files. Its name is `a-z 0-9 . _ -`, starting with a letter or digit, at most 63 characters.

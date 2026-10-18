@@ -62,10 +62,12 @@ OPERATOR_KEYS = ()
 # point to it there.
 FILE_KEYS = {"Dockerfile": "dockerfile", "patch_style.md": "patch_style"}
 SERIES = "series"
+# The pins of a project's other source trees (commits, sha256s), which lay-out-sources lays out.
+SOURCES = "sources"
 SOURCE_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hh", ".hpp")
 PATCH_SUFFIX = ".patch"
-MAX_FILE_BYTES = 64 * 1024  # Dockerfile, build.sh, patch_style.md, series
-MAX_SOURCE_BYTES = 256 * 1024  # a harness source or a patch
+MAX_FILE_BYTES = 64 * 1024  # Dockerfile, patch_style.md, series, sources
+MAX_SOURCE_BYTES = 256 * 1024  # build.sh, a harness source or a patch
 MAX_CONFIG_BYTES = 128 * 1024
 MAX_FILES = 64
 
@@ -325,14 +327,14 @@ def check_files(config, files):
         if not FILE_NAME.fullmatch(name):
             yield f"{name}: a file name may use only A-Z a-z 0-9 . _ - (starting with a letter or digit)"
             continue
-        if name not in (*FILE_KEYS, "build.sh", SERIES) and not is_source and name not in patches:
+        if name not in (*FILE_KEYS, "build.sh", SERIES, SOURCES) and not is_source and name not in patches:
             yield (
-                f"{name}: only project.yaml, Dockerfile, build.sh, patch_style.md, harness sources "
+                f"{name}: only project.yaml, Dockerfile, build.sh, sources, patch_style.md, harness sources "
                 f"({' '.join('*' + suffix for suffix in SOURCE_SUFFIXES)}), *.patch and series may sit in a "
                 "project's directory"
             )
             continue
-        limit = MAX_SOURCE_BYTES if is_source or name in patches else MAX_FILE_BYTES
+        limit = MAX_SOURCE_BYTES if is_source or name in patches or name == "build.sh" else MAX_FILE_BYTES
         if text is None:
             yield f"{name} is larger than {limit // 1024} KiB (or not UTF-8 text)"
             continue
@@ -412,7 +414,7 @@ def read_text(path, limit):
 
 def limit_for(name):
     """The largest a file with this name may be, in bytes."""
-    if name.endswith(SOURCE_SUFFIXES) or name.endswith(PATCH_SUFFIX):
+    if name.endswith(SOURCE_SUFFIXES) or name.endswith(PATCH_SUFFIX) or name == "build.sh":
         return MAX_SOURCE_BYTES
     return MAX_FILE_BYTES
 
