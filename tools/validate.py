@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
-# Modified 2026 by Theorem Labs, PBC: OSS Verifier's fields (language, sanitizers, fuzz_targets, patch_style,
-# disable_remediation, patches, budgets, proofs, publish) and files (build.sh, patch_style.md, harness sources,
-# build-only patches and their series), the n/a contact of a seeded project, warnings, and checking named directories.
+# Modified 2026 by Theorem Labs, PBC: OSS Verifier's fields (language, sanitizers, fuzz_targets, patch_style, budgets,
+# proofs, publish) and files (build.sh, patch_style.md, harness sources, build-only patches and their series), the
+# n/a contact of a seeded project, warnings, and checking named directories.
 """Check projects/<name>/ directories against the enrollment rules in docs/project-yaml.md.
 
     tools/validate.py                 check every directory under projects/
@@ -27,10 +27,8 @@ Fields allowed in project.yaml:
     sanitizers: [address, undefined]    optional   the sanitizer builds besides plain (this is the default)
     fuzz_targets: [<target>, ...]       optional   default: every fuzz target the build produces
     patch_style: <path in your repo>    optional   or a patch_style.md next to project.yaml
-    disable_remediation: true | false   optional   true: findings are sent without patches (default false)
-    patches: {findings: ..., ...}       optional   which patches our agents write (docs/patches.md)
     budgets: {halts: ..., agrees: ...}  optional   memory budgets (docs/what-gets-proven.md)
-    proofs: {repo: ..., path: ...}      optional   where the proofs are published (docs/publishing.md)
+    proofs: {repo: ..., path: ...}      optional   where the proofs are published (docs/project-yaml.md)
     publish: eager | after_fixes | never  optional  when the proofs are published (default after_fixes)
 
 Files allowed next to project.yaml: a Dockerfile with its build.sh (unless dockerfile: is set), a patch_style.md
@@ -55,7 +53,7 @@ PROJECTS = pathlib.Path(__file__).resolve().parent.parent / "projects"
 REQUIRED_KEYS = ("repo", "primary_contact", "language")
 OPTIONAL_KEYS = (
     "auto_ccs", "homepage", "pgp", "disabled", "dockerfile",
-    "sanitizers", "fuzz_targets", "patch_style", "disable_remediation", "patches", "budgets", "proofs", "publish",
+    "sanitizers", "fuzz_targets", "patch_style", "budgets", "proofs", "publish",
 )
 ALLOWED_KEYS = REQUIRED_KEYS + OPTIONAL_KEYS
 # Settings controlled by the program's operators. A pull request may not set them. There are none yet.
@@ -93,15 +91,6 @@ NO_CONTACT = "n/a"
 LANGUAGES = ("c", "c++")
 SANITIZERS = ("address", "undefined")
 PUBLISH = ("eager", "after_fixes", "never")
-# The patches block (docs/patches.md): each key, and the values it takes (the first is the default).
-PATCHES = {
-    "findings": ("fuzz_failures", "all"),
-    "out_of_scope": ("harness", "library"),
-    "allocation_failure": ("harness", "library"),
-    "documentation": (False, True),
-    "refactoring": ("none", "equivalent", "minor"),
-    "equivalence_proof": ("required", "not_required"),
-}
 # The builds, in the order their statements and manifests list them, each with the SANITIZER that `compile` takes.
 BUILDS = {"plain": "none", "ubsan": "undefined", "asan": "address", "asan-ubsan": "address-undefined"}
 
@@ -189,10 +178,9 @@ def check_types(config):
     for key in ("primary_contact", "homepage", "pgp", "language", "publish", "dockerfile", "patch_style"):
         if config.get(key) is not None and not isinstance(config[key], str):
             yield f"{key} must be a string"
-    for key in ("disabled", "disable_remediation"):
-        if config.get(key) is not None and not isinstance(config[key], bool):
-            yield f"{key} must be true or false"
-    for key in ("patches", "budgets", "proofs"):
+    if config.get("disabled") is not None and not isinstance(config["disabled"], bool):
+        yield "disabled must be true or false"
+    for key in ("budgets", "proofs"):
         if config.get(key) is not None and not isinstance(config[key], dict):
             yield f"{key} must be a mapping"
 
@@ -291,21 +279,6 @@ def check_budgets(config):
             yield f"budgets.agrees.{sanitizer} is set, but {sanitizer} is not one of this project's sanitizers"
         if not (isinstance(pair, list) and len(pair) == 2 and all(size_in_bytes(size) for size in pair)):
             yield f"budgets.agrees.{sanitizer} must be two sizes: [plain side, sanitizer side]"
-
-
-def check_patches(config):
-    """Yield a problem with the patches block (docs/patches.md)."""
-    patches = config.get("patches")
-    if not isinstance(patches, dict):
-        return
-    for key, value in patches.items():
-        if key not in PATCHES:
-            yield f"patches: unknown field {key!r} (allowed: {', '.join(PATCHES)})"
-        elif isinstance(PATCHES[key][0], bool):
-            if not isinstance(value, bool):
-                yield f"patches.{key} must be true or false"
-        elif isinstance(value, bool) or value not in PATCHES[key]:
-            yield f"patches.{key} must be one of {', '.join(PATCHES[key])} (got {value!r})"
 
 
 def check_proofs(config):
@@ -412,8 +385,6 @@ def config_warnings(config, files):
         ref = repo.split("#", 1)[1]
         if SHORT_COMMIT.fullmatch(ref) and not FULL_COMMIT.fullmatch(ref):
             warnings.append(f"#{ref} looks like a shortened commit id; give a commit in full, or this names a branch or tag")
-    if config.get("disable_remediation") is True and isinstance(config.get("patches"), dict) and config["patches"]:
-        warnings.append("patches has no effect while disable_remediation is true: findings are sent without patches")
     if "Dockerfile" not in files and config.get("dockerfile") is None:
         warnings.append("no build files yet (a seeded project): it cannot be built until a Dockerfile and build.sh are added")
     if "Dockerfile" in files and "build.sh" not in files:
@@ -436,7 +407,6 @@ def check_config(config, files):
         *check_addresses(config),
         *check_pgp(config),
         *check_builds(config),
-        *check_patches(config),
         *check_budgets(config),
         *check_proofs(config),
         *check_files(config, files),
