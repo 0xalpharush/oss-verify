@@ -111,6 +111,19 @@ class Rules(unittest.TestCase):
             return validate.check_project(directory)
 
 
+class Targets(unittest.TestCase):
+    def test_a_harness_is_mapped_to_the_release_s_target_that_builds_it(self):
+        targets = {"demo-one": {"one.c"}, "demo": {"first.c"}, "demo-pcd_aes_fuzzer": {"pcd_aes_fuzzer.cc", "pcd_aes_oft.cc"},
+                   "demo-dep-lib": set(), "other-two": {"two.c"}}
+        self.assertEqual(seed.target_of("demo", "one", "one.c", targets), "demo-one")  # by name
+        self.assertEqual(seed.target_of("demo", "first_fuzzer", "first.c", targets), "demo")  # by its source
+        self.assertEqual(seed.target_of("demo", "first", None, targets), "demo")  # by the file named after it
+        self.assertEqual(seed.target_of("demo", "aes_fuzzer", None, targets), "demo-pcd_aes_fuzzer")  # a file holding it
+        self.assertIsNone(seed.target_of("demo", "two", None, targets))  # another project's
+        targets["demo-aes_fuzzer_two"] = {"aes_fuzzer_two.c"}
+        self.assertIsNone(seed.target_of("demo", "aes_fuzzer", None, targets))  # two files hold it
+
+
 class Repositories(unittest.TestCase):
     def test_a_repository_the_release_names_by_a_url_git_cannot_fetch(self):
         mirror = {"https://example.org/stamped": "https://example.org/mirror/stamped"}
@@ -118,8 +131,8 @@ class Repositories(unittest.TestCase):
             stamped = seed.assess("stamped", RELEASE, RECIPE)
         self.assertEqual(stamped.repo, "https://example.org/mirror/stamped")
         self.assertEqual(stamped.release_repo, "https://example.org/stamped")
-        self.assertIn("repo: the release names https://example.org/stamped, which serves no git repository over https; "
-                      "https://example.org/mirror/stamped serves the commit it built", stamped.notes)
+        self.assertIn("repo: the release names https://example.org/stamped, from which git cannot fetch the commit over "
+                      "https; https://example.org/mirror/stamped serves it", stamped.notes)
         # The release's patches are still found, under the repository as the release names it.
         self.assertTrue(any("1 patch(es) to the library's tree" in note for note in stamped.notes))
 

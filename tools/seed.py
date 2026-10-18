@@ -86,8 +86,8 @@ BUILD_NAMES = {
 BUILD_SUFFIXES = (".cmake", ".m4", ".am", ".ac", ".mk", ".py", ".sh", ".gn", ".gni", ".bzl", ".bazel")
 BUILD_DIRECTORIES = {"build-aux", "m4", "cmake", "auto"}
 VERSION_FILE = re.compile(r"[A-Z0-9_]*VERSION")
-# Libraries the release names by a URL that serves no git repository over https (it fetched them over git://), and the
-# https repository that serves the commit it built. A seeded project's repo must be one tools/check can fetch.
+# Libraries the release names by a URL git cannot fetch the commit it built from over https (it fetched them over
+# git://), and an https repository that serves that commit. A seeded project's repo must be one tools/check can fetch.
 REPOSITORIES = {
     "https://thekelleys.org.uk/dnsmasq": "https://thekelleys.org.uk/git/dnsmasq",
     "https://git.ghostscript.com/ghostpdl": "https://github.com/ArtifexSoftware/ghostpdl",
@@ -217,13 +217,17 @@ def target_of(project, harness, source, recipe_targets):
     if f"{project}-{harness}" in recipe_targets:
         return f"{project}-{harness}"
     # The release named some targets after the project alone (its first harness), or after the harness less a suffix:
-    # the harness's source file tells which. Where the release records no source, the file named after the harness.
+    # the harness's source file tells which. Where the release records no source, the file named after the harness,
+    # or failing that the one file whose name holds the harness's.
     ours = [target for target in recipe_targets if target == project or target.startswith(f"{project}-")]
     if source:
         candidates = [target for target in ours if source in recipe_targets[target]]
     else:
         candidates = [target for target in ours
                       if any(pathlib.PurePosixPath(file).stem == harness for file in recipe_targets[target])]
+        if not candidates:
+            candidates = [target for target in ours
+                          if any(harness in pathlib.PurePosixPath(file).stem for file in recipe_targets[target])]
     return candidates[0] if len(candidates) == 1 else None
 
 
@@ -277,8 +281,8 @@ def assess(name, checkout, recipe):
         return seed
     seed.release_repo, seed.repo = seed.repo, REPOSITORIES.get(seed.repo, seed.repo)
     if seed.repo != seed.release_repo:
-        seed.notes.append(f"repo: the release names {seed.release_repo}, which serves no git repository over https; "
-                          f"{seed.repo} serves the commit it built")
+        seed.notes.append(f"repo: the release names {seed.release_repo}, from which git cannot fetch the commit over "
+                          f"https; {seed.repo} serves it")
     homepage = project.get("homepage")
     if isinstance(homepage, str) and validate.is_https_url(homepage):
         seed.homepage = homepage
