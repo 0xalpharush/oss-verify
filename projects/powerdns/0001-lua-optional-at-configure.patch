@@ -1,0 +1,18 @@
+0001-lua-optional-at-configure.patch
+Build adaptation.
+
+diff --git a/m4/pdns_with_lua.m4 b/m4/pdns_with_lua.m4
+index 853dc6b71729a8a2e1b5c2436f9aef81318b868f..e59066cc1ced87b25595bbc9f4efb606561a2538 100644
+--- a/m4/pdns_with_lua.m4
++++ b/m4/pdns_with_lua.m4
+@@ -53,8 +53,8 @@ AC_DEFUN([PDNS_WITH_LUA],[
+   ])
+ 
+   AS_IF([test -z "$LUAPC"], [
+-    AC_MSG_ERROR([No Lua not found, but is mandatory])
++    AC_MSG_WARN([No Lua found, continuing without Lua])
+   ])
+ 
+-  AM_CONDITIONAL([LUA], [test -n "x$LUAPC"])
++  AM_CONDITIONAL([LUA], [test -n "$LUAPC"])
+ ])

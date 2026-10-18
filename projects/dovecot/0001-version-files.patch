@@ -1,0 +1,24 @@
+0001-version-files.patch
+Reproducible build.
+
+diff --git a/version.txt b/version.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..b1386c6a5f91cebd68d777bdd4c523645b9abe07
+--- /dev/null
++++ b/version.txt
+@@ -0,0 +1 @@
++0.0.0-37214+25eb82b31e
+diff --git a/dovecot-version.h b/dovecot-version.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ac7c75f8735cac493be60e0e71591312318fc2f
+--- /dev/null
++++ b/dovecot-version.h
+@@ -0,0 +1,8 @@
++#ifndef DOVECOT_VERSION_H
++#define DOVECOT_VERSION_H
++
++#define DOVECOT_REVISION "25eb82b31e"
++#define DOVECOT_VERSION_FULL VERSION" ("DOVECOT_REVISION")"
++#define DOVECOT_BUILD_INFO DOVECOT_VERSION_FULL
++
++#endif /* DOVECOT_VERSION_H */

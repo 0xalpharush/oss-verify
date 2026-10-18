@@ -16,9 +16,15 @@ where it had them, and says what was changed:
 
 CODE_OF_CONDUCT.md is the Contributor Covenant, version 2.0 (https://www.contributor-covenant.org).
 
-infra/base-builder/ takes its driver (driver/), its compiler wrappers and flags (toolchain.sh) and the shape of a
-fuzz target's link (link-fuzz-target) from the build recipe of oss-fuzz-theorems release 2026.10.0-rc.2
+infra/base-builder/ takes its driver (driver/), its compiler wrappers and flags (toolchain.sh), the shape of a
+fuzz target's link (link-fuzz-target), the release's recipes (recipes.sh) and the steps of its build around a target
+(release-target.sh) from the build recipe of oss-fuzz-theorems release 2026.10.0-rc.2
 (https://github.com/theorem-labs/oss-fuzz-theorems), Copyright 2026 Theorem Labs, PBC.
 
+The files tools/port.py writes under projects/<name>/ and tools/seeds/<name>/ come from that same build recipe: the
+pins in build.sh, a target's own files, and the build-only patches. Where such a file holds a project's own text (a
+copy of its harness that the release edited, or a patch that writes a file generated from the project's sources),
+that text keeps the project's licence; the recipe's UPSTREAM-CARRIED.tsv names each, with its origin and licence.
+
 A file under projects/<name>/ copied from a project's own repository keeps that project's licence, which the file
-names in its header. No such file is here yet.
+names in its header.

@@ -1,0 +1,101 @@
+0002-glog-logging-shim.patch
+Build adaptation.
+
+diff --git a/include/glog/logging.h b/include/glog/logging.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..67978d8748c305af4a1a640ec7b6543e1d1ec91f
+--- /dev/null
++++ b/include/glog/logging.h
+@@ -0,0 +1,92 @@
++                                                                         
++  
++                                                                          
++                                                                        
++                                                                      
++                                                                     
++                                                                       
++                                              
++                                                                          
++                                                                    
++                                                  
++                                                                        
++                                                                       
++                                                                      
++                                                                
++#ifndef OFT_GLOG_SHIM_LOGGING_H_
++#define OFT_GLOG_SHIM_LOGGING_H_
++
++#include <cstdio>
++#include <cstdlib>
++
++namespace oft_glog {
++
++class NullStream {
++ public:
++  template <typename T>
++  NullStream& operator<<(const T&) { return *this; }
++};
++
++class FatalStream {
++ public:
++  FatalStream(const char* file, int line, const char* what) {
++    std::fprintf(stderr, "%s:%d: Check failed: %s ", file, line, what);
++  }
++  FatalStream& operator<<(const char* s) {
++    std::fprintf(stderr, "%s", s ? s : "(null)");
++    return *this;
++  }
++  FatalStream& operator<<(long long v) {
++    std::fprintf(stderr, "%lld", v);
++    return *this;
++  }
++  FatalStream& operator<<(unsigned long long v) {
++    std::fprintf(stderr, "%llu", v);
++    return *this;
++  }
++  FatalStream& operator<<(int v) { return *this << static_cast<long long>(v); }
++  FatalStream& operator<<(long v) { return *this << static_cast<long long>(v); }
++  FatalStream& operator<<(unsigned v) {
++    return *this << static_cast<unsigned long long>(v);
++  }
++  FatalStream& operator<<(unsigned long v) {
++    return *this << static_cast<unsigned long long>(v);
++  }
++  FatalStream& operator<<(const void* p) {
++    std::fprintf(stderr, "%p", p);
++    return *this;
++  }
++  template <typename T>
++  FatalStream& operator<<(const T&) { return *this; }
++  ~FatalStream() {
++    std::fprintf(stderr, "\n");
++    std::abort();
++  }
++};
++
++                                                                       
++                                                                        
++                                                                        
++             
++struct Voidify {
++  void operator&(const NullStream&) {}
++  void operator&(const FatalStream&) {}
++};
++
++}                       
++
++#define CHECK(cond)                                    \
++  (cond) ? (void)0                                     \
++         : ::oft_glog::Voidify() &                     \
++               ::oft_glog::FatalStream(__FILE__, __LINE__, #cond)
++#define CHECK_EQ(a, b) CHECK((a) == (b))
++#define CHECK_NE(a, b) CHECK((a) != (b))
++#define CHECK_GE(a, b) CHECK((a) >= (b))
++#define CHECK_GT(a, b) CHECK((a) > (b))
++#define CHECK_LE(a, b) CHECK((a) <= (b))
++#define CHECK_LT(a, b) CHECK((a) < (b))
++#define VLOG(n) ::oft_glog::NullStream()
++#define LOG(severity) ::oft_glog::NullStream()
++#define DLOG(severity) ::oft_glog::NullStream()
++
++#endif                             

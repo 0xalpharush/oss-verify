@@ -1,0 +1,27 @@
+0001-cxx17-and-musl-off64-t.patch
+Portability.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index dd46ada391db62a1d4ef49eff51306bb832b4890..603fff8b15ef97e2d352681393bda836b74385fd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -30,7 +30,7 @@ option(FUZZER "Either OFF or e.g. -fsanitize=fuzzer,address" OFF)
+ option(OpenCensus_BUILD_TESTING "build test and example" OFF)
+ 
+ if(NOT CMAKE_CXX_STANDARD)
+-  set(CMAKE_CXX_STANDARD 11)
++  set(CMAKE_CXX_STANDARD 17)
+   set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ endif()
+ 
+@@ -39,6 +39,10 @@ enable_testing()
+ 
+ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+ 
++                                                                                
++                                                                    
++                                                                                   
++add_definitions(-Doff64_t=off_t)
+ include(OpenCensusDeps)
+ 
+ include(OpenCensusHelpers)

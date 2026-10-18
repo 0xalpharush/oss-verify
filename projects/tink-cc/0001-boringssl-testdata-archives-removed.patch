@@ -1,0 +1,24 @@
+0001-boringssl-testdata-archives-removed.patch
+Build adaptation.
+
+diff --git a/cmake/TinkWorkspace.cmake b/cmake/TinkWorkspace.cmake
+index c6e210f87a0c4cce1a0cee2c7e9c07bae156ae12..bae13762572e0bf530a96128fe175ba28a4e8ec1 100644
+--- a/cmake/TinkWorkspace.cmake
++++ b/cmake/TinkWorkspace.cmake
+@@ -132,6 +132,16 @@ if (NOT TARGET crypto)
+     # BoringSSL targets do not carry include directory info, this fixes it.
+     target_include_directories(crypto PUBLIC
+       "$<BUILD_INTERFACE:${boringssl_SOURCE_DIR}/src/include>")
++                                                                          
++                                                                            
++                                                                            
++                                                                              
++                                                                            
++                                                                         
++                                                                             
++                                                                    
++    file(REMOVE_RECURSE "${boringssl_SOURCE_DIR}/util/ar/testdata")
++    file(REMOVE_RECURSE "${boringssl_SOURCE_DIR}/src/util/ar/testdata")
+   else()
+     # Support for ED25519 was added from 1.1.1.
+     find_package(OpenSSL 1.1.1 REQUIRED)
