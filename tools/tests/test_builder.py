@@ -48,10 +48,33 @@ EXPECTED = {
 }
 CXX_ONLY = {"t": (134, 134, 134, 134)}  # an uncaught C++ exception
 
+# The allocation-failure variants, example_fuzzer_af and example_fuzzer_cc_af, are the same objects linked with
+# $LIB_ALLOCATION_FAILURE_ENGINE. With no allocation mask they behave as their fuzz targets do (the cases above). These
+# inputs set the mask (bit n: the n-th allocation fails) or ask for counting mode (bit 15 of the config word: the
+# status is the number of allocations counted). 'h' allocates once, with malloc; 'N', in the C++ fuzz target, once
+# with new[]. Input -> (header, payload, {fuzz target: statuses in each build}).
+HEAP, ZERO, ONE, ABORT = (0, 0, 134, 134), (0, 0, 0, 0), (1, 1, 1, 1), (134, 134, 134, 134)
+FAIL_FIRST, COUNT, COUNT_FAIL_FIRST, COUNT_FAIL_SECOND = (b"\0\0\1\0\0\0", b"\0\x80\0\0\0\0", b"\0\x80\1\0\0\0",
+                                                         b"\0\x80\2\0\0\0")
+ALLOCATION_FAILURE = {
+    "af-h-fails": (FAIL_FIRST, "h", {"example_fuzzer": HEAP, "example_fuzzer_cc": HEAP,
+                                     "example_fuzzer_af": ZERO, "example_fuzzer_cc_af": ZERO}),
+    "af-h-count": (COUNT_FAIL_FIRST, "h", {"example_fuzzer": HEAP, "example_fuzzer_cc": HEAP,
+                                           "example_fuzzer_af": ONE, "example_fuzzer_cc_af": ONE}),
+    "af-z-count": (COUNT, "z", {"example_fuzzer": ZERO, "example_fuzzer_cc": ZERO,
+                                "example_fuzzer_af": ZERO, "example_fuzzer_cc_af": ZERO}),
+    "af-N-count": (COUNT, "N", {"example_fuzzer": ZERO, "example_fuzzer_cc": ZERO,
+                                "example_fuzzer_af": ZERO, "example_fuzzer_cc_af": ONE}),
+    "af-N-fails": (FAIL_FIRST, "N", {"example_fuzzer": ZERO, "example_fuzzer_cc": ZERO,
+                                     "example_fuzzer_af": ZERO, "example_fuzzer_cc_af": ABORT}),  # std::bad_alloc
+    "af-N-second": (COUNT_FAIL_SECOND, "N", {"example_fuzzer": ZERO, "example_fuzzer_cc": ZERO,
+                                             "example_fuzzer_af": ZERO, "example_fuzzer_cc_af": ONE}),
+}
+
 # Runs every case in one container: prints "<target> <build> <case> <status>" per line.
 RUNNER = r"""
 cd /in
-for t in example_fuzzer example_fuzzer_cc; do
+for t in example_fuzzer example_fuzzer_cc example_fuzzer_af example_fuzzer_cc_af; do
   for b in plain ubsan asan asan-ubsan; do
     for c in /in/case-*; do
       q /bin/$t.$b "$c" > /dev/null 2>&1; echo "$t $b ${c#/in/case-} $?"
@@ -100,7 +123,8 @@ class Builder(unittest.TestCase):
     def test_discovery(self):
         self.assertEqual(self.problems, [])
         self.assertEqual(self.missing, [])
-        self.assertEqual(self.targets, ["example_fuzzer", "example_fuzzer_cc"])
+        self.assertEqual(self.targets, ["example_fuzzer", "example_fuzzer_af", "example_fuzzer_cc",
+                                        "example_fuzzer_cc_af"])
         for build in BUILDS:
             self.assertTrue((self.raw[build] / "tool").is_file(), "the non-target executable was built")
             self.assertNotIn("tool", self.found[build])
@@ -120,6 +144,8 @@ class Builder(unittest.TestCase):
         cases = {**EXPECTED, **CXX_ONLY}
         for case in cases:
             (inputs / f"case-{case or 'empty'}").write_bytes(b"\0" * 6 + case.encode())
+        for case, (header, payload, _) in ALLOCATION_FAILURE.items():
+            (inputs / f"case-{case}").write_bytes(header + payload.encode())
         (inputs / "short").write_bytes(b"\0\0\0")
         # A config word of 1, config byte 2: three calls.
         (inputs / "three-calls").write_bytes(b"\x01\x00\x02\0\0\0\0z")
@@ -139,7 +165,8 @@ class Builder(unittest.TestCase):
             target, build, case, status = line.split(" ", 3)
             results[(target, build, case)] = status
         for target in self.targets:
-            expected = {**EXPECTED, **(CXX_ONLY if target.endswith("_cc") else {})}
+            expected = {**EXPECTED, **(CXX_ONLY if "_cc" in target else {})}
+            expected.update({case: statuses[target] for case, (_, _, statuses) in ALLOCATION_FAILURE.items()})
             for case, statuses in expected.items():
                 for build, status in zip(BUILDS, statuses):
                     with self.subTest(target=target, build=build, case=case):

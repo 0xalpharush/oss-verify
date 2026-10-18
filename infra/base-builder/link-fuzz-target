@@ -18,6 +18,10 @@
 #
 # It links twice: the output the link asked for, with its symbols, and the same link with --strip-all, saved under
 # the sha256 of the first for compile to collect.
+#
+# A link that names $LIB_ALLOCATION_FAILURE_ENGINE makes an allocation-failure fuzz target (docs/exit-codes.md): the
+# same link, with allocation_failure.o in place of the adapter, and with copies of the object files and archives it
+# names, whose calls of the allocators are renamed to allocation_failure.c's. Those are the only changes.
 set -euo pipefail
 
 # shellcheck source=/dev/null
@@ -28,9 +32,11 @@ shift
 out=a.out
 args=()
 seals=$OV_SEALS
+driver=$OV_DRIVER
 while [ $# -gt 0 ]; do
   case "$1" in
     "$OV_LFE") ;;
+    "$OV_AFE") driver=$OV_AF_DRIVER ;;
     -Wl,--wrap=getenv|-Wl,--wrap=getpid|-Wl,--wrap=mkstemp)
       seals=""
       args+=("$1") ;;
@@ -44,9 +50,38 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+if [ "$driver" = "$OV_AF_DRIVER" ]; then
+  copies=$(mktemp -d /tmp/ov/af.XXXXXX)
+  for i in "${!args[@]}"; do
+    a=${args[$i]}
+    case "$a" in
+      -*) continue ;;
+      @*)
+        echo "link-fuzz-target: $a: name an allocation-failure fuzz target's objects on the command line" >&2
+        exit 1 ;;
+      *.c|*.cc|*.cpp|*.cxx|*.c++|*.C|*.m|*.mm|*.s|*.S)
+        echo "link-fuzz-target: $a: compile an allocation-failure fuzz target's sources first, and link the objects" >&2
+        exit 1 ;;
+    esac
+    [ -f "$a" ] || continue
+    case "$(head -c 4 -- "$a")" in
+      $'\177ELF'|'!<ar') ;;
+      'BC'$'\300\336')
+        echo "link-fuzz-target: $a: LLVM bitcode; an allocation-failure fuzz target needs object code (no LTO)" >&2
+        exit 1 ;;
+      *) continue ;;
+    esac
+    copy="$copies/$i-$(basename -- "$a")"
+    cp -- "$a" "$copy"
+    # shellcheck disable=SC2086 # a list of options
+    llvm-objcopy $OV_AF_RENAME "$copy"
+    args[i]=$copy
+  done
+fi
+
 link() {
   # shellcheck disable=SC2086 # the lists in link.env are meant to be split
-  $real -static -no-pie -Wl,--gc-sections "$@" $OV_DRIVER $OV_SILENT_LD ${args[@]+"${args[@]}"} $seals
+  $real -static -no-pie -Wl,--gc-sections "$@" $driver $OV_SILENT_LD ${args[@]+"${args[@]}"} $seals
 }
 
 link -o "$out"

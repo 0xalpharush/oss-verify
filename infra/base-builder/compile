@@ -15,7 +15,8 @@
 #
 # It sets up that build's compilers and flags (toolchain.sh), compiles the driver ($LIB_FUZZING_ENGINE), and runs
 # $SRC/build.sh with bash -eux from the image's working directory. build.sh builds each fuzz target into $OUT, as
-# under OSS-Fuzz, by linking it with $LIB_FUZZING_ENGINE through $CC or $CXX.
+# under OSS-Fuzz, by linking it with $LIB_FUZZING_ENGINE through $CC or $CXX. A link that names
+# $LIB_ALLOCATION_FAILURE_ENGINE instead makes an allocation-failure fuzz target (docs/exit-codes.md).
 #
 # Such a link is made twice (link-fuzz-target): once as asked, with symbols, and once with --strip-all. The binaries
 # in $OUT keep their symbols, so that a fuzz target is found by its symbol table (an executable that defines
@@ -67,6 +68,21 @@ done
 "$CHOST-ar" rcs "$OV/libFuzzingEngine.a" "$OV/cli.o" "$OV/adapter.o"
 LIB_FUZZING_ENGINE=$OV/libFuzzingEngine.a
 
+# The driver of an allocation-failure fuzz target: cli.o with allocation_failure.o, linked only by link-fuzz-target,
+# which renames the allocators the project's code calls (OV_AF_RENAME) to allocation_failure.c's. A link that does
+# not go through $CC or $CXX would make a program whose allocations never fail, so this is not an archive: such a
+# link fails.
+"$DRVCC" $BASE_CFLAGS -c -I"$LIB/driver" "$LIB/driver/allocation_failure.c" -o "$OV/allocation_failure.o"
+printf 'Not an archive: link an allocation-failure fuzz target with $CC or $CXX (docs/exit-codes.md).\n' \
+  > "$OV/libAllocationFailureEngine.a"
+LIB_ALLOCATION_FAILURE_ENGINE=$OV/libAllocationFailureEngine.a
+af_rename=""
+for f in malloc calloc realloc reallocarray aligned_alloc posix_memalign memalign strdup strndup \
+         _Znwm _Znam _ZnwmRKSt9nothrow_t _ZnamRKSt9nothrow_t _ZnwmSt11align_val_t _ZnamSt11align_val_t \
+         _ZnwmSt11align_val_tRKSt9nothrow_t _ZnamSt11align_val_tRKSt9nothrow_t; do
+  af_rename="$af_rename --redefine-sym $f=__ov_$f"
+done
+
 silent=""
 case "$FLAV" in asan|asanubsan) silent="-Wl,--defsym=__sanitizer_silent_reports=1" ;; esac
 cat > "$OV/link.env" <<EOF
@@ -75,9 +91,13 @@ OV_DRIVER='$OV/cli.o $OV/adapter.o'
 OV_SILENT_LD='$silent'
 OV_SEALS='$OV/wrap_getenv.o -Wl,--wrap=getenv $OV/wrap_mkstemp.o -Wl,--wrap=mkstemp -Wl,--wrap=mkostemp -Wl,--wrap=mkstemps -Wl,--wrap=mkostemps $OV/wrap_getpid.o -Wl,--wrap=getpid -Wl,--wrap=getppid'
 OV_TWINS='$OV/twins'
+OV_AFE='$LIB_ALLOCATION_FAILURE_ENGINE'
+OV_AF_DRIVER='$OV/cli.o $OV/allocation_failure.o'
+OV_AF_RENAME='${af_rename# }'
 EOF
 
-# $CC and $CXX: the build's compiler, except that a link naming $LIB_FUZZING_ENGINE goes to link-fuzz-target.
+# $CC and $CXX: the build's compiler, except that a link naming $LIB_FUZZING_ENGINE or $LIB_ALLOCATION_FAILURE_ENGINE
+# goes to link-fuzz-target.
 write_wrapper() {
   cat > "$1" <<EOF
 #!/bin/sh
@@ -85,7 +105,7 @@ for a in "\$@"; do
   case "\$a" in -c|-E|-S|-fsyntax-only|-M|-MM|--version|-dumpmachine|-print-*) exec $2 "\$@" ;; esac
 done
 for a in "\$@"; do
-  [ "\$a" != "$LIB_FUZZING_ENGINE" ] || exec $LIB/link-fuzz-target $2 "\$@"
+  case "\$a" in "$LIB_FUZZING_ENGINE"|"$LIB_ALLOCATION_FAILURE_ENGINE") exec $LIB/link-fuzz-target $2 "\$@" ;; esac
 done
 exec $2 "\$@"
 EOF
@@ -121,7 +141,7 @@ EOF
 
 # OSS-Fuzz's names, and a few more that cross builds need. FUZZING_ENGINE is "none", OSS-Fuzz's name for a driver
 # that runs inputs from files.
-export CC CXX CFLAGS CXXFLAGS LIB_FUZZING_ENGINE
+export CC CXX CFLAGS CXXFLAGS LIB_FUZZING_ENGINE LIB_ALLOCATION_FAILURE_ENGINE
 export ARCHITECTURE=riscv64 FUZZING_ENGINE=none
 export CMAKE_TOOLCHAIN_FILE=$OV/toolchain.cmake
 export AR=$CHOST-ar NM=$CHOST-nm RANLIB=$CHOST-ranlib STRIP=$CHOST-strip OBJCOPY=$CHOST-objcopy

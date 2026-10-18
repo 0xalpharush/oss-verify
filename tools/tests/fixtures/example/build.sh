@@ -12,6 +12,12 @@ $CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer" $LIB_FUZZING_ENGIN
 $CXX $CXXFLAGS -I. -c fuzz/example_fuzzer.cc -o "$WORK/example_fuzzer_cc.o"
 $CXX $CXXFLAGS "$WORK/example_fuzzer_cc.o" -o "$OUT/example_fuzzer_cc" $LIB_FUZZING_ENGINE "$WORK/build/libexample.a"
 
+# The allocation-failure variants of both (docs/exit-codes.md#allocation-failure): the same objects, linked with
+# $LIB_ALLOCATION_FAILURE_ENGINE.
+$CC $CFLAGS "$WORK/example_fuzzer.o" -o "$OUT/example_fuzzer_af" $LIB_ALLOCATION_FAILURE_ENGINE "$WORK/build/libexample.a"
+$CXX $CXXFLAGS "$WORK/example_fuzzer_cc.o" -o "$OUT/example_fuzzer_cc_af" $LIB_ALLOCATION_FAILURE_ENGINE \
+  "$WORK/build/libexample.a"
+
 # An executable that is not a fuzz target, which discovery must leave out.
 printf 'int main(void) { return 0; }\n' > "$WORK/tool.c"
 $CC $CFLAGS "$WORK/tool.c" -o "$OUT/tool"
