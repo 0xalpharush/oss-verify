@@ -1,0 +1,36 @@
+0001-cookie-fuzzer-log-close-not-dup2.patch
+Platform adaptation.
+
+diff --git a/fuzz/wget_cookie_fuzzer.c b/fuzz/wget_cookie_fuzzer.c
+index e2a6d3c045e40143b3d5245f2bfb8b5b27c4b18a..7f9a665c003d002462b8af8cd179a7ce8a498ab0 100644
+--- a/fuzz/wget_cookie_fuzzer.c
++++ b/fuzz/wget_cookie_fuzzer.c
+@@ -42,6 +42,7 @@
+   FILE *fopen_wget(const char *pathname, const char *mode);
+   FILE *fopen_wgetrc(const char *pathname, const char *mode);
+   void exit_wget(int status);
++  void log_close(void);
+ #ifdef __cplusplus
+   }
+ #endif
+@@ -76,7 +77,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+ 	memcpy(set_cookie, data, size);
+ 	set_cookie[size] = 0;
+ 
+-	CLOSE_STDERR
++	                                                                      
++                                                                       
++                                                                  
++	log_close();
+ 
+ 	cookie_jar = cookie_jar_new();
+ 	cookie_handle_set_cookie(cookie_jar, "x", 81, "p", set_cookie);
+@@ -84,8 +88,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+ 	cookie_handle_set_cookie(cookie_jar, "x", 80, "p/d/", set_cookie);
+ 	cookie_jar_delete(cookie_jar);
+ 
+-	RESTORE_STDERR
+-
+ 	free(set_cookie);
+ 
+ 	return 0;

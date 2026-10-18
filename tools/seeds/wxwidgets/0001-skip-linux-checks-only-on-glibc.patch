@@ -1,0 +1,24 @@
+0001-skip-linux-checks-only-on-glibc.patch
+Portability.
+
+diff --git a/build/cmake/setup.cmake b/build/cmake/setup.cmake
+index b8f25b0de7739978d7dcf1141ee8b0832a263106..803598d09f390f9ff3e9cc4891a881069736116d 100644
+--- a/build/cmake/setup.cmake
++++ b/build/cmake/setup.cmake
+@@ -58,7 +58,15 @@ endif()
+ # We probably could also do it when cross-compiling to Linux, but for now be
+ # conservative and only skip the checks in the most common case.
+ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+-    set(wxSKIP_CHECK_IF_LINUX TRUE)
++                                                                          
++                                                                           
++                                                                             
++                                                                  
++    include(CheckSymbolExists)
++    check_symbol_exists(__GLIBC__ "features.h" wxOFT_TARGET_IS_GLIBC)
++    if(wxOFT_TARGET_IS_GLIBC)
++        set(wxSKIP_CHECK_IF_LINUX TRUE)
++    endif()
+ endif()
+ 
+ if(APPLE)

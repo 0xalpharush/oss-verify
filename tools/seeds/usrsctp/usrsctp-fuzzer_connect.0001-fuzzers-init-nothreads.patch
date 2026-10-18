@@ -1,0 +1,48 @@
+0001-fuzzers-init-nothreads.patch
+Platform adaptation.
+
+diff --git a/fuzzer/fuzzer_connect.c b/fuzzer/fuzzer_connect.c
+index 0c9b0fde4da24dff6f3787f5f2c2c0fd084e7012..634ce361802139831656759d59669378597fc247 100644
+--- a/fuzzer/fuzzer_connect.c
++++ b/fuzzer/fuzzer_connect.c
+@@ -136,9 +136,9 @@ handle_upcall(struct socket *sock, void *arg, int flgs)
+ int
+ initialize_fuzzer(void) {
+ #ifdef FUZZ_VERBOSE
+-	usrsctp_init(0, conn_output, debug_printf_stack);
++	usrsctp_init_nothreads(0, conn_output, debug_printf_stack);
+ #else // FUZZ_VERBOSE
+-	usrsctp_init(0, conn_output, NULL);
++	usrsctp_init_nothreads(0, conn_output, NULL);
+ #endif // FUZZ_VERBOSE
+ 
+ 	usrsctp_enable_crc32c_offload();
+diff --git a/fuzzer/fuzzer_fragment.c b/fuzzer/fuzzer_fragment.c
+index 9a04a2f70acc58ac5085f587836add9c77631a73..d4fe062f0c9f8b9a8c3887c3e5264001771d937a 100644
+--- a/fuzzer/fuzzer_fragment.c
++++ b/fuzzer/fuzzer_fragment.c
+@@ -106,7 +106,7 @@ conn_output(void *addr, void *buf, size_t length, uint8_t tos, uint8_t set_df)
+ 
+ int
+ initialize_fuzzer(void) {
+-	usrsctp_init(0, conn_output, NULL);
++	usrsctp_init_nothreads(0, conn_output, NULL);
+ 
+ 	usrsctp_enable_crc32c_offload();
+ 
+diff --git a/fuzzer/fuzzer_listen.c b/fuzzer/fuzzer_listen.c
+index ca1758246c4b8cc3a880f124c7e875a17b3d12da..a1d80b256d4055013c668a3d77dd07e124ade9b4 100644
+--- a/fuzzer/fuzzer_listen.c
++++ b/fuzzer/fuzzer_listen.c
+@@ -103,9 +103,9 @@ init_fuzzer(void) {
+ #endif
+ 
+ #ifdef FUZZ_VERBOSE
+-	usrsctp_init(0, conn_output, debug_printf_stack);
++	usrsctp_init_nothreads(0, conn_output, debug_printf_stack);
+ #else
+-	usrsctp_init(0, conn_output, NULL);
++	usrsctp_init_nothreads(0, conn_output, NULL);
+ #endif
+ 
+ 	usrsctp_enable_crc32c_offload();
