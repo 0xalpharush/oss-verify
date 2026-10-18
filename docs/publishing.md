@@ -10,7 +10,7 @@ The statements and proofs about a project are pushed to the repository and direc
 | `eager` | as the proofs progress |
 | `never` | never outside Theorem |
 
-Whatever `publish` says, we publish nothing that describes a finding that is not public yet ([disclosure.md](disclosure.md)): the statements a finding affects are held back until it is, and nothing published says why.
+Whatever `publish` says, we publish nothing that describes a finding that is not public yet ([disclosure.md](disclosure.md)): the statements a finding affects are held back until it is, and nothing published says why. A project we seeded ourselves (`primary_contact: n/a`) is published only while it has no findings at all.
 
 ## Where: `proofs`
 

@@ -113,7 +113,9 @@ class Rows(unittest.TestCase):
 
     def test_seeded_contact(self):
         for association in ("OWNER", "MEMBER", "COLLABORATOR"):
-            self.assertEqual(triage.seeded_contact_row({}, association)[0], triage.INFO, association)
+            mark, text = triage.seeded_contact_row({}, association)
+            self.assertEqual(mark, triage.INFO, association)
+            self.assertIn("sent to no one automatically", text)
         for association in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "NONE", ""):
             mark, text = triage.seeded_contact_row({}, association)
             self.assertEqual(mark, triage.WARN, association)

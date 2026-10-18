@@ -28,11 +28,11 @@ This repository is being prepared and is not open for enrollment yet. This page 
 * **Hand-written build files:** a `build.sh` written for this builder by hand has been tried with CMake builds only (cjson, md4c, wasm3 and the test fixture). The ported builds use the release's recipes for the other build systems; the builder offers no Meson cross file or autotools settings of its own to a hand-written `build.sh` yet.
 * **Allocation-failure fuzz targets** have no statement yet: cjson's is built, but it is not in cjson's `fuzz_targets`, so it is not verified.
 * **The proofs repository** (oss-verifier-proofs) does not exist yet. The lock is to be written from `tools/check`'s manifest, and the triage comment's "Proofs index" row assumes the index layout of oss-fuzz-theorems.
-* **Placeholders** to replace before this repository opens: the [terms](https://theorem.dev/oss-verifier/terms/) URL, the CODEOWNERS team `@theorem-labs/oss-verifier-maintainers`, and the contact in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+* **Placeholders** to replace before this repository opens: the [terms](https://theorem.dev/oss-verifier/terms/) URL and the contact in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Seeded projects
 
-`tools/seed.py` writes a `project.yaml` from oss-fuzz-theorems 2026.10.0-rc.2's metadata, only where that metadata says everything needed. A seeded project says `primary_contact: n/a` until its maintainers adopt it ([CONTRIBUTING.md](CONTRIBUTING.md)). Its `Dockerfile` and `build.sh` are added only once `tools/check` has built them and they reproduce the release's binaries.
+`tools/seed.py` writes a `project.yaml` from oss-fuzz-theorems 2026.10.0-rc.2's metadata, only where that metadata says everything needed. A seeded project says `primary_contact: n/a` until its maintainers adopt it ([CONTRIBUTING.md](CONTRIBUTING.md)). It is published only because it has no findings: a finding for it is sent nowhere unless someone hands it over by hand, and nothing is sent automatically ([docs/disclosure.md](docs/disclosure.md)). Its `Dockerfile` and `build.sh` are added only once `tools/check` has built them and they reproduce the release's binaries.
 
 ### On main: a provisional set
 
@@ -53,7 +53,7 @@ Provisional: the launch set is not decided. These are cjson, the pilot, and nine
 
 Candidates not on main yet:
 
-* **boost-json**: which of its fuzz targets to verify first is not decided.
+* **boost-json**: its proof is about `fuzz_parse`, but about other builds of it than the release's: their bytes differ from the release's only in the `__FILE__` path prefix their build recorded. Whether to put it on main, and with which bytes, is not decided.
 * **resiprocate** and **simdutf**: the release's build patches the library's own source (`rutil/Log.cxx`; `include/simdutf/internal/isadetection.h`), so its binaries are not of the library as upstream wrote it.
 
 Fuzz targets we wrote ourselves for some of these libraries are left out until their sources are published.

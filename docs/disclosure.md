@@ -7,6 +7,6 @@ Working on a proof sometimes finds a bug instead: an input on which a fuzz targe
 * **We do not publish findings.** Making a finding public, and when, is up to you.
 * **Nothing we publish gives it away.** Until a finding is public, the statements it affects are held back, and no file name, comment, patch or statement we publish describes it ([publishing.md](publishing.md)).
 
-For a project we seeded ourselves, which no maintainer has adopted yet (`primary_contact: n/a`), we send a finding to the security contact the project publishes, such as in its `SECURITY.md`.
+A project we seeded ourselves, which no maintainer has adopted yet (`primary_contact: n/a`), is different: it is published only because it has no findings. A finding for such a project is sent nowhere. Nothing goes to the project, its security contact or anyone else automatically, and there is no deadline; the finding stays with us unless someone hands it over by hand. While it stands, the project's statements and proofs are not published.
 
 To report a vulnerability in this repository or its tools, see [SECURITY.md](../SECURITY.md).

@@ -1,4 +1,4 @@
 # Adapted from OSS Scanner's .github/CODEOWNERS (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic
 # PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: the team.
-# Every enrollment is reviewed by the program's maintainers before it merges. (A placeholder team.)
-*   @theorem-labs/oss-verifier-maintainers
+# Every enrollment is reviewed by the program's maintainers before it merges.
+*   @theorem-labs/engineering

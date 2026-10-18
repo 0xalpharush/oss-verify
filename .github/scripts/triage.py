@@ -447,7 +447,9 @@ def seeded_contact_row(config: dict, association: str) -> tuple[str, str]:
     """primary_contact: n/a is how a project we seeded says that no maintainer has adopted it yet. From anyone else,
     an enrollment needs the project's security contact."""
     if association in ASSOCIATIONS:
-        return INFO, "`n/a`: a project seeded by this repository's maintainers, not enrolled by the project's own"
+        return INFO, ("`n/a`: a project seeded by this repository's maintainers, not enrolled by the project's own. It is "
+                      "published only while it has no findings, and a finding for it is sent to no one automatically "
+                      "(docs/disclosure.md)")
     return WARN, (
         "`primary_contact` is `n/a`, which only a project seeded by this repository's maintainers may say: an "
         "enrollment names the project's security contact"
