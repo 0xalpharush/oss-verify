@@ -1,0 +1,502 @@
+#!/usr/bin/env python3
+# Copyright 2026 Anthropic PBC
+# SPDX-License-Identifier: Apache-2.0
+# Modified 2026 by Theorem Labs, PBC: OSS Verifier's fields (language, sanitizers, fuzz_targets, patch_style, budgets,
+# proofs, publish) and files (build.sh, patch_style.md, harness sources, build-only patches and their series), the
+# n/a contact of a seeded project, warnings, and checking named directories.
+"""Check projects/<name>/ directories against the enrollment rules in README.md and docs/project-yaml.md.
+
+    tools/validate.py                 check every directory under projects/
+    tools/validate.py projects/<name> check the directories named
+
+If there are problems, prints one line per problem and exits 1. Otherwise prints one summary line per project, and
+any warnings, and exits 0. Runs offline and never writes anything. Requires PyYAML (pip install pyyaml).
+
+Fields allowed in project.yaml:
+
+    repo: https://...[#ref]             required   one git repository, https only; #ref is a branch or tag to
+                                                   follow, or a full commit id to verify exactly that commit
+    primary_contact: a@b.c              required   n/a only for a project we seeded (a warning)
+    language: c | c++                   required
+    dockerfile: <path in your repo>     required   unless a Dockerfile is next to project.yaml (no default)
+    auto_ccs: [a@b.c, ...]              optional   cannot be combined with pgp
+    homepage: https://...               optional
+    pgp: <armored public key>           optional   if set, reports are encrypted to this key
+    disabled: true | false              optional   true pauses the project
+    sanitizers: [address, undefined]    optional   the sanitizer builds besides plain (this is the default)
+    fuzz_targets: [<target>, ...]       optional   default: every fuzz target the build produces
+    patch_style: <path in your repo>    optional   or a patch_style.md next to project.yaml
+    budgets: {halts: ..., agrees: ...}  optional   memory budgets (docs/memory-policy.md)
+    proofs: {repo: ..., path: ...}      optional   where the proofs are published (docs/publishing.md)
+    publish: eager | after_fixes | never  optional  when the proofs are published (default after_fixes)
+
+Files allowed next to project.yaml: a Dockerfile with its build.sh (unless dockerfile: is set), a patch_style.md
+(unless patch_style: is set), harness sources (*.c *.cc *.cpp *.h *.hh *.hpp), and build-only patches (*.patch)
+with the series file that lists them in the order they are applied. With dockerfile: set, the build context is your
+repository, so build.sh, harness sources and patches belong there instead.
+"""
+import argparse
+import pathlib
+import re
+import stat
+import sys
+from urllib.parse import urlparse
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("tools/validate.py needs PyYAML: pip install pyyaml")
+
+PROJECTS = pathlib.Path(__file__).resolve().parent.parent / "projects"
+
+REQUIRED_KEYS = ("repo", "primary_contact", "language")
+OPTIONAL_KEYS = (
+    "auto_ccs", "homepage", "pgp", "disabled", "dockerfile",
+    "sanitizers", "fuzz_targets", "patch_style", "budgets", "proofs", "publish",
+)
+ALLOWED_KEYS = REQUIRED_KEYS + OPTIONAL_KEYS
+# Settings controlled by the program's operators. A pull request may not set them. There are none yet.
+OPERATOR_KEYS = ()
+# Maps each file that may sit next to project.yaml, instead of in the project's repository, to the key that would
+# point to it there.
+FILE_KEYS = {"Dockerfile": "dockerfile", "patch_style.md": "patch_style"}
+SERIES = "series"
+SOURCE_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hh", ".hpp")
+PATCH_SUFFIX = ".patch"
+MAX_FILE_BYTES = 64 * 1024  # Dockerfile, build.sh, patch_style.md, series
+MAX_SOURCE_BYTES = 256 * 1024  # a harness source or a patch
+MAX_CONFIG_BYTES = 128 * 1024
+MAX_FILES = 64
+
+NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,62}")
+# A file next to project.yaml: a plain name, as the build workflow takes it from a pull request.
+FILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+URL = re.compile(r"https://[^\s#]+(#[A-Za-z0-9._/-]{1,100})?")
+# A relative path with no `..` that uses only safe characters (no spaces, backslashes or control characters).
+REPO_PATH = re.compile(r"(?!/)(?!.*\.\.)[A-Za-z0-9._/-]+")
+FULL_COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+SHORT_COMMIT = re.compile(r"[0-9a-f]{7,39}")
+TARGET = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}")
+SIZE = re.compile(r"([1-9][0-9]{0,15})(KiB|MiB|GiB|TiB)?")
+PGP_BEGIN = "-----BEGIN PGP PUBLIC KEY BLOCK-----"
+PGP_END = "-----END PGP PUBLIC KEY BLOCK-----"
+
+# The contact of a project we seeded, which no maintainer has adopted yet.
+NO_CONTACT = "n/a"
+LANGUAGES = ("c", "c++")
+SANITIZERS = ("address", "undefined")
+PUBLISH = ("eager", "after_fixes", "never")
+# The builds, in the order their statements and manifests list them, each with the SANITIZER that `compile` takes.
+BUILDS = {"plain": "none", "ubsan": "undefined", "asan": "address", "asan-ubsan": "address-undefined"}
+
+DEFAULT_SANITIZERS = ["address", "undefined"]
+DEFAULT_PUBLISH = "after_fixes"
+# Today's values (docs/memory-policy.md): the halts budget for each build run alone; for each sanitizer, the agrees
+# budgets of the plain side and the sanitizer side. asan-ubsan uses the address pair.
+DEFAULT_BUDGETS = {"halts": "16GiB", "agrees": {"address": ["2GiB", "512GiB"], "undefined": ["16GiB", "512GiB"]}}
+PROOFS_REPO = "https://github.com/theorem-labs/oss-verifier-proofs"
+
+
+def default_proofs(name):
+    """Where a project's proofs go unless its project.yaml says otherwise."""
+    return {"repo": f"{PROOFS_REPO}#{name}", "path": f"projects/{name}"}
+
+
+def is_https_url(value):
+    """Return True if `value` is an https:// URL with a host and at most one simple #fragment."""
+    if not (isinstance(value, str) and URL.fullmatch(value)):
+        return False
+    try:
+        return bool(urlparse(value.split("#", 1)[0]).hostname)
+    except ValueError:
+        return False
+
+
+def is_public_key(text):
+    """Return True if `text` is exactly one armored PGP public key block.
+
+    This only checks the format. We check whether the key actually works.
+    """
+    text = text.strip()
+    return (
+        text.startswith(PGP_BEGIN)
+        and text.endswith(PGP_END)
+        and text.count(PGP_BEGIN) == 1
+        and text.count(PGP_END) == 1
+        and "PRIVATE KEY" not in text
+        and len(text) <= MAX_FILE_BYTES
+    )
+
+
+def size_in_bytes(value):
+    """The number of bytes a budget names (an integer, or a string such as 16GiB), or None if it names none."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    match = SIZE.fullmatch(value) if isinstance(value, str) else None
+    if not match:
+        return None
+    unit = {None: 1, "KiB": 1 << 10, "MiB": 1 << 20, "GiB": 1 << 30, "TiB": 1 << 40}[match.group(2)]
+    return int(match.group(1)) * unit
+
+
+def sanitizers_of(config):
+    """The sanitizers a valid project.yaml asks for."""
+    sanitizers = config.get("sanitizers")
+    return list(sanitizers) if isinstance(sanitizers, list) else list(DEFAULT_SANITIZERS)
+
+
+def builds_of(config):
+    """The builds a valid project.yaml asks for: plain, one per sanitizer, and asan-ubsan when there are both."""
+    sanitizers = sanitizers_of(config)
+    wanted = {"plain", *(("ubsan",) if "undefined" in sanitizers else ()), *(("asan",) if "address" in sanitizers else ())}
+    if "address" in sanitizers and "undefined" in sanitizers:
+        wanted.add("asan-ubsan")
+    return [build for build in BUILDS if build in wanted]
+
+
+def check_keys(config):
+    """Yield a problem for each unknown, operator-only, or missing required key."""
+    for key in config:
+        if key in OPERATOR_KEYS:
+            yield f"{key!r} is set by the operators, not in project.yaml"
+        elif key not in ALLOWED_KEYS:
+            yield f"unknown field {key!r} (allowed: {', '.join(ALLOWED_KEYS)})"
+    for key in REQUIRED_KEYS:
+        if not config.get(key):
+            yield f"missing {key}"
+
+
+def check_types(config):
+    """Yield a problem for each field that has the wrong YAML type."""
+    for key in ("primary_contact", "homepage", "pgp", "language", "publish", "dockerfile", "patch_style"):
+        if config.get(key) is not None and not isinstance(config[key], str):
+            yield f"{key} must be a string"
+    if config.get("disabled") is not None and not isinstance(config["disabled"], bool):
+        yield "disabled must be true or false"
+    for key in ("budgets", "proofs"):
+        if config.get(key) is not None and not isinstance(config[key], dict):
+            yield f"{key} must be a mapping"
+
+
+def check_urls(config):
+    """Yield a problem if repo or homepage is not a valid https:// URL."""
+    if config.get("repo") is not None and not is_https_url(config["repo"]):
+        yield "repo must be ONE https:// URL of a git repository (a string, not a list; add #branch, #tag or #commit)"
+    homepage = config.get("homepage")
+    if isinstance(homepage, str) and not is_https_url(homepage.split("#", 1)[0]):
+        yield "homepage must be an https:// URL"
+
+
+def check_addresses(config):
+    """Yield a problem for auto_ccs that is not a list, and for each malformed email address."""
+    addresses = []
+    if isinstance(config.get("primary_contact"), str) and config["primary_contact"] != NO_CONTACT:
+        addresses.append(config["primary_contact"])
+    ccs = config.get("auto_ccs")
+    if isinstance(ccs, list) and all(isinstance(address, str) for address in ccs):
+        addresses += ccs
+    elif ccs is not None:
+        yield "auto_ccs must be a list of addresses"
+    for address in addresses:
+        if not EMAIL.fullmatch(address):
+            yield f"bad email {address!r}"
+
+
+def check_pgp(config):
+    """Yield a problem if pgp is malformed, or is combined with auto_ccs."""
+    key = config.get("pgp")
+    if key and config.get("auto_ccs"):
+        yield "pgp and auto_ccs together are not supported: an encrypted report goes to primary_contact only"
+    if isinstance(key, str) and not is_public_key(key):
+        yield (
+            f"pgp must be one armored public key: the text from {PGP_BEGIN} to {PGP_END} "
+            "(not a fingerprint, a URL or a private key)"
+        )
+
+
+def check_builds(config):
+    """Yield a problem with language, sanitizers, fuzz_targets or publish."""
+    language = config.get("language")
+    if isinstance(language, str) and language not in LANGUAGES:
+        yield f"language must be one of {', '.join(LANGUAGES)} (got {language!r})"
+
+    sanitizers = config.get("sanitizers")
+    if sanitizers is not None:
+        if not (isinstance(sanitizers, list) and all(isinstance(item, str) for item in sanitizers)):
+            yield f"sanitizers must be a list, a subset of [{', '.join(SANITIZERS)}]"
+        else:
+            for item in sanitizers:
+                if item not in SANITIZERS:
+                    yield f"sanitizers: {item!r} is not one of {', '.join(SANITIZERS)}"
+            if len(set(sanitizers)) != len(sanitizers):
+                yield "sanitizers names a sanitizer twice"
+
+    targets = config.get("fuzz_targets")
+    if targets is not None:
+        if not (isinstance(targets, list) and targets and all(isinstance(item, str) for item in targets)):
+            yield "fuzz_targets must be a non-empty list of fuzz target names (or left out, for all of them)"
+        else:
+            for item in targets:
+                if not TARGET.fullmatch(item):
+                    yield f"fuzz_targets: {item!r} is not a fuzz target name (A-Z a-z 0-9 . _ + -, at most 100)"
+            if len(set(targets)) != len(targets):
+                yield "fuzz_targets names a fuzz target twice"
+
+    publish = config.get("publish")
+    if isinstance(publish, str) and publish not in PUBLISH:
+        yield f"publish must be one of {', '.join(PUBLISH)} (got {publish!r})"
+
+
+def check_budgets(config):
+    """Yield a problem with the budgets block (docs/memory-policy.md)."""
+    budgets = config.get("budgets")
+    if not isinstance(budgets, dict):
+        return
+    for key in budgets:
+        if key not in ("halts", "agrees"):
+            yield f"budgets: unknown field {key!r} (allowed: halts, agrees)"
+    if "halts" in budgets and size_in_bytes(budgets["halts"]) is None:
+        yield "budgets.halts must be a size: a positive number of bytes, or a number with KiB, MiB, GiB or TiB"
+    agrees = budgets.get("agrees")
+    if agrees is None:
+        return
+    if not isinstance(agrees, dict):
+        yield "budgets.agrees must be a mapping from a sanitizer to [plain side, sanitizer side]"
+        return
+    wanted = sanitizers_of(config) if isinstance(config.get("sanitizers", []), list) else []
+    for sanitizer, pair in agrees.items():
+        if sanitizer not in SANITIZERS:
+            yield f"budgets.agrees: {sanitizer!r} is not one of {', '.join(SANITIZERS)}"
+            continue
+        if sanitizer not in wanted:
+            yield f"budgets.agrees.{sanitizer} is set, but {sanitizer} is not one of this project's sanitizers"
+        if not (isinstance(pair, list) and len(pair) == 2 and all(size_in_bytes(size) for size in pair)):
+            yield f"budgets.agrees.{sanitizer} must be two sizes: [plain side, sanitizer side]"
+
+
+def check_proofs(config):
+    """Yield a problem with the proofs block."""
+    proofs = config.get("proofs")
+    if not isinstance(proofs, dict):
+        return
+    for key in proofs:
+        if key not in ("repo", "path"):
+            yield f"proofs: unknown field {key!r} (allowed: repo, path)"
+    if "repo" in proofs and not is_https_url(proofs["repo"]):
+        yield "proofs.repo must be ONE https:// URL of a git repository, with #branch if not the default branch"
+    if "path" in proofs and not (isinstance(proofs["path"], str) and REPO_PATH.fullmatch(proofs["path"])):
+        yield "proofs.path must be a relative path inside that repository"
+
+
+def series_entries(text):
+    """The patch names a series file lists, in order: one per line, ignoring blank lines and # comments."""
+    return [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+
+
+def check_files(config, files):
+    """Yield problems with the files next to project.yaml, and with the keys that point into the repository instead.
+
+    `files` maps the name of each file next to project.yaml to its text, or to None if it could not be read or is
+    too large.
+    """
+    for key in FILE_KEYS.values():
+        path = config.get(key)
+        if path is not None and not (isinstance(path, str) and REPO_PATH.fullmatch(path)):
+            yield f"{key} must be a relative path inside your repository"
+
+    # In YAML, an empty `dockerfile:` (or `~`, or `null`) means the key is not set.
+    in_repo = config.get("dockerfile") is not None
+    if "Dockerfile" not in files and not in_repo:
+        yield (
+            "a Dockerfile is required, in exactly one place: beside project.yaml (with its build.sh), or in your "
+            "repository at the path you give as dockerfile: (there is no default path)"
+        )
+    if len(files) > MAX_FILES:
+        yield f"at most {MAX_FILES} files may sit in a project's directory (there are {len(files)})"
+
+    patches = sorted(name for name in files if name.endswith(PATCH_SUFFIX))
+    for name, text in files.items():
+        is_source = name.endswith(SOURCE_SUFFIXES)
+        if not FILE_NAME.fullmatch(name):
+            yield f"{name}: a file name may use only A-Z a-z 0-9 . _ - (starting with a letter or digit)"
+            continue
+        if name not in (*FILE_KEYS, "build.sh", SERIES) and not is_source and name not in patches:
+            yield (
+                f"{name}: only project.yaml, Dockerfile, build.sh, patch_style.md, harness sources "
+                f"({' '.join('*' + suffix for suffix in SOURCE_SUFFIXES)}), *.patch and series may sit in a "
+                "project's directory"
+            )
+            continue
+        limit = MAX_SOURCE_BYTES if is_source or name in patches else MAX_FILE_BYTES
+        if text is None:
+            yield f"{name} is larger than {limit // 1024} KiB (or not UTF-8 text)"
+            continue
+        if name in ("Dockerfile", "build.sh") and not text.strip():
+            yield f"{name} is empty"
+        if name in FILE_KEYS and config.get(FILE_KEYS[name]) is not None:
+            yield f"{name} is given both beside project.yaml and as {FILE_KEYS[name]}: in your repository; one place only"
+        if in_repo and name not in FILE_KEYS:
+            yield (
+                f"{name}: with dockerfile: set, your repository is the build context, so {name} belongs there, "
+                "beside the Dockerfile"
+            )
+
+    if SERIES in files and files[SERIES] is not None:
+        listed = series_entries(files[SERIES])
+        for name in listed:
+            if name not in files or not name.endswith(PATCH_SUFFIX):
+                yield f"series lists {name!r}, which is not a .patch file beside project.yaml"
+        for name in sorted({name for name in listed if listed.count(name) > 1}):
+            yield f"series lists {name!r} more than once"
+        for name in patches:
+            if name not in listed:
+                yield f"{name} is not listed in series (it says the order patches are applied in)"
+    elif patches:
+        yield "patches need a series file beside them that lists them, one per line, in the order they are applied"
+
+
+def config_warnings(config, files):
+    """Return warnings: things that are allowed but worth a second look."""
+    warnings = []
+    if config.get("primary_contact") == NO_CONTACT:
+        warnings.append(
+            "primary_contact is n/a: only a project we seeded may say that, and only until a maintainer adopts it"
+        )
+    repo = config.get("repo")
+    if isinstance(repo, str) and "#" in repo:
+        ref = repo.split("#", 1)[1]
+        if SHORT_COMMIT.fullmatch(ref) and not FULL_COMMIT.fullmatch(ref):
+            warnings.append(f"#{ref} looks like a shortened commit id; give a commit in full, or this names a branch or tag")
+    if "Dockerfile" in files and "build.sh" not in files:
+        warnings.append("there is a Dockerfile but no build.sh beside it: the Dockerfile must create $SRC/build.sh itself")
+    for name in sorted(files):
+        text = files[name]
+        if name.endswith(PATCH_SUFFIX) and text is not None and not re.search(r"^(--- |\+\+\+ |diff )", text, re.M):
+            warnings.append(f"{name} does not look like a patch (no diff, --- or +++ line)")
+    return warnings
+
+
+def check_config(config, files):
+    """Return a list of every problem with a parsed project.yaml and the files next to it."""
+    if not isinstance(config, dict):
+        return [f"not a mapping (top level is a {type(config).__name__})"]
+    return [
+        *check_keys(config),
+        *check_types(config),
+        *check_urls(config),
+        *check_addresses(config),
+        *check_pgp(config),
+        *check_builds(config),
+        *check_budgets(config),
+        *check_proofs(config),
+        *check_files(config, files),
+    ]
+
+
+def read_text(path, limit):
+    """Return the file's text, or None if it is larger than `limit`, unreadable, or not UTF-8."""
+    try:
+        if path.lstat().st_size > limit:
+            return None
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def limit_for(name):
+    """The largest a file with this name may be, in bytes."""
+    if name.endswith(SOURCE_SUFFIXES) or name.endswith(PATCH_SUFFIX):
+        return MAX_SOURCE_BYTES
+    return MAX_FILE_BYTES
+
+
+def load(directory):
+    """Parse projects/<name>/project.yaml. Raise ValueError with the reason if it cannot be read."""
+    config_file = directory / "project.yaml"
+    if config_file.lstat().st_size > MAX_CONFIG_BYTES:
+        raise ValueError(f"project.yaml is larger than {MAX_CONFIG_BYTES // 1024} KiB")
+    try:
+        return yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
+    except (yaml.YAMLError, UnicodeDecodeError, RecursionError) as error:
+        raise ValueError(f"project.yaml does not parse: {type(error).__name__}: {str(error)[:300]}") from None
+
+
+def check_project(directory):
+    """Check one projects/<name>/ directory. Return (problems, warnings, summary line).
+
+    The summary line is None when there are problems. This runs on pull requests from anyone, so it never reads
+    through a symbolic link.
+    """
+    name, config_file = directory.name, directory / "project.yaml"
+    if not NAME.fullmatch(name):
+        return ["the directory name must be a-z 0-9 . _ - (starting with a letter or digit, at most 63)"], [], None
+    if directory.is_symlink():
+        return [f"symbolic links are not accepted (projects/{name} is one)"], [], None
+    if config_file.is_symlink():
+        return [f"symbolic links are not accepted (projects/{name}/project.yaml is one)"], [], None
+    if not config_file.is_file():
+        return [f"projects/{name}/project.yaml is missing"], [], None
+
+    beside = sorted(path for path in directory.iterdir() if path != config_file)
+    irregular = [path.name for path in beside if not stat.S_ISREG(path.lstat().st_mode)]
+    if irregular:
+        return [
+            f"only regular files are accepted: no symbolic links or directories ({', '.join(irregular)})"
+        ], [], None
+
+    try:
+        config = load(directory)
+    except ValueError as error:
+        return [str(error)], [], None
+
+    files = {path.name: read_text(path, limit_for(path.name)) for path in beside}
+    problems = check_config(config, files)
+    if problems:
+        return problems, [], None
+
+    where = "beside project.yaml" if "Dockerfile" in files else f"in the repository at {config['dockerfile']}"
+    targets = ", ".join(config["fuzz_targets"]) if config.get("fuzz_targets") else "all"
+    summary = (
+        f"{name:<24} {config['repo']}  -> {config['primary_contact']}  "
+        f"(Dockerfile: {where}; builds: {' '.join(builds_of(config))}; fuzz targets: {targets})"
+    )
+    return [], config_warnings(config, files), summary
+
+
+def printable(text):
+    """Text for the terminal or a CI log: control characters (escape sequences, BEL, newlines) from a project.yaml or a
+    directory name are shown as \\xNN, never sent raw."""
+    return re.sub(r"[\x00-\x1f\x7f-\x9f]", lambda m: f"\\x{ord(m.group()):02x}", text)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("directories", nargs="*", type=pathlib.Path, help="projects/<name> directories (default: all)")
+    options = parser.parse_args()
+
+    directories = options.directories or sorted(
+        path for path in PROJECTS.glob("*") if path.is_dir() or path.is_symlink()
+    )
+    problems, warnings, summaries = [], [], []
+    for directory in directories:
+        found, cautions, summary = check_project(directory)
+        problems += [printable(f"{directory.name}: {problem}") for problem in found]
+        warnings += [printable(f"{directory.name}: warning: {caution}") for caution in cautions]
+        summaries.append(summary)
+
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    print(f"ok: {len(summaries)} project(s)")
+    for summary in summaries:
+        print(f"  {printable(summary)}")
+    for warning in warnings:
+        print(warning)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
