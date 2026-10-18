@@ -36,6 +36,10 @@ EXPECTED = {
     "m": (0, 0, 0, 0),
     "r": (78, 78, 78, 78),
     "x": (77, 77, 77, 77),
+    # Only exit() is turned into 77: _exit, _Exit and quick_exit end the process with the target's own status.
+    "u": (5, 5, 5, 5),
+    "U": (6, 6, 6, 6),
+    "k": (7, 7, 7, 7),
     "a": (134, 134, 134, 134),
     "s": (139, 139, 139, 139),
     "n": (139, 132, 139, 132),

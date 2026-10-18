@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "example.h"
 
 int example_run(const unsigned char *data, size_t size) {
@@ -14,6 +15,9 @@ int example_run(const unsigned char *data, size_t size) {
     case 'r': return 1;                                   /* a return value other than 0 or -1: 78 */
     case 'm': return -1;                                  /* -1 is allowed: 0 */
     case 'x': exit(3);                                    /* exit() in the target: 77 */
+    case 'u': _exit(5);                                   /* _exit, _Exit and quick_exit are not intercepted */
+    case 'U': _Exit(6);
+    case 'k': quick_exit(7);
     case 'a': abort();                                    /* abort(): 134 */
     case 's': { volatile int *p = 0; return *p; }         /* a segmentation fault: 139 */
     case 'n': { volatile unsigned long zero = 0; int *p = (int *)zero; return *p; }  /* a null load UBSan checks */
