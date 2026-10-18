@@ -147,13 +147,19 @@ ov_target_begin() {
   [ -d "$SRCDIR" ] || { echo "ov_target_begin: no source tree at $SRCDIR (the Dockerfile lays it out)" >&2; exit 1; }
   shift
   ov_release_layout "$@" "$T"
+  # The target is built with the release's compilers, its shims, by their paths, which a build can record (OpenSSL
+  # puts $CC in its version string); compile's $CC, which hands a fuzz target's link to link-fuzz-target, links it.
+  OV_LINK_CC=$CC
+  case "$FLAV" in asan|asanubsan) ov_shim=sealed ;; *) ov_shim=plain ;; esac
+  CC=$SHIM/$CHOST-clang-$ov_shim
+  CXX=$SHIM/$CHOST-clang++-$ov_shim
   export -n SRC WORK OUT SANITIZER SAN CXXFLAGS LIB_FUZZING_ENGINE ARCHITECTURE FUZZING_ENGINE \
     CMAKE_TOOLCHAIN_FILE AR NM RANLIB STRIP OBJCOPY
   CFLAGS="$BASE_CFLAGS $SAN"
   OFT_SEAL_GETENV=1 OFT_SILENT_CONTROL_BUILD=0
   DEPS="$*"
   unset LIB_ARCHIVE LIB_CFLAGS LIB_EXTRA DEPENDS
-  export T DEPS LIBROOT SRCDIR BUILDDIR CFLAGS OFT_SEAL_GETENV OFT_SILENT_CONTROL_BUILD
+  export T DEPS LIBROOT SRCDIR BUILDDIR CC CXX CFLAGS OFT_SEAL_GETENV OFT_SILENT_CONTROL_BUILD
   mkdir -p "$BUILDDIR"
   oft_link_prefix "$T" || exit 1
   cd /
@@ -187,5 +193,5 @@ ov_target_build() {
     ov_link="$BUILDDIR/$LIB_ARCHIVE"
   fi
   # shellcheck disable=SC2086 # flag lists, split as the release splits them
-  "$CC" $BASE_CFLAGS -o "$OUT/$ov_name" $LIB_FUZZING_ENGINE $ov_link ${LIB_EXTRA:-}
+  "$OV_LINK_CC" $BASE_CFLAGS -o "$OUT/$ov_name" $LIB_FUZZING_ENGINE $ov_link ${LIB_EXTRA:-}
 }
