@@ -59,6 +59,9 @@ class ValidProjects(unittest.TestCase):
             "repo: https://github.com/example/project#0123456789abcdef0123456789abcdef01234567\n"
             "primary_contact: security@example.org\nhomepage: https://example.org\nlanguage: c++\n"
             "disabled: false\nsanitizers: [address]\nfuzz_targets: [a_fuzzer, b-fuzzer.x]\npublish: eager\n"
+            "disable_remediation: false\n"
+            "patches:\n  findings: all\n  out_of_scope: library\n  allocation_failure: harness\n  documentation: true\n"
+            "  refactoring: equivalent\n  equivalence_proof: not_required\n"
             "budgets:\n  halts: 16GiB\n  agrees:\n    address: [2GiB, 512GiB]\n"
             "proofs:\n  repo: https://github.com/example/proofs#main\n  path: projects/example\n"
             f"pgp: |\n  {KEY.replace(chr(10), chr(10) + '  ')}\n"
@@ -183,6 +186,18 @@ class Problems(unittest.TestCase):
             MINIMAL + "sanitizers: [undefined]\nbudgets: {agrees: {address: [2GiB, 512GiB]}}\n",
             "is not one of this project's sanitizers",
         )
+
+    def test_patch_preferences(self):
+        self.assertProblem(MINIMAL + "disable_remediation: yes please\n", "disable_remediation must be true or false")
+        self.assertProblem(MINIMAL + "patches: [all]\n", "patches must be a mapping")
+        self.assertProblem(MINIMAL + "patches: {style: minimal}\n", "patches: unknown field 'style'")
+        self.assertProblem(MINIMAL + "patches: {findings: some}\n", "patches.findings must be one of fuzz_failures, all")
+        self.assertProblem(MINIMAL + "patches: {refactoring: true}\n", "patches.refactoring must be one of none")
+        self.assertProblem(MINIMAL + "patches: {documentation: yes-ish}\n", "patches.documentation must be true or false")
+        self.assertProblem(MINIMAL + "patches: {equivalence_proof: maybe}\n", "patches.equivalence_proof must be one of")
+        problems, warnings, _ = check(MINIMAL + "disable_remediation: true\npatches: {findings: all}\n")
+        self.assertEqual(problems, [])
+        self.assertTrue(any("patches has no effect while disable_remediation is true" in warning for warning in warnings))
 
     def test_proofs(self):
         self.assertProblem(MINIMAL + "proofs: {branch: x}\n", "unknown field 'branch'")

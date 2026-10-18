@@ -28,7 +28,7 @@ homepage: https://example.org
 # Optional. true pauses the project without removing it; false (or omitting it) keeps it active.
 disabled: false
 
-# REQUIRED. The language of the code we build: c or c++.
+# REQUIRED. The language of the code we build. docs/project-yaml.md lists the values.
 language: c
 
 # Optional. The sanitizer builds besides the plain one: a subset of [address, undefined]. With both there is also an
@@ -46,12 +46,25 @@ fuzz_targets:
 #   - in your repository, in which case you should give the Dockerfile's path below and keep build.sh beside it.
 dockerfile: .oss-verifier/Dockerfile
 
-# Optional: a patch_style.md (start from templates/patch_style.md) says how you want patches. It goes in one of two
-# places:
+# Optional: a patch_style.md (start from templates/patch_style.md) is free text about the form of a patch: code style,
+# tests, commit format. It goes in one of two places:
 #   - in your repository, in which case you should give its path below; or
 #   - in this repository, next to this file, as projects/<name>/patch_style.md, in which case you should delete the
 #     line below.
 patch_style: .oss-verifier/patch_style.md
+
+# Optional. true: we send findings without patches. The default is false: we send a patch with a finding when we
+# have one.
+# disable_remediation: false
+
+# Optional. Which patches our agents write (docs/patches.md). Each key is optional; the values shown are the defaults.
+# patches:
+#   findings: fuzz_failures       # or all: also bugs found while proving, which no fuzz target can cause
+#   out_of_scope: harness         # or library: when a fuzz target gets to behaviour you do not support
+#   allocation_failure: harness   # or library: the same choice for a refused allocation
+#   documentation: false          # true: also patches that change only the documentation
+#   refactoring: none             # or equivalent, or minor: changes that make the code easier to verify
+#   equivalence_proof: required   # or not_required: a refactoring patch only with a proof that behaviour is unchanged
 
 # Optional. When we publish the proofs about your project (docs/publishing.md):
 #   after_fixes  (the default) once every patch we sent you is public or upstreamed
@@ -59,8 +72,8 @@ patch_style: .oss-verifier/patch_style.md
 #   never        never outside Theorem
 # publish: after_fixes
 
-# Optional, and rarely needed: the memory budgets of the statements (docs/memory-policy.md), and where the proofs are
-# published (docs/publishing.md). Set only what you want to change.
+# Optional, and rarely needed: the memory budgets of the statements (docs/what-gets-proven.md), and where the proofs
+# are published (docs/publishing.md). Set only what you want to change.
 # budgets:
 #   halts: 16GiB
 #   agrees:

@@ -1,19 +1,19 @@
-<!-- Adapted from OSS Scanner's templates/threat_model.md (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: the sections of a patch style. -->
-<!-- Template: copy to your repository (and set patch_style: in project.yaml) or place a copy at projects/<name>/patch_style.md. Free text; we read it before we write a patch for you. -->
+<!-- Adapted from OSS Scanner's templates/threat_model.md (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: free text about the form of a patch. -->
+<!-- Template: copy to your repository (and set patch_style: in project.yaml) or place a copy at projects/<name>/patch_style.md. Free text; we read it before we write a patch for you. A choice that a field in project.yaml gives (disable_remediation, patches) goes in that field only (docs/patches.md). -->
 # Patch style
 
-## What you care about
-- e.g. "memory safety in the parser comes first; the CLI tools matter less"
+## Code style
+- e.g. "follow .clang-format; keep the existing naming"
 
-## How you rate severity (optional)
-- e.g. "any out-of-bounds write is critical; an out-of-bounds read is high; a crash on input over 1 GiB is low"
+## Tests
+- e.g. "add a regression test under tests/ that fails without the patch"
 
-## Patch format
-- e.g. "minimal: just enough to fix the bug, with a regression test under tests/" or "merge-ready: follow CONTRIBUTING.md and clang-format, and add a test"
+## Commit format
+- e.g. "one commit for each patch; a subject line under 72 characters; a Signed-off-by line"
+
+## Contribution policy
+- e.g. "our policy on AI-generated contributions: https://example.org/CONTRIBUTING.md#ai"
 
 ## Where and how to send patches
-- By default patches go to `primary_contact`, with the report they belong to.
+- By default, a patch goes to `primary_contact`, as an attachment to its finding.
 - e.g. "attach the patch to the report; do not open a pull request"
-
-## Anything to leave alone
-- e.g. "the deprecated v1 API, which we are removing"
