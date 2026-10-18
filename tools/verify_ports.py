@@ -23,7 +23,8 @@ where result is one of
     not-ported    tools/port.py cannot port it yet (detail says why)
 
 Each project's files and log stay in DIR/<name>/; its images and the builds' raw output are removed when it is done.
-It stops starting projects when the file system holding DIR has less than --min-free-gb free.
+A check still running after --timeout seconds is stopped, with its containers, and the project fails. It stops
+starting projects when the file system holding DIR has less than --min-free-gb free.
 
 Needs what tools/check needs, and the toolchain image. Set OFT_MAKE_JOBS to bound each build's parallelism.
 """
@@ -33,6 +34,7 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -75,12 +77,40 @@ def locks_for(checkout, name, targets):
     return [checkout / "projects" / name / target / "harness.yaml" for target in targets]
 
 
+def images(name):
+    """The images tools/check made for this project."""
+    return subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", f"oss-verifier-check/{name}"],
+                          capture_output=True, text=True).stdout.split()
+
+
 def remove_images(name):
     """Remove the images tools/check made for this project (never any other)."""
-    listing = subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", f"oss-verifier-check/{name}"],
-                             capture_output=True, text=True).stdout.split()
+    listing = images(name)
     if listing:
         subprocess.run(["docker", "image", "rm", "-f", *listing], capture_output=True)
+
+
+def stop_containers(name):
+    """Kill the containers still running an image tools/check made for this project (never any other)."""
+    running = set()
+    for image in images(name):
+        running.update(subprocess.run(["docker", "ps", "-q", "--filter", f"ancestor={image}"], capture_output=True,
+                                      text=True).stdout.split())
+    if running:
+        subprocess.run(["docker", "kill", *sorted(running)], capture_output=True)
+
+
+def run_check(arguments, log, timeout):
+    """Run tools/check in a process group of its own. Return its exit code, or None if it ran out of time (and was
+    killed, with everything it started)."""
+    process = subprocess.Popen(arguments, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                               start_new_session=True)
+    try:
+        return process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        return None
 
 
 def verify(name, options, release):
@@ -104,9 +134,13 @@ def verify(name, options, release):
         return "not-ported", "the port breaks the enrollment rules: " + "; ".join(problems)
     locks = [arg for lock in locks_for(options.checkout, name, seeded.targets) for arg in ("--lock", str(lock))]
     with open(log_file, "w", encoding="utf-8") as log:
-        code = subprocess.run([str(TOOLS / "check"), "--no-shell", *locks, "--dir", str(work), str(directory)],
-                              stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL).returncode
-    result = verdict(code, log_file.read_text(encoding="utf-8", errors="replace"))
+        code = run_check([str(TOOLS / "check"), "--no-shell", *locks, "--dir", str(work), str(directory)], log,
+                         options.timeout)
+    if code is None:
+        stop_containers(name)
+        result = "fails", f"tools/check was still running after {options.timeout} seconds, and was stopped"
+    else:
+        result = verdict(code, log_file.read_text(encoding="utf-8", errors="replace"))
     remove_images(name)
     shutil.rmtree(work / "raw", ignore_errors=True)
     shutil.rmtree(work / "twice", ignore_errors=True)
@@ -124,6 +158,7 @@ def main():
     parser.add_argument("--results", type=pathlib.Path, required=True, help="the TSV of results, appended to")
     parser.add_argument("--jobs", type=int, default=8, help="projects at once (default 8)")
     parser.add_argument("--min-free-gb", type=float, default=300, help="stop starting projects below this (default 300)")
+    parser.add_argument("--timeout", type=int, default=4 * 3600, help="seconds one project's check may take (default 4 h)")
     options = parser.parse_args()
     release = port.Release(options.checkout, options.recipe, options.assets)
     names = options.names or sorted(
