@@ -1,0 +1,41 @@
+#!/bin/sh
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# fetch-commit [--submodules] <directory>: check out $REPO at $COMMIT into <directory>, for a project's Dockerfile:
+#
+#     ARG REPO
+#     ARG COMMIT
+#     RUN fetch-commit $SRC/<name>
+#
+# tools/check passes REPO (project.yaml's repo, without its #ref) and COMMIT (the full commit the ref resolved to).
+# Only https is used, anonymously, as tools/check does. The checkout is verified to be exactly COMMIT.
+# --submodules also checks out the submodules, at the commits the tree records.
+set -eu
+
+submodules=0
+if [ "${1:-}" = --submodules ]; then submodules=1; shift; fi
+[ $# -eq 1 ] || { echo "usage: fetch-commit [--submodules] <directory>" >&2; exit 2; }
+dir=$1
+
+[ -n "${REPO:-}" ] || { echo "fetch-commit: REPO is not set (declare ARG REPO; tools/check passes it)" >&2; exit 2; }
+[ -n "${COMMIT:-}" ] || { echo "fetch-commit: COMMIT is not set (declare ARG COMMIT; tools/check passes it)" >&2; exit 2; }
+case "$REPO" in https://*) ;; *) echo "fetch-commit: REPO must be an https:// URL" >&2; exit 2 ;; esac
+case "$COMMIT" in
+  *[!0-9a-f]*) echo "fetch-commit: COMMIT must be a full commit id in lowercase hex" >&2; exit 2 ;;
+esac
+[ ${#COMMIT} -eq 40 ] || [ ${#COMMIT} -eq 64 ] || { echo "fetch-commit: COMMIT must be a full commit id" >&2; exit 2; }
+
+export GIT_TERMINAL_PROMPT=0
+git() { command git -c credential.helper= -c protocol.allow=never -c protocol.https.allow=always "$@"; }
+
+git init -q "$dir"
+git -C "$dir" remote add origin "$REPO"
+git -C "$dir" fetch -q --depth 1 origin "$COMMIT"
+git -C "$dir" checkout -q --detach FETCH_HEAD
+head=$(git -C "$dir" rev-parse HEAD)
+[ "$head" = "$COMMIT" ] || { echo "fetch-commit: checked out $head, not $COMMIT" >&2; exit 1; }
+if [ "$submodules" = 1 ]; then
+  git -C "$dir" submodule update -q --init --recursive --depth 1
+fi
+echo "fetch-commit: $REPO at $COMMIT in $dir"

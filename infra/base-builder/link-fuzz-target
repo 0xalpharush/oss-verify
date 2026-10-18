@@ -1,0 +1,49 @@
+#!/bin/bash
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# link-fuzz-target <compiler> <arguments>: the link of a fuzz target, a link whose arguments name
+# $LIB_FUZZING_ENGINE. $CC and $CXX hand such a link here; build.sh never calls this itself.
+#
+# The link is made as the oss-fuzz-theorems 2026.10.0-rc.2 release recipe makes it, whose binaries this reproduces
+# byte for byte:
+#
+#     <compiler> -static -no-pie -Wl,--gc-sections <driver> [<silent reports>] <the link's own arguments> <seals>
+#
+# The driver (cli.o, adapter.o) comes first, in place of $LIB_FUZZING_ENGINE wherever the link named it, and the
+# seals (getenv, mkstemp and getpid, each wrapped) come last: both positions change the bytes. In the AddressSanitizer
+# builds, --defsym=__sanitizer_silent_reports=1 makes a detection abort without printing a report.
+#
+# It links twice: the output the link asked for, with its symbols, and the same link with --strip-all, saved under
+# the sha256 of the first for compile to collect.
+set -euo pipefail
+
+# shellcheck source=/dev/null
+. /tmp/ov/link.env
+
+real=$1
+shift
+out=a.out
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    "$OV_LFE") ;;
+    -o)
+      [ $# -ge 2 ] || { echo "link-fuzz-target: -o needs a file name" >&2; exit 1; }
+      out=$2
+      shift ;;
+    -o?*) out=${1#-o} ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+
+link() {
+  # shellcheck disable=SC2086 # the lists in link.env are meant to be split
+  $real -static -no-pie -Wl,--gc-sections "$@" $OV_DRIVER $OV_SILENT_LD ${args[@]+"${args[@]}"} $OV_SEALS
+}
+
+link -o "$out"
+sum=$(sha256sum "$out" | cut -d' ' -f1)
+link -Wl,--strip-all -o "$OV_TWINS/$sum.tmp"
+mv -f "$OV_TWINS/$sum.tmp" "$OV_TWINS/$sum"

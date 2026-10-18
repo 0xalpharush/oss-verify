@@ -1,0 +1,147 @@
+#!/bin/bash
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# compile: build this image's project once, for the build $SANITIZER names, into $OUT.
+#
+#     docker run --rm --network=none -e SANITIZER=address -v "$PWD/out:/out" <project image> compile
+#
+#     SANITIZER           build        flags beyond the common ones (docs/build-contract.md)
+#     none                plain        -
+#     undefined           ubsan        -fsanitize=undefined -fno-sanitize-recover=all -fsanitize-trap=all
+#                                      -fno-sanitize=function
+#     address             asan         -fsanitize=address, with the sealed static AddressSanitizer runtime
+#     address-undefined   asan-ubsan   both
+#
+# It sets up that build's compilers and flags (toolchain.sh), compiles the driver ($LIB_FUZZING_ENGINE), and runs
+# $SRC/build.sh with bash -eux from the image's working directory. build.sh builds each fuzz target into $OUT, as
+# under OSS-Fuzz, by linking it with $LIB_FUZZING_ENGINE through $CC or $CXX.
+#
+# Such a link is made twice (link-fuzz-target): once as asked, with symbols, and once with --strip-all. The binaries
+# in $OUT keep their symbols, so that a fuzz target is found by its symbol table (an executable that defines
+# LLVMFuzzerTestOneInput). The stripped twin of each executable in $OUT is saved as $OUT/.stripped/<sha256 of the
+# executable>: those are the bytes that are published and that statements are about.
+#
+# Set OV_OWNER=<uid>:<gid> to have $OUT handed to that owner at the end.
+set -euo pipefail
+
+LIB=/usr/local/lib/oss-verifier
+
+case "${SANITIZER:=none}" in
+  none) FLAV=plain BUILD=plain ;;
+  address) FLAV=asan BUILD=asan ;;
+  undefined) FLAV=ubsan BUILD=ubsan ;;
+  address-undefined) FLAV=asanubsan BUILD=asan-ubsan ;;
+  *) echo "compile: SANITIZER must be none, address, undefined or address-undefined, not '$SANITIZER'" >&2; exit 2 ;;
+esac
+export SANITIZER FLAV
+
+[ -f "$SRC/build.sh" ] || { echo "compile: there is no $SRC/build.sh" >&2; exit 2; }
+mkdir -p "$OUT" "$WORK"
+if [ -n "${OV_OWNER:-}" ]; then
+  trap 'chown -R "$OV_OWNER" "$OUT" 2>/dev/null || true' EXIT
+fi
+
+echo "compile: the $BUILD build (SANITIZER=$SANITIZER)"
+
+# shellcheck source=toolchain.sh
+. "$LIB/toolchain.sh"
+real_cc=$CC real_cxx=$CXX
+
+# The project's code gets CFLAGS as the release recipe gives a library and its harness.
+suppress_unused_arg_werror
+define_fuzzing_build_mode
+CXXFLAGS="$CFLAGS -stdlib=libc++"
+
+# The driver and the seals are compiled as the release recipe compiles them: with no sanitizer, in every build.
+OV=/tmp/ov
+rm -rf "$OV"
+mkdir -p "$OV/bin" "$OV/twins"
+"$DRVCC" $BASE_CFLAGS -c -I"$LIB/driver" "$LIB/driver/cli.c" -o "$OV/cli.o"
+"$DRVCC" $BASE_CFLAGS -c -I"$LIB/driver" "$LIB/driver/adapter.c" -o "$OV/adapter.o"
+for seal in getenv mkstemp getpid; do
+  "$DRVCC" $BASE_CFLAGS -c "$LIB/driver/wrap_$seal.c" -o "$OV/wrap_$seal.o"
+done
+# An archive, so that a link that does not go through $CC or $CXX still gets a working program.
+"$CHOST-ar" rcs "$OV/libFuzzingEngine.a" "$OV/cli.o" "$OV/adapter.o"
+LIB_FUZZING_ENGINE=$OV/libFuzzingEngine.a
+
+silent=""
+case "$FLAV" in asan|asanubsan) silent="-Wl,--defsym=__sanitizer_silent_reports=1" ;; esac
+cat > "$OV/link.env" <<EOF
+OV_LFE='$LIB_FUZZING_ENGINE'
+OV_DRIVER='$OV/cli.o $OV/adapter.o'
+OV_SILENT_LD='$silent'
+OV_SEALS='$OV/wrap_getenv.o -Wl,--wrap=getenv $OV/wrap_mkstemp.o -Wl,--wrap=mkstemp -Wl,--wrap=mkostemp -Wl,--wrap=mkstemps -Wl,--wrap=mkostemps $OV/wrap_getpid.o -Wl,--wrap=getpid -Wl,--wrap=getppid'
+OV_TWINS='$OV/twins'
+EOF
+
+# $CC and $CXX: the build's compiler, except that a link naming $LIB_FUZZING_ENGINE goes to link-fuzz-target.
+write_wrapper() {
+  cat > "$1" <<EOF
+#!/bin/sh
+for a in "\$@"; do
+  case "\$a" in -c|-E|-S|-fsyntax-only|-M|-MM|--version|-dumpmachine|-print-*) exec $2 "\$@" ;; esac
+done
+for a in "\$@"; do
+  [ "\$a" != "$LIB_FUZZING_ENGINE" ] || exec $LIB/link-fuzz-target $2 "\$@"
+done
+exec $2 "\$@"
+EOF
+  chmod +x "$1"
+}
+write_wrapper "$OV/bin/$CHOST-clang" "$real_cc"
+write_wrapper "$OV/bin/$CHOST-clang++" "$real_cxx"
+CC=$OV/bin/$CHOST-clang
+CXX=$OV/bin/$CHOST-clang++
+
+# CMake picks this up by itself (CMake 3.21 and later read CMAKE_TOOLCHAIN_FILE from the environment). As the
+# release recipe writes it.
+cat > "$OV/toolchain.cmake" <<EOF
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR riscv64)
+set(CMAKE_SYSROOT "/opt/musl-sysroot")
+set(CMAKE_FIND_ROOT_PATH "/opt/musl-sysroot" "/opt/musl-sysroot/usr")
+set(CMAKE_C_COMPILER "$CC")
+set(CMAKE_CXX_COMPILER "$CXX")
+set(CMAKE_C_FLAGS "$CFLAGS" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS "$CXXFLAGS" CACHE STRING "" FORCE)
+set(CMAKE_EXE_LINKER_FLAGS "-stdlib=libc++" CACHE STRING "" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS "-stdlib=libc++" CACHE STRING "" FORCE)
+set(CMAKE_MODULE_LINKER_FLAGS "-stdlib=libc++" CACHE STRING "" FORCE)
+set(CMAKE_AR "/usr/bin/llvm-ar" CACHE FILEPATH "" FORCE)
+set(CMAKE_RANLIB "/usr/bin/llvm-ranlib" CACHE FILEPATH "" FORCE)
+set(CMAKE_NM "/usr/bin/llvm-nm" CACHE FILEPATH "" FORCE)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE EXECUTABLE)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+EOF
+
+# OSS-Fuzz's names, and a few more that cross builds need. FUZZING_ENGINE is "none", OSS-Fuzz's name for a driver
+# that runs inputs from files.
+export CC CXX CFLAGS CXXFLAGS LIB_FUZZING_ENGINE
+export ARCHITECTURE=riscv64 FUZZING_ENGINE=none
+export CMAKE_TOOLCHAIN_FILE=$OV/toolchain.cmake
+export AR=$CHOST-ar NM=$CHOST-nm RANLIB=$CHOST-ranlib STRIP=$CHOST-strip OBJCOPY=$CHOST-objcopy
+
+echo "compile: CC=$CC"
+echo "compile: CFLAGS=$CFLAGS"
+bash -eux "$SRC/build.sh"
+
+# Save the stripped twin of each executable build.sh left in $OUT.
+mkdir -p "$OUT/.stripped"
+found=0
+for f in "$OUT"/* "$OUT"/.[!.]*; do
+  [ -f "$f" ] && [ ! -L "$f" ] || continue
+  sum=$(sha256sum "$f" | cut -d' ' -f1)
+  if [ -f "$OV/twins/$sum" ]; then
+    cp "$OV/twins/$sum" "$OUT/.stripped/$sum"
+    # Not grep -q: with pipefail, llvm-nm would be killed by the closed pipe and the test would fail.
+    if llvm-nm --defined-only "$f" 2>/dev/null | grep ' T LLVMFuzzerTestOneInput$' >/dev/null; then
+      echo "compile: fuzz target $(basename "$f")"
+      found=$((found + 1))
+    fi
+  fi
+done
+echo "compile: $found fuzz target(s) in $OUT, the $BUILD build"
