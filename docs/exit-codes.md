@@ -4,7 +4,7 @@ Every fuzz target is linked with the same small driver, `$LIB_FUZZING_ENGINE` ([
 
     [u16 config word][config bytes][u32 allocation mask][payload]
 
-with both integers little-endian. The low 15 bits of the config word are the length of the config bytes. The driver calls `LLVMFuzzerTestOneInput` on the payload `(config[0] & 3) + 1` times (once when there is no config) and prints each return value on standard output. An OSS-Fuzz testcase therefore needs the six bytes `00 00 00 00 00 00` in front of it. An OSS-Fuzz harness ignores the allocation mask; an allocation-failure entry point uses it (below).
+with both integers little-endian. The low 15 bits of the config word are the length of the config bytes; its top bit asks for counting mode (below). The driver calls `LLVMFuzzerTestOneInput` on the payload `(config[0] & 3) + 1` times (once when there is no config) and prints each return value on standard output. An OSS-Fuzz testcase therefore needs the six bytes `00 00 00 00 00 00` in front of it. A fuzz target linked with `$LIB_FUZZING_ENGINE` ignores the allocation mask; an allocation-failure fuzz target uses it (below).
 
 ## The statuses
 

@@ -4,6 +4,7 @@ abseil-cpp	reproduces	all binaries match the release's
 ada-url	reproduces	all binaries match the release's
 arduinojson	reproduces	all binaries match the release's
 args	reproduces	all binaries match the release's
+arrow	reproduces	all binaries match the release's
 aspell	reproduces	all binaries match the release's
 astc-encoder	reproduces	all binaries match the release's
 augeas	reproduces	all binaries match the release's
@@ -100,6 +101,7 @@ knot-dns	reproduces	all binaries match the release's
 krb5	reproduces	all binaries match the release's
 lcms	reproduces	all binaries match the release's
 leptonica	reproduces	all binaries match the release's
+libarchive	reproduces	all binaries match the release's
 libavc	reproduces	all binaries match the release's
 libbpf	reproduces	all binaries match the release's
 libcacard	reproduces	all binaries match the release's
@@ -199,12 +201,15 @@ numactl	not-ported	the port breaks the enrollment rules: 0001-autoreconf-output-
 oatpp	reproduces	all binaries match the release's
 ocudu	reproduces	all binaries match the release's
 open5gs	reproduces	all binaries match the release's
+open62541	reproduces	all binaries match the release's
 opencensus-cpp	reproduces	all binaries match the release's
 opendnp3	reproduces	all binaries match the release's
 openh264	reproduces	all binaries match the release's
 openjpeg	reproduces	all binaries match the release's
 openjph	reproduces	all binaries match the release's
 opensc	reproduces	all binaries match the release's
+openssh	reproduces	all binaries match the release's
+openssl	reproduces	all binaries match the release's
 openvpn	reproduces	all binaries match the release's
 openvswitch	reproduces	all binaries match the release's
 opus	reproduces	all binaries match the release's
@@ -247,6 +252,7 @@ selinux	reproduces	all binaries match the release's
 serenity	reproduces	all binaries match the release's
 simdjson	reproduces	all binaries match the release's
 skcms	reproduces	all binaries match the release's
+skia	reproduces	all binaries match the release's
 sleuthkit	reproduces	all binaries match the release's
 snappy	reproduces	all binaries match the release's
 spdk	reproduces	all binaries match the release's
@@ -284,6 +290,7 @@ wasm3	reproduces	all binaries match the release's
 wavpack	reproduces	all binaries match the release's
 wazuh	reproduces	all binaries match the release's
 wget	reproduces	all binaries match the release's
+wget2	reproduces	all binaries match the release's
 woff2	reproduces	all binaries match the release's
 wolfboot	reproduces	all binaries match the release's
 wolfmqtt	reproduces	all binaries match the release's

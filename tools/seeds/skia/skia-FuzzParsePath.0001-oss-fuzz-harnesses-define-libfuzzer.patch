@@ -1,0 +1,35 @@
+0001-oss-fuzz-harnesses-define-libfuzzer.patch
+Build adaptation.
+
+diff --git a/fuzz/oss_fuzz/FuzzJSON.cpp b/fuzz/oss_fuzz/FuzzJSON.cpp
+index 7766b6cd24688965e8d58c5d42c0a873224ed7de..3c737192e7e6eba4ba717a69f60db8172660956c 100644
+--- a/fuzz/oss_fuzz/FuzzJSON.cpp
++++ b/fuzz/oss_fuzz/FuzzJSON.cpp
+@@ -14,6 +14,11 @@ void FuzzJSON(const uint8_t *data, size_t size) {
+     dom.write(&wstream);
+ }
+ 
++                                                                               
++                                                                               
++                                                                          
++                                                                     
++#define SK_BUILD_FOR_LIBFUZZER 1
+ #if defined(SK_BUILD_FOR_LIBFUZZER)
+ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+     FuzzJSON(data, size);
+diff --git a/fuzz/oss_fuzz/FuzzParsePath.cpp b/fuzz/oss_fuzz/FuzzParsePath.cpp
+index 4481a30b7069e1a551babffd471f375f79622a01..5fb2882d4cef186db910216922bed59eb946734e 100644
+--- a/fuzz/oss_fuzz/FuzzParsePath.cpp
++++ b/fuzz/oss_fuzz/FuzzParsePath.cpp
+@@ -23,6 +23,11 @@ void FuzzParsePath(const uint8_t* data, size_t size) {
+     }
+ }
+ 
++                                                                               
++                                                                               
++                                                                           
++                                                        
++#define SK_BUILD_FOR_LIBFUZZER 1
+ #if defined(SK_BUILD_FOR_LIBFUZZER)
+ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+     if (size > 1000) {

@@ -51,7 +51,7 @@ argcomplete	no	-	-	-	the release did not build it (status language-pending: pyth
 argo	no	-	-	-	the release did not build it (status language-pending: go)
 args	yes	parse_args_fuzzer	reproduces	all binaries match the release's	-
 args4j	no	-	-	-	the release did not build it (status language-pending: jvm)
-arrow	yes	arrow-csv-fuzz,arrow-ipc-file-fuzz,arrow-ipc-stream-fuzz,parquet-arrow-fuzz	not checked	-	-
+arrow	yes	arrow-csv-fuzz,arrow-ipc-file-fuzz,arrow-ipc-stream-fuzz,parquet-arrow-fuzz	reproduces	all binaries match the release's	-
 arrow-java	no	-	-	-	the release did not build it (status language-pending: jvm)
 arrow-py	no	-	-	-	the release did not build it (status language-pending: python)
 askama	no	-	-	-	the release did not build it (status language-pending: rust)
@@ -618,7 +618,7 @@ lcms	yes	fuzzers	reproduces	all binaries match the release's	-
 leptonica	yes	affine_fuzzer,barcode_fuzzer,bilateral_fuzzer,bilinear_fuzzer,blend_fuzzer,boxfunc4_fuzzer,boxfunc5_fuzzer,boxfunc_fuzzer,ccbord_fuzzer,ccthin_fuzzer,checkerboard_fuzzer,colorfill_fuzzer,colorquant_fuzzer,compare_fuzzer,edge_fuzzer,enhance_fuzzer,fhmtgen_fuzzer,flipdetect_fuzzer,fpix2_fuzzer,graphics_fuzzer,graymorph_fuzzer,grayquant_fuzzer,jpegiostub_fuzzer,kernel_fuzzer,mask_fuzzer,maze_fuzzer,morph_fuzzer,pageseg_fuzzer,paintcmap_fuzzer,pix1_fuzzer,pix_orient_fuzzer,pix_rotate_shear_fuzzer,pixconv_fuzzer	reproduces	all binaries match the release's	-
 leveldb	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 libaom	no	-	-	-	the release did not build it (status too-large: size)
-libarchive	yes	libarchive_7zip_fuzzer,libarchive_ar_fuzzer,libarchive_cab_fuzzer,libarchive_cpio_fuzzer,libarchive_entry_fuzzer,libarchive_filter_fuzzer,libarchive_iso9660_fuzzer,libarchive_lha_fuzzer,libarchive_linkify_fuzzer,libarchive_mtree_fuzzer,libarchive_rar5_fuzzer,libarchive_rar_fuzzer,libarchive_roundtrip_fuzzer,libarchive_seek_fuzzer,libarchive_string_fuzzer,libarchive_tar_fuzzer,libarchive_warc_fuzzer,libarchive_write_fuzzer,libarchive_xar_fuzzer,libarchive_zip_fuzzer	not checked	-	-
+libarchive	yes	libarchive_7zip_fuzzer,libarchive_ar_fuzzer,libarchive_cab_fuzzer,libarchive_cpio_fuzzer,libarchive_entry_fuzzer,libarchive_filter_fuzzer,libarchive_iso9660_fuzzer,libarchive_lha_fuzzer,libarchive_linkify_fuzzer,libarchive_mtree_fuzzer,libarchive_rar5_fuzzer,libarchive_rar_fuzzer,libarchive_roundtrip_fuzzer,libarchive_seek_fuzzer,libarchive_string_fuzzer,libarchive_tar_fuzzer,libarchive_warc_fuzzer,libarchive_write_fuzzer,libarchive_xar_fuzzer,libarchive_zip_fuzzer	reproduces	all binaries match the release's	-
 libass	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 libavc	yes	avc_dec_fuzzer,avc_enc_fuzzer,mvc_dec_fuzzer,svc_dec_fuzzer,svc_enc_fuzzer	reproduces	all binaries match the release's	-
 libavif	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
@@ -864,7 +864,7 @@ onednn	no	-	-	-	the release did not build it (status not-yet-built: reads-stdin)
 onnx	no	-	-	-	the release did not build it (status language-pending: python)
 open-json	no	-	-	-	the release did not build it (status language-pending: jvm)
 open5gs	yes	gtp_message_fuzz	reproduces	all binaries match the release's	gtp_message_fuzz: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source
-open62541	yes	fuzz_attributeoperand,fuzz_base64_decode,fuzz_base64_encode,fuzz_binary_decode,fuzz_datatype_description,fuzz_eventfilter_parse,fuzz_json_decode,fuzz_json_decode_encode,fuzz_parse_string,fuzz_pubsub_binary,fuzz_pubsub_connection_config,fuzz_pubsub_json,fuzz_src_ua_util,fuzz_xml_decode_encode	not checked	-	-
+open62541	yes	fuzz_attributeoperand,fuzz_base64_decode,fuzz_base64_encode,fuzz_binary_decode,fuzz_datatype_description,fuzz_eventfilter_parse,fuzz_json_decode,fuzz_json_decode_encode,fuzz_parse_string,fuzz_pubsub_binary,fuzz_pubsub_connection_config,fuzz_pubsub_json,fuzz_src_ua_util,fuzz_xml_decode_encode	reproduces	all binaries match the release's	-
 openapi-schema-validator	no	-	-	-	the release did not build it (status language-pending: python)
 openbabel	no	-	-	-	the release did not build it (status too-large: size)
 opencensus-cpp	yes	b3_fuzzer,cloud_trace_context_fuzzer,grpc_tags_bin_fuzzer,grpc_trace_bin_fuzzer,trace_context_fuzzer	reproduces	all binaries match the release's	b3_fuzzer: the release applied 1 patch(es) to the library's tree (portability), none to its own source; cloud_trace_context_fuzzer: the release applied 1 patch(es) to the library's tree (portability), none to its own source; grpc_tags_bin_fuzzer: the release applied 1 patch(es) to the library's tree (portability), none to its own source; grpc_trace_bin_fuzzer: the release applied 1 patch(es) to the library's tree (portability), none to its own source; trace_context_fuzzer: the release applied 1 patch(es) to the library's tree (portability), none to its own source
@@ -888,8 +888,8 @@ opensc	yes	fuzz_scconf_parse_string	reproduces	all binaries match the release's	
 opensips	no	-	-	-	no harness to seed: fuzz_uri_parser (the release's patch 0001-proxy-protocol-include-timer.patch edits net/proxy_protocol.c, the library's own source)
 opensk	no	-	-	-	the release did not build it (status language-pending: rust)
 openslide	no	-	-	-	the release did not build it (status no-harness: none-at-commit)
-openssh	yes	agent_fuzz,authkeys_fuzz,authopt_fuzz,kex_fuzz,privkey_fuzz,pubkey_fuzz,sig_fuzz,sshsig_fuzz,sshsigopt_fuzz	not checked	-	-
-openssl	yes	acert,asn1,asn1parse,bignum,bndiv,client,cmp,cms,conf,crl,ct,decoder,dtlsclient,dtlsserver,echconfiglist_parser,hashtable,ml-dsa,ml-kem,pem,pkcs12,pkcs7_verify,provider,punycode,quic-client,quic-lcidm,quic-rcidm,quic-server,quic-srtm,server,slh-dsa,smime,v3name,x509,x509v3	not checked	-	-
+openssh	yes	agent_fuzz,authkeys_fuzz,authopt_fuzz,kex_fuzz,privkey_fuzz,pubkey_fuzz,sig_fuzz,sshsig_fuzz,sshsigopt_fuzz	reproduces	all binaries match the release's	-
+openssl	yes	acert,asn1,asn1parse,bignum,bndiv,client,cmp,cms,conf,crl,ct,decoder,dtlsclient,dtlsserver,echconfiglist_parser,hashtable,ml-dsa,ml-kem,pem,pkcs12,pkcs7_verify,provider,punycode,quic-client,quic-lcidm,quic-rcidm,quic-server,quic-srtm,server,slh-dsa,smime,v3name,x509,x509v3	reproduces	all binaries match the release's	-
 opentelemetry	no	-	-	-	the release did not build it (status language-pending: go)
 opentelemetry-go	no	-	-	-	the release did not build it (status language-pending: go)
 opentelemetry-go-contrib	no	-	-	-	the release did not build it (status language-pending: go)
@@ -1131,7 +1131,7 @@ simplejson	no	-	-	-	the release did not build it (status language-pending: pytho
 six	no	-	-	-	the release did not build it (status language-pending: python)
 skcms	yes	iccprofile_atf,iccprofile_info,iccprofile_transform	reproduces	all binaries match the release's	iccprofile_atf: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; iccprofile_info: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; iccprofile_transform: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; iccprofile_transform: the release modified this harness
 sketches-core	no	-	-	-	the release did not build it (status language-pending: jvm)
-skia	yes	parse_path,skjson	not checked	-	parse_path: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; parse_path: the release modified this harness; skjson: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; skjson: the release modified this harness
+skia	yes	parse_path,skjson	reproduces	all binaries match the release's	parse_path: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; parse_path: the release modified this harness; skjson: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; skjson: the release modified this harness
 skipper	no	-	-	-	the release did not build it (status language-pending: go)
 sleuthkit	yes	fls_apfs_fuzzer,fls_ext_fuzzer,fls_ntfs_fuzzer	reproduces	all binaries match the release's	-
 slf4j-api	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -1319,7 +1319,7 @@ websocket-client	no	-	-	-	the release did not build it (status language-pending:
 websockets	no	-	-	-	the release did not build it (status language-pending: python)
 weechat	no	-	-	-	the release did not build it (status no-harness: none-at-commit)
 wget	yes	wget_cookie_fuzzer	reproduces	all binaries match the release's	wget_cookie_fuzzer: the release applied 1 patch(es) to the library's tree (platform adaptation), none to its own source; wget_cookie_fuzzer: the release modified this harness
-wget2	yes	libwget_bar_fuzzer,libwget_base64_fuzzer,libwget_cookie_fuzzer,libwget_css_url_fuzzer,libwget_hpkp_fuzzer	not checked	-	-
+wget2	yes	libwget_bar_fuzzer,libwget_base64_fuzzer,libwget_cookie_fuzzer,libwget_css_url_fuzzer,libwget_hpkp_fuzzer	reproduces	all binaries match the release's	-
 wheel	no	-	-	-	the release did not build it (status language-pending: python)
 wireshark	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 woff2	yes	convert_woff2ttf_fuzzer,convert_woff2ttf_fuzzer_new_entry	reproduces	all binaries match the release's	-
