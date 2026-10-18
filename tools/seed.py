@@ -655,13 +655,19 @@ def main():
             return 0
         failed = 0
         for name in options.names:
-            seed, text = generate(name, options.checkout, recipe, options.offline)
-            if text is None:
-                print(validate.printable(f"{name}: not seeded: {seed.reason}"), file=sys.stderr)
+            try:
+                seed, text = generate(name, options.checkout, recipe, options.offline)
+                if text is None:
+                    print(validate.printable(f"{name}: not seeded: {seed.reason}"), file=sys.stderr)
+                    failed += 1
+                    continue
+                if options.branch:
+                    branch, commit = make_branch(name, text, options.trailer)
+            except SeedError as error:  # this project; the others go on
+                print(validate.printable(str(error)), file=sys.stderr)
                 failed += 1
                 continue
             if options.branch:
-                branch, commit = make_branch(name, text, options.trailer)
                 print(f"{branch}: {commit}")
             else:
                 directory = (options.out or validate.PROJECTS) / name
