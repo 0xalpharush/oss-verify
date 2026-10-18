@@ -281,7 +281,7 @@ uriparser	reproduces	all binaries match the release's
 usrsctp	reproduces	all binaries match the release's
 utf8proc	reproduces	all binaries match the release's
 valijson	reproduces	all binaries match the release's
-varnish	fails	docker build of the project's Dockerfile failed | 25.53 error: Unable to find 5177f315088f383b2505bbfe9f4bd6d161165b5e under https://code.vinyl-cache.org/vinyl-cache/vinyl-cache | 25.53 error: fetch failed. | ERROR: failed to build: failed to solve: process "/bin/sh -c fetch-commit $SRC/upstream/varnish" did not complete successfully: exit code: 128 | BUILD FAILED: docker build of the project's Do
+varnish	fails	docker build of the project's Dockerfile failed | 11.66 error: Unable to find 5177f315088f383b2505bbfe9f4bd6d161165b5e under https://code.vinyl-cache.org/vinyl-cache/vinyl-cache | 11.66 error: fetch failed. | ERROR: failed to build: failed to solve: process "/bin/sh -c fetch-commit $SRC/upstream/varnish" did not complete successfully: exit code: 128 | BUILD FAILED: docker build of the project's Do
 vorbis	reproduces	all binaries match the release's
 vulkan-loader	reproduces	all binaries match the release's
 w3m	reproduces	all binaries match the release's
