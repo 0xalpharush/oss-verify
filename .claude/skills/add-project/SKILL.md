@@ -50,6 +50,14 @@ Read the input as a small program. Let each byte or field select the next call a
 
 Write one fuzz target for each group of properties or each API area. Each fuzz target gets its own statements. Put code that needs a different sanitizer configuration in a separate fuzz target.
 
+A DSL driver is a fuzz target of this kind, with the same shape: an `LLVMFuzzerTestOneInput`. These rules apply to it:
+
+- Its program runs inside `LLVMFuzzerTestOneInput`, and takes its configuration from the payload.
+- It prints the observables of each operation.
+- A failure of the library is an observable, not an exit status.
+- Its expectations are checks that the input chooses (3.7).
+- The allocation mask of the input works as for each other fuzz target (`docs/build-contract.md`, "The driver").
+
 ### 3.2 Write each property as a check that aborts
 
 > **WARNING:** Do not use `assert()` for a property. Many builds define `NDEBUG`, for example CMake's `Release` build type. `NDEBUG` removes each `assert()`, and the property then disappears with no warning.
@@ -92,13 +100,25 @@ The process model has one thread, and the input is its only data. Thus obey thes
 - Do not use the network or the environment.
 - Open no file other than the input and temporary files.
 
-### 3.7 Return 0, or -1 to reject an input
+### 3.7 Return 0 or -1
 
 > **WARNING:** Do not call `exit()` or `_exit()`. Do not catch all exceptions. Do not install a signal handler. Such code hides the failures that the statements must show.
 
-> **WARNING:** Do not return -1 for a failed property. libFuzzer reads -1 as "do not add this input to the corpus", not as a failure. The driver also counts -1 as a pass: exit status 0. The statement then holds, although the property fails. For a failed property, call `abort()` (3.2). Return -1 only for an input that is outside the domain of the property. Return it only for few inputs, because each check must run (3.3).
+A fuzz target can have two kinds of check. Each kind has its own result:
 
-Return 0 from `LLVMFuzzerTestOneInput`, or -1 to reject an input. Change each expected outcome into `return 0`, narrowly. Examine the library's error code, or catch the one exception type that the API documents.
+1. **A property that the fuzz target states**, for example a round trip. A failure is a bug. Call `abort()` (3.2).
+2. **An expectation that the input chooses**, for example an `expect` frame of a DSL driver, in which the input predicts a value. A mismatch is normal, because most inputs predict wrongly. Evaluate each expectation. Then return -1 if one or more failed, or 0 if none failed.
+
+> **WARNING:** Do not return -1 for a failed property. libFuzzer reads -1 as "do not add this input to the corpus", not as a failure. The driver also counts -1 as a pass: exit status 0. The statement then holds, although the property fails.
+
+For a failed expectation, -1 is correct, for two causes:
+
+* The driver writes each return value on standard output. Thus the result of each expectation stays observable to the statements.
+* libFuzzer keeps the inputs that predict wrongly out of the corpus.
+
+You can also return -1 to reject an input that is outside the domain of a property. Do this only for few inputs, because each check must run (3.3).
+
+In all other cases, return 0. Change each expected outcome into `return 0`, narrowly. Examine the library's error code, or catch the one exception type that the API documents.
 
 Give each file a header that tells what it is and its licence. A file copied from the project's repository keeps the project's licence and tells so.
 

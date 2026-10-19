@@ -25,6 +25,7 @@ The repository is not open for enrollment yet. This page tells what works today,
 
 ## Not yet, or not checked
 
+* **DSL drivers** are not in this repository yet. When they come, they have the `LLVMFuzzerTestOneInput` shape (the skill's step 3.1 and 3.7, and docs/build-contract.md), and main carries only that shape. Proven API drivers keep their earlier whole-program shape until they are proved again: their locks name the recipe commit that builds them. The details of the operations are to come.
 * **The toolchain image** that the builder is built `FROM` (`ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816…`) is not public yet. Until it is, `tools/check` and the Build workflow work only on a machine that already has it.
 * **The builder image is not published.** `tools/check` builds it from `infra/base-builder/` and passes it to each Dockerfile as `BASE_BUILDER`; the Dockerfiles' default, `oss-verifier-base-builder`, is that local name. Once it is pushed, that default should be its digest.
 * **The workflows have not run on GitHub**: they are linted, not exercised there.
