@@ -374,6 +374,62 @@ class SeedCorporaAndCrates(unittest.TestCase):
             self.assertIn("lay out the lock", done.stderr)
 
 
+class GoModules(unittest.TestCase):
+    """lay-out-sources' gomodules line, with the downloads replaced."""
+
+    LOCK = ("# a comment\n"
+            "info\tgithub.com/!a/b\tv0.0.0-20230811130428-ced1acdcaa24\t-\t2\t{\"Version\":\"v0.0.0-20230811130428-ced1acdcaa24\"}\n"
+            "mod\tgithub.com/!a/b\tv0.0.0-20230811130428-ced1acdcaa24\tMOD_SHA256\t3\n"
+            "info\texample.com/c\tv1.2.0\t-\t2\t{\"Version\":\"v1.2.0\"}\n"
+            "info\texample.com/c\tv1.10.0-rc.1\t-\t2\t{\"Version\":\"v1.10.0-rc.1\"}\n"
+            "info\texample.com/c\tv1.10.0\t-\t2\t{\"Version\":\"v1.10.0\"}\n"
+            "zip\texample.com/c\tv1.10.0\tZIP_SHA256\t3\n")
+
+    def lock(self, mod, zipped):
+        return self.LOCK.replace("MOD_SHA256", hashlib.sha256(mod).hexdigest()).replace(
+            "ZIP_SHA256", hashlib.sha256(zipped).hexdigest())
+
+    def lay_out(self, lock, downloads):
+        module = lay_out_sources()
+
+        def download(url, sha256):
+            if hashlib.sha256(downloads[url]).hexdigest() != sha256:
+                raise module.Failed(f"{url}: wrong sha256")
+            return downloads[url]
+
+        module.download = download
+        scratch = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory()))
+        (scratch / "go.lock").write_text(lock)
+        module.gomodules(scratch / "out", "go.lock", scratch)
+        return module, scratch / "out"
+
+    def test_the_proxy_directory(self):
+        mod, zipped = b"mod", b"zip"
+        lock = self.lock(mod, zipped)
+        proxy = "https://proxy.golang.org"
+        _, out = self.lay_out(lock, {f"{proxy}/github.com/!a/b/@v/v0.0.0-20230811130428-ced1acdcaa24.mod": mod,
+                                     f"{proxy}/example.com/c/@v/v1.10.0.zip": zipped})
+        self.assertEqual((out / "example.com/c/@v/v1.10.0.zip").read_bytes(), zipped)
+        self.assertEqual((out / "example.com/c/@v/list").read_text(), "v1.2.0\nv1.10.0-rc.1\nv1.10.0\n")
+        self.assertFalse((out / "example.com/c/@latest").exists())
+        self.assertEqual((out / "example.com/c/@v/v1.2.0.info").read_text(), '{"Version":"v1.2.0"}')
+        # A module with pseudo-versions only: an empty list, and @latest names the highest.
+        self.assertEqual((out / "github.com/!a/b/@v/list").read_text(), "")
+        self.assertEqual(json.loads((out / "github.com/!a/b/@latest").read_text())["Version"],
+                         "v0.0.0-20230811130428-ced1acdcaa24")
+
+    def test_a_file_that_does_not_match(self):
+        lock = self.lock(b"mod", b"zip")
+        proxy = "https://proxy.golang.org"
+        with self.assertRaises(Exception) as caught:
+            self.lay_out(lock, {f"{proxy}/github.com/!a/b/@v/v0.0.0-20230811130428-ced1acdcaa24.mod": b"mod",
+                                f"{proxy}/example.com/c/@v/v1.10.0.zip": b"other"})
+        self.assertIn("wrong sha256", str(caught.exception))
+        with self.assertRaises(Exception) as caught:
+            self.lay_out("zip\texample.com/c\tv1.0.0\n", {})
+        self.assertIn("not a row of a go.lock", str(caught.exception))
+
+
 def lay_out_sources():
     """infra/base-builder/lay-out-sources, loaded as a module (writing no bytecode beside it, in the builder's
     directory)."""

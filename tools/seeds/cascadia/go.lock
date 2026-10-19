@@ -1,0 +1,4 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+info	golang.org/x/net	v0.55.0	cb598a3303191723829c73897db2b1955d80e3cf2fec607d4c024fcc0705eb73	190	{"Origin":{"Hash":"7770ec48d03fec35e378665337b4faca93c38423","Ref":"refs/tags/v0.55.0","URL":"https://go.googlesource.com/net","VCS":"git"},"Time":"2026-05-22T01:45:50Z","Version":"v0.55.0"}
+mod	golang.org/x/net	v0.55.0	ba56dceb42bf7ab4eeea7603daa4162ae9205d48208b2abbc65b0cdbdf9e627b	157
+zip	golang.org/x/net	v0.55.0	21c29cd58b7a02de60a3cb5122d8f59bc3c96d4750f9c1bb77a270a64eb42e61	1759943

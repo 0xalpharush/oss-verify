@@ -46,6 +46,12 @@ export -n OV_OWNER
 
 echo "compile: the $BUILD build (SANITIZER=$SANITIZER)"
 
+# A Go toolchain image (it sets OFTGO) builds a Go project, with OSS-Fuzz's Go helpers: go/compile-go.
+if [ -n "${OFTGO:-}" ]; then
+  "$LIB/go/compile-go"
+  exit 0
+fi
+
 # shellcheck source=toolchain.sh
 . "$LIB/toolchain.sh"
 real_cc=$CC real_cxx=$CXX

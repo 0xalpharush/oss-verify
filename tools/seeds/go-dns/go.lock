@@ -1,0 +1,15 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+mod	github.com/google/go-cmp	v0.6.0	e7c7669d4a1dd589ba3e024ba27f43f293db611fe075ce20d7b884370d63febd	41
+zip	github.com/google/go-cmp	v0.6.0	4b4e9bf6c48211080651b491dfb48d68b736c66a305bcf94605606e1ba2eaa4a	129773
+mod	golang.org/x/mod	v0.38.0	c584b29967a2cf46a7b8eacd85cb34d5bb0ab2d61a7a46ebc0a1ee362516e410	86
+zip	golang.org/x/mod	v0.38.0	b19d1a19527f75bf148198b44be37784f7d7d22597b46e260bf22d1b320fe12c	174534
+info	golang.org/x/net	v0.58.0	23ef0a0b81202308d951cf9b227d79df6035107e71e1d5cc02621610c3da8290	190	{"Origin":{"Hash":"acc78e0d2b2c855c0c4fbdcfe5f42a9e3d0f9778","Ref":"refs/tags/v0.58.0","URL":"https://go.googlesource.com/net","VCS":"git"},"Time":"2026-08-12T17:41:32Z","Version":"v0.58.0"}
+mod	golang.org/x/net	v0.58.0	7527ef545bf4e1ec8e38b4afddcc46480d75d3c2ae38a80cff1831d3152fabfe	157
+zip	golang.org/x/net	v0.58.0	aa78bbf8d55db3e6995630165e2bcd7dce6d0b8831c166fa03b80ac94fb650e7	1927911
+mod	golang.org/x/sync	v0.22.0	a3e29e76060bd561060454b1fa2bdcd66674f60c9ca93833b8106355e34c603c	36
+zip	golang.org/x/sync	v0.22.0	4bc67d258ce7867cfc1a43765c43d98b4c49b90c46dd0b86f896a5a4909fade0	25790
+info	golang.org/x/sys	v0.47.0	2f567627966f180616deee8874e9547fe34b2271f17ce14901979890510fc959	190	{"Origin":{"Hash":"9e7e939dcafac07e8ab4cffa6e5fc74908413f00","Ref":"refs/tags/v0.47.0","URL":"https://go.googlesource.com/sys","VCS":"git"},"Time":"2026-06-30T17:07:31Z","Version":"v0.47.0"}
+mod	golang.org/x/sys	v0.47.0	57f4393ea18d5446a12363b35c23a616d843fa1669c7121a70a2bc3a9677d665	35
+zip	golang.org/x/sys	v0.47.0	cdac013ddced0262926ec29ffcda645da39670e61c7e5b761e572b6b1809bb1b	2022425
+mod	golang.org/x/tools	v0.48.0	e6b55566a172ecfd21e5f4a8750f2d25665287288b24ff8d4e6cea5d5078c608	301
+zip	golang.org/x/tools	v0.48.0	8529e7bd696890fd79d3e1c37c7d1a3e2e26fb4b392b5beebfa7134ad2f65755	2764700

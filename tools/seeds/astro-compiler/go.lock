@@ -1,0 +1,58 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+mod	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	92f806956402ddfa00ac879314ef850a41ca9e23f6f8c6dd65b14001bef0d8a4	53
+zip	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	bfed428fb67a0c104e7b9f1fe14e56e0bfb852abd78f292d8de3e373f0e89c04	24202
+info	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20240806141605-e8a1dd7889d6	c0deb271fb365923c0cca2ee80cf479d391feb826b58bc30f1428bb0af2710ba	204	{"Origin":{"Hash":"e8a1dd7889d65b8a6f02175e0d79d7c0557db7f9","URL":"https://github.com/AdaLogics/go-fuzz-headers","VCS":"git"},"Time":"2024-08-06T14:16:05Z","Version":"v0.0.0-20240806141605-e8a1dd7889d6"}
+mod	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20240806141605-e8a1dd7889d6	92f806956402ddfa00ac879314ef850a41ca9e23f6f8c6dd65b14001bef0d8a4	53
+zip	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20240806141605-e8a1dd7889d6	2fc1bca9461db8f106c8b73652d51ab2b7f8a2620b2d453ffcb813bbadf587b6	24343
+info	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	c5472946350955ddcd60e3491c618c36b2b86630e8ff4e05d4ae46a87ea3f544	206	{"Origin":{"Hash":"a70c2aa677fa43583571959478decabe02a96cd6","URL":"https://github.com/AdamKorcz/go-118-fuzz-build","VCS":"git"},"Time":"2025-05-20T11:15:09Z","Version":"v0.0.0-20250520111509-a70c2aa677fa"}
+mod	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	59ce5fa745327775634538accb961f5fe91ed853c7987295ca19ef63382ddd75	313
+zip	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	308c693fe09de49fa06d4373197e56e9a6deedae70dc409fcb3799c363be26db	22155
+mod	github.com/creack/pty	v1.1.9	eab0705bc4a18dd315c27a4e3dba8f20a9e123065fa20633966332b5cccf7731	39
+mod	github.com/gkampitakis/ciinfo	v0.3.0	73116a39667482a07842a367d597bb0c5934e603513e2701c02461d8f76a49ef	46
+zip	github.com/gkampitakis/ciinfo	v0.3.0	6f3db0d59fc5e208073f6c200a4873fc9d45154dbf7d92ada8fc69e5bbc6615e	15099
+mod	github.com/gkampitakis/go-diff	v1.3.2	a9329fec3e9388189e8d528a652a8f18c1b9dbc15dd738e45ee1cf64a26030a2	47
+zip	github.com/gkampitakis/go-diff	v1.3.2	474ab6c66e6abc4fa5979b3fb48bc251fdb237e52d9f0a28746cb4c2cd5c0286	1349669
+mod	github.com/gkampitakis/go-snaps	v0.5.2	f50892390a4913a2475a65d33d1e7922b31f3075e83c73fce7a25fcfc92b33cc	452
+zip	github.com/gkampitakis/go-snaps	v0.5.2	589ed531977c095505cd803a32041caad76484e130e8449ad9bc5c9945e222d5	155586
+mod	github.com/google/go-cmp	v0.5.9	e7c7669d4a1dd589ba3e024ba27f43f293db611fe075ce20d7b884370d63febd	41
+zip	github.com/google/go-cmp	v0.5.9	32450874ac756ef5d47f6b819305105304b9819045a16e3f105289b7cf252c51	130220
+info	github.com/iancoleman/strcase	v0.2.0	d14e848dcd60a7a1cae41ef00833d8f956c366e0b82125dce098f7ca5276e346	50	{"Time":"2021-07-12T23:15:45Z","Version":"v0.2.0"}
+mod	github.com/iancoleman/strcase	v0.2.0	e6187df34bd00f2fcecd086dd5519cb386756fb82c5894bcf9348b98aa543b13	46
+zip	github.com/iancoleman/strcase	v0.2.0	cb5027fec91d36426f0978a6c42ab52d8735fa3e1711be0127feda70a9a9fd05	9863
+mod	github.com/kr/pretty	v0.3.1	84f3e40803b1ebd4a802e55794b9997df0b173c4809e8572ff9042ec558ca1bc	117
+zip	github.com/kr/pretty	v0.3.1	ecf5a4af24826c3ad758ce06410ca08e2d58e4d95053be3b9dde2e14852c0cdc	13388
+mod	github.com/kr/text	v0.2.0	f63879b204f6ce895cea53594b814f5ac0af08486b33b1ca79c657384efbc726	68
+zip	github.com/kr/text	v0.2.0	368eb318f91a5b67be905c47032ab5c31a1d49a97848b1011a0d0a2122b30ba4	12607
+mod	github.com/lithammer/dedent	v1.1.0	78fc1ddabafb71de20aaa046e42bcf442017aa4fc35ed52a58f0dd24c682d6f4	35
+zip	github.com/lithammer/dedent	v1.1.0	4ec56a3fef0d7dd1536046e540827e60419a935dde49d87d21f5856174cadba2	4250
+mod	github.com/maruel/natural	v1.1.1	da971df8265df5c39d599b32e5d5b516dbd4a7a7eb423c9f36f0240caad9f246	42
+zip	github.com/maruel/natural	v1.1.1	469a33900befe504539dbddd50000a2b63d80eb395cdca85cd0410dd0cb8ccdc	10734
+mod	github.com/norunners/vert	v0.0.0-20221203075838-106a353d42dd	0651a4ea54408d64d37f04c806e099dbfb84559d3ce4c0eb35628f5d9b2b1bcd	42
+zip	github.com/norunners/vert	v0.0.0-20221203075838-106a353d42dd	abbea44f7345e307f4f3351989f2bb0d1a9df1cdb81806155e0b178d351a8372	7948
+mod	github.com/pkg/diff	v0.0.0-20210226163009-20ebb0f2a09e	5d5b9454e2d020af0c7603568e86904b99befc4d5d67c3a8505f6121589bd11f	36
+mod	github.com/rogpeppe/go-internal	v1.12.0	7bfe5b03ab2d4d954d9b74eacdb2ccbf6bdef634201b000b97f9a0d20231dc7e	167
+zip	github.com/rogpeppe/go-internal	v1.12.0	d4539e716c2b7f2824584e4c4a17f64c508bd6e5359106a406a7e23e77109cde	190596
+mod	github.com/rogpeppe/go-internal	v1.9.0	9059a97da2990c819a09767a5e9bd8784b45a57b7a25e29055bbd1b0aaa144ff	112
+info	github.com/tdewolff/parse/v2	v2.6.4	89762f39f65c47c239b2ea73e6d5a898b09c74fe0c3915dea547a92a21158771	190	{"Origin":{"Hash":"2c5882a096909be935180223128ecf988a8c9494","Ref":"refs/tags/v2.6.4","URL":"https://github.com/tdewolff/parse","VCS":"git"},"Time":"2022-10-03T01:54:06Z","Version":"v2.6.4"}
+mod	github.com/tdewolff/parse/v2	v2.6.4	6b5c284be3420ad19b7c6024e9933212a3d34a16a5e89ceb7b31af322c1c95bd	86
+zip	github.com/tdewolff/parse/v2	v2.6.4	5bfdded67b0164d0fbfc8c5d308a4c9c2f5ebecdcf3e769b5e9ca8586335c543	135904
+mod	github.com/tdewolff/test	v1.0.7	c2a5fd2d3921f83520b5dd099fa20fa2e3319b11c23a73fdcb331fff056b0440	41
+zip	github.com/tdewolff/test	v1.0.7	24984e85d615bb682f54707dec589385ced4d6d3cd968827bb25b486a4b3ee97	3926
+mod	github.com/tidwall/gjson	v1.14.2	d94eecd8050cffc957b99bed8a308efeaa669ac13854290d081a2ded5478af93	121
+mod	github.com/tidwall/gjson	v1.17.0	d94eecd8050cffc957b99bed8a308efeaa669ac13854290d081a2ded5478af93	121
+zip	github.com/tidwall/gjson	v1.17.0	8b71f30f7d727c979861d64e549a1911e4cd36d470481b51da2998b994b3c4c6	61942
+mod	github.com/tidwall/match	v1.1.1	02364e515327d9988d1f6bd37af9c584f8b98d3b4f43f9e1f18e26d76aec0f44	41
+zip	github.com/tidwall/match	v1.1.1	2ba41f7f27330d49e0e432cbf96bf90720a33e4a97be58fe53f63a7e66f04d37	6893
+mod	github.com/tidwall/pretty	v1.2.0	6e5c5fa493d8f18e8974b38ed63e8c71863cce59e659d98d0ef8417bf81e3ecf	42
+mod	github.com/tidwall/pretty	v1.2.1	6e5c5fa493d8f18e8974b38ed63e8c71863cce59e659d98d0ef8417bf81e3ecf	42
+zip	github.com/tidwall/pretty	v1.2.1	9327579bf9e610de753eeb7c35c8cf1e3f56e6e5623cbf65e47bc8076023d1ab	12501
+mod	github.com/tidwall/sjson	v1.2.5	38b09323ab8ef8f803b3d86bae2c94765d3815a2d5b751fd4f07039f4551cc6f	122
+zip	github.com/tidwall/sjson	v1.2.5	fc40fda87c7de55362f6386e069d674772f25c9d76411ee823acb9ac78b20565	28719
+info	golang.org/x/net	v0.0.0-20221004154528-8021a29435af	712f72835468997f1443bcc9f18fae8adb5ea9943a874fe0baf8dce5bbcaa656	191	{"Origin":{"Hash":"8021a29435afef042814c3ad3b702ff04b240bc7","URL":"https://go.googlesource.com/net","VCS":"git"},"Time":"2022-10-04T15:45:28Z","Version":"v0.0.0-20221004154528-8021a29435af"}
+mod	golang.org/x/net	v0.0.0-20221004154528-8021a29435af	45c86549c6da888d06cb9076bbafeec99f4fb56c259cb6e294ed3e80433dbca0	179
+zip	golang.org/x/net	v0.0.0-20221004154528-8021a29435af	abc41c84ec87eb01291238953b3de7c7e62272ba4f4d28916b5d78ea65acab4b	1595391
+mod	golang.org/x/sys	v0.0.0-20221010170243-090e33056c14	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+zip	golang.org/x/sys	v0.0.0-20221010170243-090e33056c14	90ea00ad812be6819bb4963bda5ea62beee71aee00f437e9320a33cc14bab768	1888144
+info	golang.org/x/sys	v0.2.0	4e22d2cf9c249f9ec8af3436b4123c5e859b0adb044da299b003b5942a1d65f4	188	{"Origin":{"Hash":"fc697a31fa06b616162e34fd66047ab52722ba6c","Ref":"refs/tags/v0.2.0","URL":"https://go.googlesource.com/sys","VCS":"git"},"Time":"2022-11-02T19:48:38Z","Version":"v0.2.0"}
+mod	golang.org/x/sys	v0.2.0	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+zip	golang.org/x/sys	v0.2.0	052ca42e990026d7bd9fecf8a60e50e96556114273e5519b44149b2a4ebf6c6f	1862113

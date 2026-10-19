@@ -93,6 +93,17 @@ class Discovery(Scratch):
         self.assertTrue(manifest.has_symbol_table(self.dir / "out/target"))
         self.assertFalse(manifest.has_symbol_table(self.dir / "out/stripped"))
 
+    def test_the_go_fuzz_targets_compile_lists(self):
+        self.write("out/a", elf(symtab=False))
+        self.write("out/b", elf(symtab=False))
+        self.write("out/notes", b"text", 0o644)
+        self.write("out/c", elf([(ENTRY, GLOBAL_FUNC, 1)]))
+        (self.dir / "out/.go-fuzz-targets").write_text("a\nnotes\n../c\nmissing\n")
+        self.assertEqual(sorted(manifest.discover(self.dir / "out")), ["a", "c"])
+        self.assertEqual(sorted(manifest.go_fuzz_targets(self.dir / "out")), ["a"])
+        (self.dir / "out/.go-fuzz-targets").unlink()
+        self.assertEqual(sorted(manifest.discover(self.dir / "out")), ["c"])
+
     def test_resolve_targets(self):
         found = {"plain": {"a": 1, "b": 1}, "asan": {"a": 1, "b": 1}}
         self.assertEqual(manifest.resolve_targets(found), (["a", "b"], []))

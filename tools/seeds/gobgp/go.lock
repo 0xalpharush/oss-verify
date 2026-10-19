@@ -1,0 +1,85 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+info	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	cca8d13fd3a9f8ba9b8ca8333140c1efd3c12066d095f5d96e0c0b71e1afae8e	204	{"Origin":{"Hash":"ced1acdcaa24dc39c01b039fc37576c395f506cf","URL":"https://github.com/AdaLogics/go-fuzz-headers","VCS":"git"},"Time":"2023-08-11T13:04:28Z","Version":"v0.0.0-20230811130428-ced1acdcaa24"}
+mod	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	92f806956402ddfa00ac879314ef850a41ca9e23f6f8c6dd65b14001bef0d8a4	53
+zip	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	bfed428fb67a0c104e7b9f1fe14e56e0bfb852abd78f292d8de3e373f0e89c04	24202
+info	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20240806141605-e8a1dd7889d6	c0deb271fb365923c0cca2ee80cf479d391feb826b58bc30f1428bb0af2710ba	204	{"Origin":{"Hash":"e8a1dd7889d65b8a6f02175e0d79d7c0557db7f9","URL":"https://github.com/AdaLogics/go-fuzz-headers","VCS":"git"},"Time":"2024-08-06T14:16:05Z","Version":"v0.0.0-20240806141605-e8a1dd7889d6"}
+mod	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20240806141605-e8a1dd7889d6	92f806956402ddfa00ac879314ef850a41ca9e23f6f8c6dd65b14001bef0d8a4	53
+info	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	c5472946350955ddcd60e3491c618c36b2b86630e8ff4e05d4ae46a87ea3f544	206	{"Origin":{"Hash":"a70c2aa677fa43583571959478decabe02a96cd6","URL":"https://github.com/AdamKorcz/go-118-fuzz-build","VCS":"git"},"Time":"2025-05-20T11:15:09Z","Version":"v0.0.0-20250520111509-a70c2aa677fa"}
+mod	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	59ce5fa745327775634538accb961f5fe91ed853c7987295ca19ef63382ddd75	313
+zip	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	308c693fe09de49fa06d4373197e56e9a6deedae70dc409fcb3799c363be26db	22155
+mod	github.com/!burnt!sushi/toml	v1.5.0	45d78b80571999b6a258da0f21673da39e6b501349c033a4acd169437411d733	43
+mod	github.com/beorn7/perks	v1.0.1	c870b3fe50b6944fab095b06208d9c8898763e9173cb1eed3258c3d58309ba66	40
+mod	github.com/cespare/xxhash/v2	v2.3.0	a090f8eaaf59cc2adf163299ebefe797e1dca3f6add2c8e88a6a3b90ba538b02	45
+mod	github.com/coreos/go-systemd/v22	v22.5.0	de93395fe93086f80553820d140489e31e93bfe0457e1b4de3c772556d534840	91
+mod	github.com/cpuguy83/go-md2man/v2	v2.0.6	bb81a9e2d14d9a586f0591853bdaad230d8cdf0d8d6ffa71dddae249ad573cc9	100
+mod	github.com/creack/pty	v1.1.9	eab0705bc4a18dd315c27a4e3dba8f20a9e123065fa20633966332b5cccf7731	39
+mod	github.com/davecgh/go-spew	v1.1.0	bcb29393251237b79a17b6c19bf29134f43e8f438c3198988fcd461a1cdf05cc	34
+info	github.com/davecgh/go-spew	v1.1.1	73de263267a4545708302d807be60fdb649c5c7b981d25302a638145fba0ec47	50	{"Time":"2018-02-21T23:26:28Z","Version":"v1.1.1"}
+mod	github.com/davecgh/go-spew	v1.1.1	bcb29393251237b79a17b6c19bf29134f43e8f438c3198988fcd461a1cdf05cc	34
+zip	github.com/davecgh/go-spew	v1.1.1	6b44a843951f371b7010c754ecc3cabefe815d5ced1c5b9409fb2d697e8a890d	60320
+mod	github.com/dgryski/go-farm	v0.0.0-20240924180020-3414d57e47da	4d1cce88c7c7ee061c9f13e4acaa521f725087a74c77429f1105b40844d9cedb	34
+mod	github.com/eapache/channels	v1.1.0	d513798aa6184611e3473cf47b10bbd30a604f42e79445802f60bab18d348fab	35
+mod	github.com/eapache/queue	v1.1.0	dc4787163082589551dde06c91cf036390df265033ee27ec975cc9151705ef03	32
+mod	github.com/fsnotify/fsnotify	v1.9.0	da3713c5c57d252d25520de0e6b397b033858b3aff5dddf21164abe3297c9ff9	279
+mod	github.com/gaissmai/bart	v0.26.1	bf5dcfa9d5bf5343e63843297e0a4d2a3a6e314eae0286a9c5c93f9a0de47433	97
+mod	github.com/getsentry/sentry-go	v0.34.1	713f330bf24e204d2718f1230f58f003e0afa8171ba7b432d2ac5e27418682a4	616
+mod	github.com/go-test/deep	v1.1.1	1ba3a610cf409ae0c639e3675c7e471f34ee168f47bfff7f596d952562265822	40
+mod	github.com/go-viper/mapstructure/v2	v2.4.0	5393fe364f1a200c6a84ee2c7bf727f02c9e0b1f844ca13b188ca925f4718b08	52
+mod	github.com/godbus/dbus/v5	v5.0.4	8743ea72fed21cc143c4a067408e21f7787610e662fdbe8d5943312ea8ae8816	42
+mod	github.com/golang/protobuf	v1.2.0	c0a2031bf277087749d8ccc432449f6b1375787eac8641dd2f930074231aafb4	34
+mod	github.com/golang/protobuf	v1.3.5	b3ac24e20491d846feaee95088bde0926ce5e2453850250f52474416e6612944	42
+mod	github.com/golang/protobuf	v1.5.4	c5f873c621cfaaf563f8b66a0501a5be14390cb0859e5187ce616d0312a6c8f8	193
+mod	github.com/google/go-cmp	v0.7.0	31c874a1d2a18e62b0550f823ce7a575c8dec7f8fd9d4fa1959bb12d7f7c0f14	41
+mod	github.com/google/uuid	v1.6.0	73da47b6338b00a082fd451aa35a3273d3adc09b8e9bba98dab01091e402af6e	30
+mod	github.com/grpc-ecosystem/go-grpc-prometheus	v1.2.0	0e04992f863403963baeb57661790fd94c5a355da028018ca6cd32d40216353a	52
+mod	github.com/inconshreveable/mousetrap	v1.1.0	1c1b15911aa8a0bd5cd0f6670ec23d1086496f3615fdf53306aff2b476ce9be1	53
+mod	github.com/jessevdk/go-flags	v1.6.1	5d77cd3ddd08619db9ab7bc84ed24095b0e2722a33edde221b326510c2b01ffc	79
+mod	github.com/k-sone/critbitgo	v1.4.0	fc24e7e73e66b71f2ff73a98f002629e4694d98882508bec70a7975a597431dd	35
+mod	github.com/kr/pretty	v0.3.1	84f3e40803b1ebd4a802e55794b9997df0b173c4809e8572ff9042ec558ca1bc	117
+mod	github.com/kr/text	v0.2.0	f63879b204f6ce895cea53594b814f5ac0af08486b33b1ca79c657384efbc726	68
+mod	github.com/matttproud/golang_protobuf_extensions	v1.0.4	5709ef67b12481a82318e05a68ebd05b75268074f4bc14187709abe1613c4cf9	178
+mod	github.com/orcaman/concurrent-map/v2	v2.0.1	5a1c018f53f0d9c965220e53b9e7862c82a123e90ff7b04ccf3aa9ac46a66798	53
+mod	github.com/pelletier/go-toml/v2	v2.2.3	aa06d43610a150b51e742701a5f7c75d0d7a9d28eee0e0d009de7fe4c113be8f	241
+mod	github.com/pkg/diff	v0.0.0-20210226163009-20ebb0f2a09e	5d5b9454e2d020af0c7603568e86904b99befc4d5d67c3a8505f6121589bd11f	36
+info	github.com/pmezard/go-difflib	v1.0.0	97cbb0239d80e5221efd1f0aa645d120272bd3ee7975bd654f07a8ed0c2c2adc	50	{"Time":"2016-01-10T10:55:54Z","Version":"v1.0.0"}
+mod	github.com/pmezard/go-difflib	v1.0.0	74b2e766eb215377864d587badf57e95521f692d2a7860b3c7759093f9c9bec2	37
+zip	github.com/pmezard/go-difflib	v1.0.0	de04cecc1a4b8d53e4357051026794bcbc54f2e6a260cfac508ce69d5d6457a0	12433
+mod	github.com/prometheus/client_golang	v1.16.0	96ab80c244d82fe50fac5b2853b7e3af20ba762a795ca363f6c57dc2e1e9d20a	1104
+mod	github.com/prometheus/client_model	v0.3.0	3ddfa8a723d9ebcb82c365725854c721fb3ce7d7706c7e6cd37b91ea30f40d8b	93
+mod	github.com/prometheus/common	v0.42.0	fde786606790bb0f8b8051e49084b0fa44f0181f1c1f45672b39fe8eb672812c	1163
+mod	github.com/prometheus/procfs	v0.10.1	33bd0d358960f7ae5175744b0cb0c6e28c73ba26546ff93c561ca2863fc5190c	142
+mod	github.com/rogpeppe/go-internal	v1.9.0	9059a97da2990c819a09767a5e9bd8784b45a57b7a25e29055bbd1b0aaa144ff	112
+mod	github.com/russross/blackfriday/v2	v2.1.0	c39547cce6e866e8cfa395d2937bce30801cd07f0b901c2133248f1fba12f58d	42
+mod	github.com/sagikazarmark/locafero	v0.7.0	30765c4d703df760d32858d510d12e8263f47a05f661e55e7f882c59bf82d9d3	473
+mod	github.com/segmentio/fasthash	v1.0.3	7d6e41c7dec0f74408ecc20125dd625ed4f914c6d1f4c110403e28e0641c7bfd	46
+mod	github.com/sourcegraph/conc	v0.3.0	bcaf2d25bba8bd60332984ba10a51036b4b36102ff370dfcea02639defc65330	467
+mod	github.com/spf13/afero	v1.12.0	aa578e592c702fa46aac2eb358e811d2553151f48a95a6e47771d1c2b7faa8d2	2774
+mod	github.com/spf13/cast	v1.7.1	7d2f6a01b576af92f8a35c582145dc94137966ee88378b4a3a611457d7104211	275
+mod	github.com/spf13/cobra	v1.9.1	c6b11572b04c87aee664fdaabd91e94cd3fb8c4b69d811d598b06747bed04663	194
+mod	github.com/spf13/pflag	v1.0.6	16c6dfc0eb58eb3c9113ce197d460c6725c647e4688ac26d31c8ed69f1ebbc68	39
+mod	github.com/spf13/viper	v1.20.1	ef4112962a2029baa3bf4c40e1d2e9977c7355100088bddbae6e11f2affee0ff	767
+mod	github.com/stretchr/objx	v0.1.0	1350354d52d2287a62336ecc0d56232d4c47699af9bba49c67c2b48254da98f1	32
+info	github.com/stretchr/testify	v1.10.0	28c0b78d7acbcfaece7c4dd3dcc2c11e33c698871c4883e5a5b5c0899004293b	194	{"Origin":{"Hash":"89cbdd9e7b39eb58896d316a7495597d3aba4371","Ref":"refs/tags/v1.10.0","URL":"https://github.com/stretchr/testify","VCS":"git"},"Time":"2024-11-12T22:58:45Z","Version":"v1.10.0"}
+mod	github.com/stretchr/testify	v1.10.0	c0a648a037da54a6b02e8a811b1d3917d49dc4e1841cd756f28f0c4f1593933c	417
+zip	github.com/stretchr/testify	v1.10.0	36c87573527a97ce97fc15ce2a101e65e5ebb350db142d09f633580cb8d5c839	130241
+mod	github.com/stretchr/testify	v1.3.0	ab063d5154a8e8730bced4c52698e5770eb50bfae347bebc35eca488b8e3f6e3	154
+mod	github.com/subosito/gotenv	v1.6.0	8b2d8bc78b5def106360867a82ad82c5a4e9de93542f0a207087bb38384f55bf	266
+mod	github.com/vishvananda/netlink	v1.3.1	7465f5b2b9852d84281d6ad9cf7c31933d109127fdca6dd4c6b2d4261fc9f007	123
+mod	github.com/vishvananda/netns	v0.0.5	de8a0c0518c7841b4f04762ee7367c4ff1953381082e066793fa1c93e93883c2	78
+mod	go.uber.org/atomic	v1.9.0	f7476ceca88ad6eceea6936b4902d27c5071e88c24ed262e814923260e9778c7	131
+mod	go.uber.org/goleak	v1.3.0	3f15dc6354aae8fe42d3cbd130230731d5c6aae6aa651ca6a73f4c646cda8fec	333
+mod	go.uber.org/multierr	v1.9.0	8371bde99f7af1218ec6be65a5f3bf120df95a8439289ead5a00f00de69579b7	260
+mod	golang.org/x/net	v0.55.0	ba56dceb42bf7ab4eeea7603daa4162ae9205d48208b2abbc65b0cdbdf9e627b	157
+mod	golang.org/x/sync	v0.0.0-20181221193216-37e7f081c4d4	421f6139686d5891f3dc5a563d0995780d3279f65cad4d225cea52686794161c	25
+mod	golang.org/x/sys	v0.10.0	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.2.0	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.45.0	57f4393ea18d5446a12363b35c23a616d843fa1669c7121a70a2bc3a9677d665	35
+mod	golang.org/x/text	v0.37.0	90d5ab4e4289e0f9d735ca4561eee22d9f9ebcd7fa04f23583c7d2140940968e	190
+mod	golang.org/x/time	v0.12.0	8f1250ee92293d56330e0f19d72c503bb52ebb71dd754709c89603700427ab09	36
+mod	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260414002931-afd174a4e478	67711b6f9adde7cd2d23ba3512bf371ddc628709a4b7ff598794e638607e9987	105
+mod	google.golang.org/grpc	v1.82.1	bda1d2c541e1a77f5cf27ff6e5e5bd56d79e72df07bdd9b47fe50abf48bf1d80	1734
+mod	google.golang.org/protobuf	v1.36.11	a75c105a852fbd8da8d8cfac09c2eab9a206cfd27ed37c973737e23f632ca96e	124
+mod	gopkg.in/check.v1	v0.0.0-20161208181325-20d25e280405	5c306e0d633cd66a11b40e2e5fbbc6da42110db7d72ea3c1524ceb45ee40c33f	25
+info	gopkg.in/yaml.v3	v3.0.1	0cdb0c9ac8c3b25dbd420a86ab27debfa469a8b48ee10560224704c2852ac6c0	50	{"Time":"2022-05-27T08:35:30Z","Version":"v3.0.1"}
+mod	gopkg.in/yaml.v3	v3.0.1	21579860a20306fcf43b1bd234d1fba319499c77611b71c05f9bf3ba90dab939	95
+zip	gopkg.in/yaml.v3	v3.0.1	aab8fbc4e6300ea08e6afe1caea18a21c90c79f489f52c53e2f20431f1a9a015	104623

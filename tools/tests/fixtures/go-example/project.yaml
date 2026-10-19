@@ -1,0 +1,6 @@
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+repo: https://example.invalid/go-example
+primary_contact: security@example.invalid
+language: go
+fuzz_targets: [example_fuzzer]

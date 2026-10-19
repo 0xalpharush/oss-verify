@@ -1,0 +1,7 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+info	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	cca8d13fd3a9f8ba9b8ca8333140c1efd3c12066d095f5d96e0c0b71e1afae8e	204	{"Origin":{"Hash":"ced1acdcaa24dc39c01b039fc37576c395f506cf","URL":"https://github.com/AdaLogics/go-fuzz-headers","VCS":"git"},"Time":"2023-08-11T13:04:28Z","Version":"v0.0.0-20230811130428-ced1acdcaa24"}
+mod	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	92f806956402ddfa00ac879314ef850a41ca9e23f6f8c6dd65b14001bef0d8a4	53
+zip	github.com/!ada!logics/go-fuzz-headers	v0.0.0-20230811130428-ced1acdcaa24	bfed428fb67a0c104e7b9f1fe14e56e0bfb852abd78f292d8de3e373f0e89c04	24202
+info	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	c5472946350955ddcd60e3491c618c36b2b86630e8ff4e05d4ae46a87ea3f544	206	{"Origin":{"Hash":"a70c2aa677fa43583571959478decabe02a96cd6","URL":"https://github.com/AdamKorcz/go-118-fuzz-build","VCS":"git"},"Time":"2025-05-20T11:15:09Z","Version":"v0.0.0-20250520111509-a70c2aa677fa"}
+mod	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	59ce5fa745327775634538accb961f5fe91ed853c7987295ca19ef63382ddd75	313
+zip	github.com/!adam!korcz/go-118-fuzz-build	v0.0.0-20250520111509-a70c2aa677fa	308c693fe09de49fa06d4373197e56e9a6deedae70dc409fcb3799c363be26db	22155

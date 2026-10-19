@@ -32,7 +32,7 @@ Each binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp6
 
 A new toolchain image changes the bytes of each binary that it builds, and a proof is about specified bytes. Thus each project is built with one toolchain image, its vintage.
 
-* [infra/toolchains.tsv](../infra/toolchains.tsv) lists the published toolchain images, oldest first, and the languages that each one builds ([project-yaml.md](project-yaml.md#language)). Today it lists three images: the default above, which builds C and C++, and the Rust and Python toolchains of the same release. We add a new image only after its publication.
+* [infra/toolchains.tsv](../infra/toolchains.tsv) lists the published toolchain images, oldest first, and the languages that each one builds ([project-yaml.md](project-yaml.md#language)). Today it lists four images: the default above, which builds C and C++, and the Rust, Python and Go toolchains of the same release. We add a new image only after its publication.
 * The builder gets the toolchain image as a build argument (`--build-arg TOOLCHAIN=<image>`). Its `Dockerfile` uses the default above.
 * `tools/check --lock` builds with the toolchain that the lock names. For a manifest, this is `builder.toolchain`. For a `harness.yaml` of oss-fuzz-theorems, it is the `build.builder` field of the `project.yaml` two directories above.
 * If you give more than one lock, the locks must name the same toolchain.
@@ -58,7 +58,7 @@ We check builds ported from oss-fuzz-theorems against the release's binaries, on
 | `$AR`, `$NM`, `$RANLIB`, `$STRIP`, `$OBJCOPY` | the LLVM tools, as `riscv64-linux-musl-ar` and the other names, which are also on `PATH` |
 | `$SOURCE_DATE_EPOCH` | `1756684800`, for each tool that writes a date |
 
-`compile` runs `build.sh` with `bash -eux`, from the `WORKDIR` of the `Dockerfile`.
+`compile` runs `build.sh` with `bash -eux`, from the `WORKDIR` of the `Dockerfile`. The `build.sh` of a Go project gets the environment that OSS-Fuzz gives a Go project instead ([go/compile-go](../infra/base-builder/go/compile-go)).
 
 ## The builds
 

@@ -1,0 +1,6 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+info	github.com/jessevdk/go-flags	v1.6.1	2fdd9e4cf72e4ff5187156a04b2f11fc5e4d15e3121b46ba595f8ff85bf4d960	193	{"Origin":{"Hash":"c02e333e441eb1187c25e6d689d769d499ec2a0b","Ref":"refs/tags/v1.6.1","URL":"https://github.com/jessevdk/go-flags","VCS":"git"},"Time":"2024-06-15T12:24:49Z","Version":"v1.6.1"}
+mod	github.com/jessevdk/go-flags	v1.6.1	5d77cd3ddd08619db9ab7bc84ed24095b0e2722a33edde221b326510c2b01ffc	79
+zip	github.com/jessevdk/go-flags	v1.6.1	23decebb5a5114af1a687fbed64d6a674f1e976e70b2b4cdc27f52d0b020cb4b	78585
+mod	golang.org/x/sys	v0.21.0	d227b325f621f4ebe28d39ba773ea99b870f393b7c09c34592c365b16dd560de	33
+zip	golang.org/x/sys	v0.21.0	2588f4e77c83774bc6f168e8594f2dcbd21c1d26849a877f7e6a0d151392e735	1957330

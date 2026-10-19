@@ -1,7 +1,7 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Build tests/fixtures/example, tests/fixtures/cjson, tests/fixtures/rust-example and tests/fixtures/python-example with
-the builder and run what they make. Needs Docker and the toolchain images (and, for cJSON, the Rust crates and the
+"""Build tests/fixtures/example, tests/fixtures/cjson, tests/fixtures/rust-example, tests/fixtures/python-example and
+tests/fixtures/go-example with the builder and run what they make. Needs Docker and the toolchain images (and, for cJSON, the Rust crates and the
 Python build backend, the network):
 
     OV_DOCKER_TESTS=1 python3 -m unittest discover -s tools/tests
@@ -373,6 +373,80 @@ class RustBuilder(unittest.TestCase):
         for build in BUILDS:
             # The driver writes each return value: -1 for Corpus::Reject.
             self.assertEqual(results[(build, "printed")], "-1,", build)
+
+
+GO_FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "go-example"
+GO_TAG = "oss-verify-test/go-example:latest"
+# Payload first byte -> exit status of the Go fixture's plain build (fixtures/go-example/example/fuzz.go): a panic and
+# a runtime error exit 79, a load through a nil pointer is a segmentation fault, os.Exit exits 77, and a fatal error of
+# the runtime 80. A header shorter than six bytes is 2.
+GO_EXPECTED = {"": 0, "r": 0, "z": 0, "p": 79, "n": 79, "s": 139, "x": 77, "d": 80}
+
+
+@unittest.skipUnless(os.environ.get("OV_DOCKER_TESTS") == "1" and toolchain_ready("go"),
+                     "set OV_DOCKER_TESTS=1, with Docker and the Go toolchain image, to build the Go fixture")
+class GoBuilder(unittest.TestCase):
+    """fixtures/go-example: a go-fuzz Fuzz function, built by OSS-Fuzz's compile_go_fuzzer in the Go toolchain image,
+    in the plain build, the only one of a Go project."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scratch = tempfile.TemporaryDirectory(prefix="ov-test-go.")
+        cls.work = pathlib.Path(cls.scratch.name)
+        job = check_build.Job(name="go-example", directory=GO_FIXTURE, repo="https://example.invalid/go-example",
+                              ref="", dockerfile="", builds=["plain"], fuzz_targets=["example_fuzzer"], language="go")
+        builder = check_build.build_builder(check_build.newest_toolchain("go"))
+        check_build.build_project(job, "0" * 40, builder, GO_TAG, cls.work)
+        cls.raw = {"plain": cls.work / "raw" / "plain"}
+        check_build.compile_build(GO_TAG, "plain", "none", cls.raw["plain"])
+        found = {build: manifest.discover(directory) for build, directory in cls.raw.items()}
+        cls.targets, cls.problems = manifest.resolve_targets(found, job.fuzz_targets)
+        cls.entries, cls.missing = manifest.collect(cls.raw, cls.targets, cls.work / "out")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.scratch.cleanup()
+        subprocess.run(["docker", "image", "rm", GO_TAG], capture_output=True)
+
+    def test_discovery(self):
+        self.assertEqual((self.problems, self.missing, self.targets), ([], [], ["example_fuzzer"]))
+        # The helper's quiet program is not kept, and the published bytes are the program itself.
+        self.assertEqual(sorted(path.name for path in self.raw["plain"].iterdir() if path.name.startswith("example")),
+                         ["example_fuzzer"])
+        self.assertEqual(self.entries["example_fuzzer"]["plain"]["sha256"],
+                         manifest.sha256_of(self.raw["plain"] / "example_fuzzer"))
+
+    def test_the_sanitizer_builds_are_refused(self):
+        done = subprocess.run(["docker", "run", "--rm", "--network=none", "-e", "SANITIZER=address", GO_TAG, "compile"],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 2, done.stderr)
+        self.assertIn("plain build only", done.stderr)
+
+    @unittest.skipUnless(QEMU, "no qemu-riscv64 on this machine")
+    def test_exit_statuses(self):
+        inputs = self.work / "in"
+        inputs.mkdir()
+        for case in GO_EXPECTED:
+            (inputs / f"case-{case or 'empty'}").write_bytes(b"\0" * 6 + case.encode())
+        (inputs / "short").write_bytes(b"\0" * 5)
+        binaries = self.work / "bin"
+        binaries.mkdir()
+        shutil.copy(self.work / "out" / "example_fuzzer" / "example_fuzzer.plain", binaries)
+        runner = ('for c in /in/*; do timeout 120 /qemu /bin2/example_fuzzer.plain "$c" > /dev/null 2>&1; '
+                  'echo "${c#/in/} $?"; done; printf "printed "; timeout 60 /qemu /bin2/example_fuzzer.plain '
+                  '/in/case-r | tr "\\n" ,; echo')
+        done = subprocess.run(
+            ["docker", "run", "--rm", "--network=none", "-v", f"{QEMU}:/qemu:ro", "-v", f"{inputs}:/in:ro",
+             "-v", f"{binaries}:/bin2:ro", "--entrypoint", "sh", GO_TAG, "-c", runner],
+            capture_output=True, text=True, check=True,
+        )
+        results = dict(line.split(" ", 1) for line in done.stdout.splitlines())
+        for case, status in GO_EXPECTED.items():
+            with self.subTest(case=case):
+                self.assertEqual(results[f"case-{case or 'empty'}"], str(status))
+        self.assertEqual(results["short"], "2")
+        # The driver writes what Fuzz returned, for each call.
+        self.assertEqual(results["printed"], "-1,")
 
 
 CJSON = pathlib.Path(__file__).resolve().parent / "fixtures" / "cjson"

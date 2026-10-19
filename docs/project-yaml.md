@@ -63,14 +63,14 @@ This table is the only list of languages in these documents. It gives the status
 | `c++` | C++, or C and C++ together | statements today | |
 | `rust` | Rust | statements today | `*.rs` |
 | `python` | Python | statements today, but Python binaries are over the current size cap | `*.py` |
-| `go` | Go | halts statements only | `*.go` |
+| `go` | Go | halts statements only, and Go binaries are over the current size cap | `*.go` |
 | `jvm` | Java, Kotlin and the other JVM languages | halts statements only; JVM binaries are not byte-reproducible yet | `*.java` `*.kt` |
 | `javascript` | JavaScript | held | `*.js` `*.mjs` `*.cjs` `*.ts` |
 | | Ruby, Lua | in progress: `tools/validate.py` does not accept them yet | |
 | | R | pending, likely address-only (pending): `tools/validate.py` does not accept it yet | |
 | | Swift | not possible: RISC-V LLVM has no Swift calling convention | |
 
-Our builder builds `c`, `c++`, `rust` and `python` projects today. `tools/validate.py` warns about the other languages, and `tools/check` refuses them. The builders of the other languages are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
+Our builder builds `c`, `c++`, `rust`, `python` and `go` projects today. `tools/validate.py` warns about the other languages, and `tools/check` refuses them. The builders of the other languages are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
 
 A `rust` project has all four builds. Its `ubsan` build uses rustc's UB checks, not UndefinedBehaviorSanitizer. A `python` project has all four builds: each build compiles CPython with its own flags.
 
@@ -218,7 +218,7 @@ The build files of a draft branch come from the build recipe of that release (`t
 | fuzz target sources | optional: your own fuzz targets and their helpers, with the suffixes of your language ([above](#language)) |
 | `*.patch` and `series` | optional: build patches |
 | `sources` | optional: other source trees and files of the build, each pinned by commit or SHA-256 ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
-| a file that `sources` copies | optional: a file that the build needs, under any name, for example the `Cargo.lock` of a Rust fuzz target |
+| a file that `sources` copies or reads | optional: a file that the build needs, under any name, for example the `Cargo.lock` of a Rust fuzz target or the `go.lock` of a Go project |
 | `<target>_seed_corpus.zip` | optional: example inputs of the fuzz target `<target>` ([below](#seed-corpora)) |
 
 ### Seed corpora

@@ -1,0 +1,4 @@
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+# kind	path	arguments: see lay-out-sources
+gomodules	go-modules	go.lock

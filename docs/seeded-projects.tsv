@@ -61,11 +61,11 @@ aspell	yes	aspell_fuzzer	reproduces	all binaries match the release's	aspell_fuzz
 assimp	no	-	-	-	the release did not build it (status too-large: size)
 astc-encoder	yes	fuzz_astc_compress,fuzz_astc_decompress	reproduces	all binaries match the release's	-
 asteval	no	-	-	-	the release did not build it (status language-pending: python)
-astro-compiler	no	-	-	-	the release did not build it (status language-pending: go)
+astro-compiler	yes	fuzz_scope_html,fuzz_transform_scoping	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 astroid	no	-	-	-	the release did not build it (status language-pending: python)
 asttokens	no	-	-	-	the release did not build it (status language-pending: python)
 async-http-client	no	-	-	-	the release did not build it (status language-pending: jvm)
-atomic	no	-	-	-	the release did not build it (status language-pending: go)
+atomic	yes	FuzzTest	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 attrs	no	-	-	-	the release did not build it (status language-pending: python)
 augeas	yes	augeas_api_fuzzer	reproduces	all binaries match the release's	augeas_api_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
 autoflake	no	-	-	-	the release did not build it (status language-pending: python)
@@ -89,7 +89,7 @@ binutils	yes	fuzz_bfd,fuzz_disassemble,fuzz_objdump	reproduces	all binaries matc
 bios-bmc-smm-error-logger	no	-	-	-	the release did not build it (status needs-model: features)
 bitcoin-core	no	-	-	-	the release did not build it (status not-yet-built: target-from-environment)
 black	no	-	-	-	the release did not build it (status language-pending: python)
-blackfriday	no	-	-	-	the release did not build it (status language-pending: go)
+blackfriday	yes	render_fuzzer	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 bleach	no	-	-	-	the release did not build it (status language-pending: python)
 bloaty	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 bls-signatures	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
@@ -108,7 +108,7 @@ brpc	no	-	-	-	no harness to seed: fuzz_http_parser (the release's patch 0002-ubs
 brunsli	yes	fuzz_decode,fuzz_decode_streaming	reproduces	all binaries match the release's	fuzz_decode: the release applied 1 patch(es) to the library's tree (reproducible build), none to its own source; fuzz_decode_streaming: the release applied 1 patch(es) to the library's tree (reproducible build), none to its own source
 bs4	no	-	-	-	the release did not build it (status language-pending: python)
 bson-rust	no	-	-	-	the release did not build it (status language-pending: rust)
-burntsushi-toml	no	-	-	-	the release did not build it (status language-pending: go)
+burntsushi-toml	yes	fuzz_toml	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 bz2file	no	-	-	-	the release did not build it (status language-pending: python)
 bzip2	yes	bzip2_compress_target,bzip2_decompress_target,bzip2_fd	reproduces	all binaries match the release's	bzip2_compress_target: the harness is in OSS-Fuzz's repository, not the project's; bzip2_decompress_target: the harness is in OSS-Fuzz's repository, not the project's; bzip2_fd: the harness is in OSS-Fuzz's repository, not the project's
 c-ares	yes	ares_create_query_fuzzer,ares_parse_reply_fuzzer	reproduces	all binaries match the release's	-
@@ -123,7 +123,7 @@ calcite-avatica	no	-	-	-	the release did not build it (status language-pending: 
 canvg	no	-	-	-	the release did not build it (status language-pending: javascript)
 capnproto	no	-	-	-	the release did not build it (status too-large: size)
 capstone	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
-cascadia	no	-	-	-	the release did not build it (status language-pending: go)
+cascadia	yes	fuzz	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 casync	no	-	-	-	no harness to seed: fuzz-compress (the release's patch 0004-util-musl-strndupa.patch edits src/util.h, the library's own source)
 catapult	no	-	-	-	the release did not build it (status no-harness: none-at-commit)
 cbor-java	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -208,7 +208,7 @@ dbus-sensors	yes	utils_fuzzer	reproduces	all binaries match the release's	utils_
 dcmtk	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 decorator	no	-	-	-	the release did not build it (status language-pending: python)
 defusedxml	yes	fuzz_etree_parse,fuzz_parse_string	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
-demangle	no	-	-	-	the release did not build it (status language-pending: go)
+demangle	yes	FuzzTest	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 deno	no	-	-	-	the release did not build it (status language-pending: rust)
 dgraph	no	-	-	-	the release did not build it (status language-pending: go)
 digest	no	-	-	-	the release did not build it (status language-pending: python)
@@ -253,7 +253,7 @@ example	no	-	-	-	the release did not build it (status no-harness: none-at-commit
 exiv2	yes	fuzz-preview,fuzz-read-print-write,fuzz-read-write	reproduces	all binaries match the release's	-
 exp4j	no	-	-	-	the release did not build it (status language-pending: jvm)
 expat	yes	xml_parse_fuzzer_UTF-8,xml_parsebuffer_fuzzer_UTF-8	reproduces	all binaries match the release's	xml_parse_fuzzer_UTF-8: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; xml_parse_fuzzer_UTF-8: the release modified this harness; xml_parsebuffer_fuzzer_UTF-8: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; xml_parsebuffer_fuzzer_UTF-8: the release modified this harness
-expr	no	-	-	-	the release did not build it (status language-pending: go)
+expr	yes	fuzz_expr	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 exprtk	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 faad2	yes	fuzz_config,fuzz_decode	reproduces	all binaries match the release's	-
 fabric	no	-	-	-	the release did not build it (status language-pending: go)
@@ -264,7 +264,7 @@ fast_float	yes	from_chars	reproduces	all binaries match the release's	-
 fastcsv	no	-	-	-	the release did not build it (status language-pending: jvm)
 fasthttp	no	-	-	-	the release did not build it (status language-pending: go)
 fastify	no	-	-	-	the release did not build it (status language-pending: javascript)
-fastjson	no	-	-	-	the release did not build it (status language-pending: go)
+fastjson	yes	fuzz	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 fastjson2	no	-	-	-	the release did not build it (status language-pending: jvm)
 feign	no	-	-	-	the release did not build it (status language-pending: jvm)
 ffmpeg	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
@@ -356,15 +356,15 @@ gnucobol	no	-	-	-	the release did not build it (status no-harness: none-at-commi
 gnupg	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 gnutls	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 go-attestation	no	-	-	-	the release did not build it (status language-pending: go)
-go-cmp	no	-	-	-	the release did not build it (status language-pending: go)
+go-cmp	yes	FuzzDiff	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 go-coap	no	-	-	-	the release did not build it (status language-pending: go)
 go-containerregistry	no	-	-	-	the release did not build it (status language-pending: go)
-go-coredns	no	-	-	-	the release did not build it (status language-pending: go)
+go-coredns	yes	fuzz_core,fuzz_plugin_cache,fuzz_plugin_chaos,fuzz_plugin_file,fuzz_plugin_forward,fuzz_plugin_grpc,fuzz_plugin_rewrite,fuzz_plugin_whoami	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 go-dhcp	no	-	-	-	the release did not build it (status language-pending: go)
-go-dns	no	-	-	-	the release did not build it (status language-pending: go)
+go-dns	yes	fuzz_msg_unpack,fuzz_newrr	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 go-ethereum	no	-	-	-	the release did not build it (status language-pending: go)
 go-git	no	-	-	-	the release did not build it (status language-pending: go)
-go-humanize	no	-	-	-	the release did not build it (status language-pending: go)
+go-humanize	yes	FuzzParseBytes	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 go-json-iterator	no	-	-	-	the release did not build it (status language-pending: go)
 go-ldap	no	-	-	-	the release did not build it (status language-pending: go)
 go-ole	no	-	-	-	the release did not build it (status language-pending: go)
@@ -375,10 +375,10 @@ go-sftp	no	-	-	-	the release did not build it (status language-pending: go)
 go-shlex	no	-	-	-	the release did not build it (status language-pending: go)
 go-snappy	no	-	-	-	the release did not build it (status language-pending: go)
 go-sqlite3	no	-	-	-	the release did not build it (status language-pending: go)
-go-toml	no	-	-	-	the release did not build it (status language-pending: go)
-go-yaml	no	-	-	-	the release did not build it (status language-pending: go)
-gobgp	no	-	-	-	the release did not build it (status language-pending: go)
-gogo-protobuf	no	-	-	-	the release did not build it (status language-pending: go)
+go-toml	yes	fuzz_toml	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
+go-yaml	yes	FuzzDecode	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
+gobgp	yes	fuzz_mrt,fuzz_parse_bgp_message,fuzz_parse_bmp_message,fuzz_parse_flow_spec_components,fuzz_parse_large_community,fuzz_parse_rtr,fuzz_zapi	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
+gogo-protobuf	yes	FuzzProtoUnmarshal	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 goipp	no	-	-	-	the release did not build it (status language-pending: go)
 golang	no	-	-	-	the release did not build it (status language-pending: go)
 golang-appengine	no	-	-	-	the release did not build it (status language-pending: go)
@@ -559,7 +559,7 @@ json	yes	parse_afl_fuzzer,parse_bjdata_fuzzer,parse_bson_fuzzer,parse_cbor_fuzze
 json-c	yes	json_array_fuzzer,json_object_fuzzer,json_pointer_fuzzer,tokener_parse_ex_fuzzer	reproduces	all binaries match the release's	-
 json-flattener	no	-	-	-	the release did not build it (status language-pending: jvm)
 json-java	no	-	-	-	the release did not build it (status language-pending: jvm)
-json-patch	no	-	-	-	the release did not build it (status language-pending: go)
+json-patch	yes	fuzz_create_merge,fuzz_decode_apply	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 json-sanitizer	no	-	-	-	the release did not build it (status language-pending: jvm)
 json-simple	no	-	-	-	the release did not build it (status language-pending: jvm)
 json-smart-v2	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -800,12 +800,12 @@ msquic	no	-	-	-	the release did not build it (status not-yet-built: not-attempte
 mtail	no	-	-	-	the release did not build it (status language-pending: go)
 muduo	no	-	-	-	no harness to seed: muduo_http_fuzzer (the release's patch 0002-currentthread-no-execinfo-off-glibc.patch edits muduo/base/CurrentThread.cc, the library's own source)
 multidict	no	-	-	-	the release did not build it (status language-pending: python)
-multierr	no	-	-	-	the release did not build it (status language-pending: go)
+multierr	yes	FuzzCombine	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 muparser	yes	c_api_fuzzer,set_eval_fuzzer	reproduces	all binaries match the release's	c_api_fuzzer: the harness is in OSS-Fuzz's repository, not the project's; set_eval_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
 mupdf	yes	fuzz_quadratic	reproduces	all binaries match the release's	-
 mutagen	no	-	-	-	the release did not build it (status language-pending: python)
 mvel	no	-	-	-	the release did not build it (status language-pending: jvm)
-mxj	no	-	-	-	the release did not build it (status language-pending: go)
+mxj	yes	fuzz_map_xml	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 myanmar-tools	yes	zawgyi_detector_fuzz_target	reproduces	all binaries match the release's	zawgyi_detector_fuzz_target: the release applied 3 patch(es) to the library's tree (build adaptation), none to its own source
 mybatis-3	no	-	-	-	the release did not build it (status language-pending: jvm)
 mysql-connector-j	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -927,7 +927,7 @@ parsimonious	no	-	-	-	the release did not build it (status language-pending: pyt
 parso	no	-	-	-	the release did not build it (status language-pending: python)
 pasta	no	-	-	-	the release did not build it (status language-pending: python)
 pathlib2	no	-	-	-	the release did not build it (status language-pending: python)
-pborman-uuid	no	-	-	-	the release did not build it (status language-pending: go)
+pborman-uuid	yes	FuzzParseBytes	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 pcapplusplus	no	-	-	-	no harness to seed: FuzzWriter (the release's patch 0001-pcap-reader-without-stdio-readv.patch edits Pcap++/header/PcapFileDevice.h, the library's own source)
 pcl	no	-	-	-	the release did not build it (status too-large: size)
 pcre2	yes	pcre2_fuzzer	reproduces	all binaries match the release's	-
@@ -982,7 +982,7 @@ protobuf-java	no	-	-	-	the release did not build it (status language-pending: jv
 protobuf-js	no	-	-	-	the release did not build it (status language-pending: javascript)
 protobuf-python	no	-	-	-	the release did not build it (status language-pending: python)
 protoc-gen-validate	no	-	-	-	the release did not build it (status language-pending: go)
-protocompile	no	-	-	-	the release did not build it (status language-pending: go)
+protocompile	yes	fuzz_protocompile	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 proton-bridge	no	-	-	-	the release did not build it (status language-pending: go)
 proxygen	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 psqlparse	no	-	-	-	the release did not build it (status language-pending: python)
@@ -1060,7 +1060,7 @@ r	no	-	-	-	the release did not build it (status not-yet-built: toolchain)
 rabbitmq-c	yes	fuzz_codec,fuzz_handle_input,fuzz_method_decode,fuzz_properties_decode,fuzz_server,fuzz_table,fuzz_url	reproduces	all binaries match the release's	-
 racket	no	-	-	-	the release did not build it (status no-harness: none-at-commit)
 radare2	no	-	-	-	the release did not build it (status held: held)
-radon	no	-	-	-	the release did not build it (status language-pending: go)
+radon	yes	fuzz	reproduces	all binaries match the release's	the release built it in its Go build, which it did not publish
 radvd	yes	fuzz_config,fuzz_process	reproduces	all binaries match the release's	fuzz_config: the harness is in OSS-Fuzz's repository, not the project's; fuzz_process: the harness is in OSS-Fuzz's repository, not the project's
 rapidjson	yes	fuzzer	reproduces	all binaries match the release's	fuzzer: the harness is in OSS-Fuzz's repository, not the project's
 rauc	no	-	-	-	the release did not build it (status too-large: size-unmeasured)

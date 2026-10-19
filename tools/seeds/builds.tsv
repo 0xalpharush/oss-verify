@@ -8,12 +8,15 @@ arrow	reproduces	all binaries match the release's
 asn1crypto	reproducible	4 binaries; a second build is identical; the release has none to compare
 aspell	reproduces	all binaries match the release's
 astc-encoder	reproduces	all binaries match the release's
+astro-compiler	reproduces	all binaries match the release's
+atomic	reproduces	all binaries match the release's
 augeas	reproduces	all binaries match the release's
 avahi	reproduces	all binaries match the release's
 bazel-rules-fuzzing-test	reproduces	all binaries match the release's
 behaviortreecpp	reproduces	all binaries match the release's
 bincode	reproducible	8 binaries; a second build is identical; the release has none to compare
 binutils	reproduces	all binaries match the release's
+blackfriday	reproduces	all binaries match the release's
 bluez	reproduces	all binaries match the release's
 boost-beast	reproduces	all binaries match the release's
 boost-json	reproduces	all binaries match the release's
@@ -21,9 +24,11 @@ boringssl	reproduces	all binaries match the release's
 botan	reproduces	all binaries match the release's
 brotli	reproduces	all binaries match the release's
 brunsli	reproduces	all binaries match the release's
+burntsushi-toml	reproduces	all binaries match the release's
 bzip2	reproduces	all binaries match the release's
 c-ares	reproduces	all binaries match the release's
 c-blosc	reproduces	all binaries match the release's
+cascadia	reproduces	all binaries match the release's
 cctz	reproduces	all binaries match the release's
 cfengine	reproduces	all binaries match the release's
 cgif	reproduces	all binaries match the release's
@@ -48,6 +53,7 @@ dav1d	reproduces	all binaries match the release's
 dbus-broker	reproduces	all binaries match the release's
 dbus-sensors	reproduces	all binaries match the release's
 defusedxml	reproducible	8 binaries; a second build is identical; the release has none to compare
+demangle	reproduces	all binaries match the release's
 dlplibs	reproduces	all binaries match the release's
 dnsmasq	reproduces	all binaries match the release's
 double-conversion	reproduces	all binaries match the release's
@@ -58,8 +64,10 @@ espeak-ng	reproduces	all binaries match the release's
 estoraged	reproduces	all binaries match the release's
 exiv2	reproduces	all binaries match the release's
 expat	reproduces	all binaries match the release's
+expr	reproduces	all binaries match the release's
 faad2	reproduces	all binaries match the release's
 fast_float	reproduces	all binaries match the release's
+fastjson	reproduces	all binaries match the release's
 ffms2	reproduces	all binaries match the release's
 fips203	reproducible	4 binaries; a second build is identical; the release has none to compare
 firestore	reproduces	all binaries match the release's
@@ -80,6 +88,14 @@ giflib	reproduces	all binaries match the release's
 glaze	reproduces	all binaries match the release's
 glib	reproduces	all binaries match the release's
 glog	reproduces	all binaries match the release's
+go-cmp	reproduces	all binaries match the release's
+go-coredns	reproduces	all binaries match the release's
+go-dns	reproduces	all binaries match the release's
+go-humanize	reproduces	all binaries match the release's
+go-toml	reproduces	all binaries match the release's
+go-yaml	reproduces	all binaries match the release's
+gobgp	reproduces	all binaries match the release's
+gogo-protobuf	reproduces	all binaries match the release's
 gpsd	reproduces	all binaries match the release's
 grpc-httpjson-transcoding	reproduces	all binaries match the release's
 h2	reproducible	12 binaries; a second build is identical; the release has none to compare
@@ -112,6 +128,7 @@ jpegoptim	reproduces	all binaries match the release's
 jq	reproduces	all binaries match the release's
 json	reproduces	all binaries match the release's
 json-c	reproduces	all binaries match the release's
+json-patch	reproduces	all binaries match the release's
 json5format	reproducible	4 binaries; a second build is identical; the release has none to compare
 jsoncons	reproduces	all binaries match the release's
 jsoncpp	reproduces	all binaries match the release's
@@ -204,8 +221,10 @@ mosh	reproduces	all binaries match the release's
 mp4parse-rust	reproducible	8 binaries; a second build is identical; the release has none to compare
 mpv	reproduces	all binaries match the release's
 msgpack-c	reproduces	all binaries match the release's
+multierr	reproduces	all binaries match the release's
 muparser	reproduces	all binaries match the release's
 mupdf	reproduces	all binaries match the release's
+mxj	reproduces	all binaries match the release's
 myanmar-tools	reproduces	all binaries match the release's
 mysql-server	reproduces	all binaries match the release's
 nanopb	reproduces	all binaries match the release's
@@ -246,6 +265,7 @@ ots	reproduces	all binaries match the release's
 p11-kit	reproduces	all binaries match the release's
 packaging	reproducible	4 binaries; a second build is identical; the release has none to compare
 parse	reproducible	4 binaries; a second build is identical; the release has none to compare
+pborman-uuid	reproduces	all binaries match the release's
 pcre2	reproduces	all binaries match the release's
 pffft	reproduces	all binaries match the release's
 phmap	reproduces	all binaries match the release's
@@ -260,6 +280,7 @@ postgis	reproduces	all binaries match the release's
 powerdns	reproduces	all binaries match the release's
 proftpd	reproduces	all binaries match the release's
 protobuf-c	reproduces	all binaries match the release's
+protocompile	reproduces	all binaries match the release's
 pugixml	reproduces	all binaries match the release's
 pupnp	reproduces	all binaries match the release's
 pyasn1	reproducible	4 binaries; a second build is identical; the release has none to compare
@@ -278,6 +299,7 @@ qubes-os	reproduces	all binaries match the release's
 quick-xml	reproducible	12 binaries; a second build is identical; the release has none to compare
 quickjs	reproduces	all binaries match the release's
 rabbitmq-c	reproduces	all binaries match the release's
+radon	reproduces	all binaries match the release's
 radvd	reproduces	all binaries match the release's
 rapidjson	reproduces	all binaries match the release's
 re2	reproduces	all binaries match the release's

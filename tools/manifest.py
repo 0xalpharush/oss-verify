@@ -3,7 +3,8 @@
 """Fuzz targets, the build manifest, and locks: the parts of tools/check that need no Docker.
 
 A fuzz target is an executable in a build's $OUT whose ELF symbol table defines LLVMFuzzerTestOneInput. This is
-OSS-Fuzz's rule (infra/utils.py, is_fuzz_target_local), reading the symbol table instead of searching the bytes.
+OSS-Fuzz's rule (infra/utils.py, is_fuzz_target_local), reading the symbol table instead of searching the bytes. A Go
+program has no such symbol, so `compile` lists the Go fuzz targets in $OUT/.go-fuzz-targets.
 `compile` saves the stripped twin of each one as $OUT/.stripped/<sha256 of the executable>, and those stripped bytes
 are what is collected, published and pinned.
 
@@ -24,6 +25,7 @@ MANIFEST_SCHEMA = "oss-verifier/build-manifest/1"
 HARNESS_SCHEMA = "oss-fuzz-theorems/harness/1"
 ENTRY = b"LLVMFuzzerTestOneInput"
 STRIPPED = ".stripped"
+GO_TARGETS = ".go-fuzz-targets"
 
 SHT_SYMTAB = 2
 SHN_UNDEF = 0
@@ -121,21 +123,36 @@ def has_symbol_table(path):
     return parsed is not None and any(kind == SHT_SYMTAB for kind, *_ in parsed[1])
 
 
-def is_fuzz_target(path):
-    """Return True if `path` is an executable ELF file whose symbol table defines LLVMFuzzerTestOneInput."""
+def is_executable(path):
+    """Return True if `path` is an executable ELF file (not a link to one)."""
     path = pathlib.Path(path)
     if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK):
         return False
     parsed = read_elf(path)
-    if parsed is None or parsed[0]["type"] not in (ET_EXEC, ET_DYN):
-        return False
-    return ENTRY in defined_symbols(path, {ENTRY})
+    return parsed is not None and parsed[0]["type"] in (ET_EXEC, ET_DYN)
+
+
+def is_fuzz_target(path):
+    """Return True if `path` is an executable ELF file whose symbol table defines LLVMFuzzerTestOneInput."""
+    return is_executable(path) and ENTRY in defined_symbols(path, {ENTRY})
+
+
+def go_fuzz_targets(out):
+    """The Go fuzz targets that `compile` lists in $OUT/.go-fuzz-targets, one name on each line: {name: path}."""
+    listing = pathlib.Path(out) / GO_TARGETS
+    if listing.is_symlink() or not listing.is_file():
+        return {}
+    names = listing.read_text(encoding="utf-8", errors="replace").split()
+    return {name: pathlib.Path(out) / name for name in names
+            if "/" not in name and name not in (".", "..") and is_executable(pathlib.Path(out) / name)}
 
 
 def discover(out):
-    """The fuzz targets in one build's $OUT: {name: path}, by the symbol table rule."""
+    """The fuzz targets in one build's $OUT: {name: path}, by the symbol table rule, and the Go fuzz targets."""
     out = pathlib.Path(out)
-    return {path.name: path for path in sorted(out.iterdir()) if is_fuzz_target(path)}
+    found = {path.name: path for path in out.iterdir() if is_fuzz_target(path)}
+    found.update(go_fuzz_targets(out))
+    return dict(sorted(found.items()))
 
 
 def published(out, path):

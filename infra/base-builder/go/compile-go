@@ -1,0 +1,73 @@
+#!/bin/bash
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# compile-go: what `compile` does for a Go project, in the Go toolchain image (which sets OFTGO). compile runs it in
+# place of its own steps.
+#
+# Taken from the Go build of the oss-fuzz-theorems 2026.10 release ($OFTGO/bin/project_build.sh), whose binaries this
+# reproduces byte for byte. build.sh is the project's OSS-Fuzz build.sh, and it gets the environment that OSS-Fuzz's
+# compile gives a Go project's build.sh, as the release gave it. OSS-Fuzz's Go helpers (compile_go_fuzzer,
+# compile_native_go_fuzzer, compile_native_go_fuzzer_v2) are the image's: each keeps OSS-Fuzz's steps up to the build,
+# and then builds a static riscv64 program from the fuzz target and the image's driver in Go, with its runtime overlay.
+# The release spelling (OFTGO_RELEASE=1) is the one that the release built with.
+#
+# A Go project has the plain build only. Its modules come from $WORK/go-modules, the module proxy directory that the
+# gomodules line of the project's sources file lays out (lay-out-sources), as the release's came from its lock. There
+# is no network.
+#
+# Each helper builds two programs: FUZZER-repro, which writes one line for each call, and FUZZER-repro-quiet, which
+# writes nothing. The first is the fuzz target: it becomes $OUT/FUZZER. The second is removed. These programs have no
+# symbol table (the helpers strip them, as the release did) and no LLVMFuzzerTestOneInput, so compile lists them in
+# $OUT/.go-fuzz-targets, and the stripped twin of each one is the program itself.
+set -euo pipefail
+
+[ "$SANITIZER" = none ] || {
+  echo "compile: a Go project has the plain build only (SANITIZER=none), not SANITIZER=$SANITIZER" >&2
+  exit 2
+}
+: "${OFTGO:?the Go toolchain image sets OFTGO}"
+OV=/tmp/ov
+rm -rf "$OV"
+mkdir -p "$OV" /src /out /work /root/go/pkg/mod
+
+# The environment that OSS-Fuzz's compile gives a Go project's build.sh: its build of a Go project is the address
+# build, for x86-64, with libFuzzer. Build scripts test these variables. The helpers build for riscv64 with no cgo, so
+# CC and CFLAGS reach no program.
+export SRC=/src OUT=/out WORK=/work HOME=/root GOPATH=/root/go
+export SANITIZER=address FUZZING_ENGINE=libfuzzer ARCHITECTURE=x86_64 FUZZING_LANGUAGE=go
+export CC=clang CXX=clang++ CFLAGS="-O1 -fno-omit-frame-pointer -gline-tables-only" \
+  CXXFLAGS="-O1 -fno-omit-frame-pointer -gline-tables-only"
+export LIB_FUZZING_ENGINE=-fsanitize=fuzzer
+export OFTGO_RUNTIME=overlay OFTGO_REFERENCE=0 OFTGO_ONLY="" OFTGO_RELEASE=1 \
+  OFTGO_OVERLAY=$OFTGO/overlay-release/go1.27.1/overlay.json
+[ -f "$OFTGO_OVERLAY" ] || { echo "compile: the Go toolchain image has no $OFTGO_OVERLAY" >&2; exit 2; }
+if [ -d "$WORK/go-modules" ]; then
+  export GOPROXY=file://$WORK/go-modules GOSUMDB=off
+else
+  export GOPROXY=off GOSUMDB=off
+fi
+
+echo "compile: $(go version), GOPROXY=$GOPROXY"
+# As OSS-Fuzz's compile runs build.sh: with bash -eux, in the image's working directory, with no OLDPWD (a process
+# that docker starts has none, and `cd -` in a helper would follow one).
+env -u OLDPWD bash -eux "$SRC/build.sh"
+
+# The fuzz targets: one row each in the helpers' $OUT/oftgo-targets.tsv, whose first field is the name.
+targets=$OUT/oftgo-targets.tsv
+[ -f "$targets" ] || { echo "compile: no Go helper ran: $targets is missing" >&2; exit 1; }
+mv "$targets" "$OV/oftgo-targets.tsv"
+mkdir -p "$OUT/.stripped"
+: > "$OUT/.go-fuzz-targets"
+found=0
+for name in $(cut -f1 "$OV/oftgo-targets.tsv" | LC_ALL=C sort -u); do
+  [ -f "$OUT/$name-repro" ] || { echo "compile: the Go helper wrote no $OUT/$name-repro" >&2; exit 1; }
+  mv -f "$OUT/$name-repro" "$OUT/$name"
+  rm -f "$OUT/$name-repro-quiet"
+  sum=$(sha256sum "$OUT/$name" | cut -d' ' -f1)
+  cp "$OUT/$name" "$OUT/.stripped/$sum"
+  echo "$name" >> "$OUT/.go-fuzz-targets"
+  echo "compile: fuzz target $name"
+  found=$((found + 1))
+done
+echo "compile: $found fuzz target(s) in $OUT, the plain build"

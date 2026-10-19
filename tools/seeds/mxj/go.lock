@@ -1,0 +1,3 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+mod	github.com/google/go-cmp	v0.5.9	e7c7669d4a1dd589ba3e024ba27f43f293db611fe075ce20d7b884370d63febd	41
+zip	github.com/google/go-cmp	v0.5.9	32450874ac756ef5d47f6b819305105304b9819045a16e3f105289b7cf252c51	130220

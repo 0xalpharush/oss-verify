@@ -1,0 +1,803 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+info	cloud.google.com/go/auth	v0.23.2	b5ddee2b1a61835c945d1c153141e51a86d8a5387bb1b4c36d978b1b28866f4a	225	{"Origin":{"Hash":"85eac2b8baf0d783313f7d70b6036d5cb0c570ec","Ref":"refs/tags/auth/v0.23.2","Subdir":"auth","URL":"https://github.com/googleapis/google-cloud-go","VCS":"git"},"Time":"2026-08-20T18:56:12Z","Version":"v0.23.2"}
+mod	cloud.google.com/go/auth	v0.23.2	45c2f3b99333b7b78340de895db41ad2bff7dd562abdace20d7314c2eb8c6c9d	1310
+zip	cloud.google.com/go/auth	v0.23.2	2ca8eba95d5e4770dc5886f8a004cd28750e305f56e41431815d7f9da47fcbc3	374403
+info	cloud.google.com/go/auth/oauth2adapt	v0.2.8	5b3a5cf124c9c1d75ed22f8d277d66d41987990b3972f839905831a219a0aa62	247	{"Origin":{"Hash":"7e600b964c1cae3ba47fc7d1d340a536723d18cb","Ref":"refs/tags/auth/oauth2adapt/v0.2.8","Subdir":"auth/oauth2adapt","URL":"https://github.com/googleapis/google-cloud-go","VCS":"git"},"Time":"2025-03-20T15:18:21Z","Version":"v0.2.8"}
+mod	cloud.google.com/go/auth/oauth2adapt	v0.2.8	17738c6a081204b38fee07bd815473d8d536a703ea78afa01ff63f0973c359d4	568
+zip	cloud.google.com/go/auth/oauth2adapt	v0.2.8	4cd64264bafc4dd05f645452d6e1485adf92309130bd82b4c595db10cd534963	12498
+info	cloud.google.com/go/compute/metadata	v0.9.0	fb86a592b1225ec0b51ae675f79bad2b86ca6e27cab73c7041c96f650b661cde	247	{"Origin":{"Hash":"7b2365446764b0bba37198a55644954b437bddd0","Ref":"refs/tags/compute/metadata/v0.9.0","Subdir":"compute/metadata","URL":"https://github.com/googleapis/google-cloud-go","VCS":"git"},"Time":"2025-09-24T19:41:55Z","Version":"v0.9.0"}
+mod	cloud.google.com/go/compute/metadata	v0.9.0	80aefcb99e7ffca922974c5ebae6cc480e6be8845b9f4b28e7a1d3055525df08	127
+zip	cloud.google.com/go/compute/metadata	v0.9.0	f97e35d1c96239b8574054a77e312c95d2c82a89c21daf46ffeaea6d5fc59eca	31269
+mod	code.pfad.fr/check	v1.1.0	a870c638e14c783f9b5d0388290cfb7f7e5ca24f8e3c4cc7d64b06478b8bca76	145
+zip	code.pfad.fr/check	v1.1.0	d4e30cdac9713529d0c1d6a2d7afcef1c6d294a20c5981f8e6b827fe5e11c039	33405
+info	github.com/!azure/azure-sdk-for-go	v68.0.0+incompatible	cd834825c929c140f6dceb6e5576a65c7cdbf83fa99135876d9c80e1a237d7a6	213	{"Origin":{"Hash":"2187aca40bbf6931ffac666977e5d29128d82585","Ref":"refs/tags/v68.0.0","URL":"https://github.com/Azure/azure-sdk-for-go","VCS":"git"},"Time":"2023-01-19T11:02:01Z","Version":"v68.0.0+incompatible"}
+mod	github.com/!azure/azure-sdk-for-go	v68.0.0+incompatible	a78d7cbf692d1dae9991790e02028dc4986614ed9927eb33143f402786b8a1d3	41
+zip	github.com/!azure/azure-sdk-for-go	v68.0.0+incompatible	c40d67ce49f8e2bbf4ca4091cbfc05bd3d50117f21d789e32cfa19bdb11ec50c	69068229
+mod	github.com/!azure/go-autorest	v14.2.0+incompatible	1ce32de4dbd8462af10fcef093fa0b331c4a0c96be0113dc4a71714f61353bc4	36
+zip	github.com/!azure/go-autorest	v14.2.0+incompatible	89ac786da5b108e594bb1fbbf8f39a822fc1d994be1ff7cc6e860e8b45f3d80c	24733
+mod	github.com/!azure/go-autorest/autorest	v0.11.28	27d1f00409cecc1608f673914758c4cd98c8bf12c0344a5ab7bf82be82e7ea33	416
+info	github.com/!azure/go-autorest/autorest	v0.11.30	f3b18c279dba42f3a7f91c4852e2b164ffaa1f11ffac96f3c3cf81e05d8768b4	226	{"Origin":{"Hash":"33e12ab7683c1c236a863ccfbfdd78c626f7fe28","Ref":"refs/tags/autorest/v0.11.30","Subdir":"autorest","URL":"https://github.com/Azure/go-autorest","VCS":"git"},"Time":"2025-01-28T16:29:15Z","Version":"v0.11.30"}
+mod	github.com/!azure/go-autorest/autorest	v0.11.30	5c3c7b55485325d7bf93f4298fbc4f63e8a6055d623a2a107cd36aeb7fdd11fb	462
+zip	github.com/!azure/go-autorest/autorest	v0.11.30	06d6428682506f7febcac2d1c3919f9350393124b82dbdc9320e6690c12aff23	114878
+mod	github.com/!azure/go-autorest/autorest/adal	v0.9.18	14bb23ac213ca40a7c6c1f94131a900f210b705e68fd40ebbef0298d6e0732ab	408
+info	github.com/!azure/go-autorest/autorest/adal	v0.9.22	88141d7838790d9250274feff7d296261ea9fe607502a4167305952d90ac41b0	234	{"Origin":{"Hash":"79575dd7ba2e88e7ce7ab84e167ec6653dcb70c1","Ref":"refs/tags/autorest/adal/v0.9.22","Subdir":"autorest/adal","URL":"https://github.com/Azure/go-autorest","VCS":"git"},"Time":"2023-01-17T16:45:42Z","Version":"v0.9.22"}
+mod	github.com/!azure/go-autorest/autorest/adal	v0.9.22	ffc5696530fcafac8a76cf9fbba85b14497c40d7afdc2312727350e4bccecbb6	476
+zip	github.com/!azure/go-autorest/autorest/adal	v0.9.22	e90a6d7386609d0e5306338a8422a0518818d29655c2fd3474bf6183f17b9013	48661
+info	github.com/!azure/go-autorest/autorest/azure/auth	v0.5.13	9bae04a263882a2787d239d6204c03807a266076ddb949a3c7b31952249065a7	246	{"Origin":{"Hash":"f7ea664c9cff3a5257b6dbc4402acadfd8be79f1","Ref":"refs/tags/autorest/azure/auth/v0.5.13","Subdir":"autorest/azure/auth","URL":"https://github.com/Azure/go-autorest","VCS":"git"},"Time":"2024-05-30T14:04:49Z","Version":"v0.5.13"}
+mod	github.com/!azure/go-autorest/autorest/azure/auth	v0.5.13	32c93784b48b4d9bae69c1c0550b38f2fc917f2d77ba5351c6de5cb5d06cdf14	533
+zip	github.com/!azure/go-autorest/autorest/azure/auth	v0.5.13	b42a1285d8efb316cfade5041a6a3eb9ab34c89318952424ced3c06687539c74	20740
+info	github.com/!azure/go-autorest/autorest/azure/cli	v0.4.6	3c29470f75562d64dc88f30c5ba4a2474da29a67e49c2e19ca6b16f0d56e9397	50	{"Time":"2022-07-26T15:30:24Z","Version":"v0.4.6"}
+mod	github.com/!azure/go-autorest/autorest/azure/cli	v0.4.6	6497201f18a743c54ba8dc8fb15c70bb07b52b3e65ed1544f3a5316a13490137	425
+zip	github.com/!azure/go-autorest/autorest/azure/cli	v0.4.6	cdc19569bc0dd13c3e52dc9babb064a50d0cf15bf5806357b31ba27b6e52a6be	11229
+info	github.com/!azure/go-autorest/autorest/date	v0.3.0	cc75f0d446004c1db02d537965dc0cee828547e15017a0a26386977c1e040378	50	{"Time":"2020-06-23T18:36:26Z","Version":"v0.3.0"}
+mod	github.com/!azure/go-autorest/autorest/date	v0.3.0	3bf91cd5a8f2e6f074d43d2b26b799ad7dcb251d34e7a393a5632795b2ac94eb	118
+zip	github.com/!azure/go-autorest/autorest/date	v0.3.0	7b59c0421eaf8549f20d17aab7e3e4621e1798de1119dac65a04c110d110d64d	18297
+mod	github.com/!azure/go-autorest/autorest/mocks	v0.4.1	19e52fd2684426be0415a23429a469508aa2d7abce7fdd8e650cec270e6d2151	119
+mod	github.com/!azure/go-autorest/autorest/mocks	v0.4.2	cb3ba2f5688240db048671cbeb516ec0a35655e2375114bc166457a21552a7b1	119
+zip	github.com/!azure/go-autorest/autorest/mocks	v0.4.2	d5baa29298c10ef714a41f8d2b9741a7a0bba8caf163efeb0471296b9af1b516	9296
+info	github.com/!azure/go-autorest/autorest/to	v0.2.0	65231f2afb66d57bbee7f9995f61b80a506d1172626d605fc7a6e1877c2d5e8a	50	{"Time":"2019-05-20T22:40:00Z","Version":"v0.2.0"}
+mod	github.com/!azure/go-autorest/autorest/to	v0.2.0	8ccda862ad14ce5d2d410e06b272a6ad632a5217ae299ce367b8f3f2956b10ab	57
+zip	github.com/!azure/go-autorest/autorest/to	v0.2.0	09adeefca4e57c51655c053e8d39fa6f74943691392aece87f455a23fc4d7df6	6952
+info	github.com/!azure/go-autorest/logger	v0.2.1	05fbfc618aa678f6bca5050f4bab4ea13a9a3348dff3f56b2d0d2879f9be319c	50	{"Time":"2021-02-05T22:21:48Z","Version":"v0.2.1"}
+mod	github.com/!azure/go-autorest/logger	v0.2.1	c49f717e7786fc97fb1e88ab651e726da535eeedaff7fef117c487bd89b63f24	111
+zip	github.com/!azure/go-autorest/logger	v0.2.1	90c84e126b503027f69d232f4ce5758ae01d08ea729c71539ebff851f2477b49	10631
+info	github.com/!azure/go-autorest/tracing	v0.6.0	ca144f399c5bdd7ad3303d999b2faa8e8a0e910169054919ef2bd5f7667d3f70	50	{"Time":"2020-06-23T18:36:26Z","Version":"v0.6.0"}
+mod	github.com/!azure/go-autorest/tracing	v0.6.0	74ce7a89ba647c4131495ea92705536f2ba4877416f56132f2450bd6a1516ec0	112
+zip	github.com/!azure/go-autorest/tracing	v0.6.0	b7296ba64ecae67c83ae1c89da47c6f65c2ff0807027e301daccab32673914b3	7440
+info	github.com/!data!dog/datadog-agent/comp/core/tagger/origindetection	v0.82.0	8cd078b883d2d302a9cd228bdee842e2ded263b605cfa6e7ea6fb209f1eb7999	276	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/comp/core/tagger/origindetection/v0.82.0","Subdir":"comp/core/tagger/origindetection","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/comp/core/tagger/origindetection	v0.82.0	b217897a8288a63345581cb07d2f6ed7eb077e59eb1edd1db35b12f059d56c9d	17961
+zip	github.com/!data!dog/datadog-agent/comp/core/tagger/origindetection	v0.82.0	1c28f105a83cf429971feda5986e0df545b30f220d2ac962e5b76899bbad81c0	11995
+info	github.com/!data!dog/datadog-agent/pkg/obfuscate	v0.82.0	28c7ebc92d632e29417b31d1a8dce436e9c05963268a1740361652243df6c6d9	238	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/obfuscate/v0.82.0","Subdir":"pkg/obfuscate","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/obfuscate	v0.82.0	ff529ac457ac717d3d0065b86c070c507b258dddc2772780a74c8a8188614f5d	17453
+zip	github.com/!data!dog/datadog-agent/pkg/obfuscate	v0.82.0	b013c87dee2ad81b9b52fca0c0ace0dda81f938cedb948e64f64c13218a5f7c6	105625
+info	github.com/!data!dog/datadog-agent/pkg/opentelemetry-mapping-go/otlp/attributes	v0.82.0	dca4706463607fc55eb35cc410b389d1f1bc623fd4ec92c15eb4391fc6968a02	300	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/opentelemetry-mapping-go/otlp/attributes/v0.82.0","Subdir":"pkg/opentelemetry-mapping-go/otlp/attributes","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/opentelemetry-mapping-go/otlp/attributes	v0.82.0	3e564b6301ace83bce7e2609596b191a1c65940910351a28ef245c0d811c1fbb	19030
+zip	github.com/!data!dog/datadog-agent/pkg/opentelemetry-mapping-go/otlp/attributes	v0.82.0	45fd0ea9472ea18aa957eecb0652a8ad43f1ec176db7e9bf1888a1cfa3fd921d	52615
+info	github.com/!data!dog/datadog-agent/pkg/proto	v0.82.0	897d9344a60a3e19569b6485b67b3b6b137d0ec5c8d5fe0420f2baa88d16aa0c	230	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/proto/v0.82.0","Subdir":"pkg/proto","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/proto	v0.82.0	73af5237f893334d7fc9fa61e11fecbfeef9bf7b503d58ffcc9500962e744b8a	17702
+zip	github.com/!data!dog/datadog-agent/pkg/proto	v0.82.0	dff133c6cd669e2e3d8682e83daa991df44914bfb7850f87a226aff5f01e2d9f	368944
+info	github.com/!data!dog/datadog-agent/pkg/remoteconfig/state	v0.82.0	2cd87a1eb081fd9fb5d4cc00958edc2f484f8976c8556adabe222b4e1c923e7d	256	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/remoteconfig/state/v0.82.0","Subdir":"pkg/remoteconfig/state","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/remoteconfig/state	v0.82.0	824ea73d2ed4d930366e16bcfb591a2fb70f0c8142e3844bdf3598656be16638	17516
+zip	github.com/!data!dog/datadog-agent/pkg/remoteconfig/state	v0.82.0	59ee3ef9f89f219ea2c6ffe3d94d0554cea6e32410752d07d39f405b2c53ad54	40075
+info	github.com/!data!dog/datadog-agent/pkg/trace	v0.82.0	d9dcf639349e16fa84a0bdcbcd8403d8fc9b99fbd7f98fc3accc5e722367580a	230	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/trace/v0.82.0","Subdir":"pkg/trace","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/trace	v0.82.0	5a55de9425d4ac97c6a531307d5053b116f6211cd8f08be99c575bbecdbc5eba	22938
+zip	github.com/!data!dog/datadog-agent/pkg/trace	v0.82.0	03da37e2e20b4a5c39543d8a04371e8288a43887abd64f57c54c8432da9b1102	611025
+info	github.com/!data!dog/datadog-agent/pkg/trace/log	v0.82.0	bd05a1c69739460245286cfba13c9566c40335fb2b6d4d3d9dbe8ff6c92070de	238	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/trace/log/v0.82.0","Subdir":"pkg/trace/log","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/trace/log	v0.82.0	0411480a6ec642dd6e9ff6e1b69b30b2d2384e339a93944fe2d60487ca8262ac	17479
+zip	github.com/!data!dog/datadog-agent/pkg/trace/log	v0.82.0	28cf418eb10e8f98242edc3588858011515cf507689e490c3740285a8dd94f8d	12988
+info	github.com/!data!dog/datadog-agent/pkg/trace/stats	v0.82.0	c1adc4f170c178f603e44850f93fc6f83fae2ca8e66e0db37aa12186720f40ea	242	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/trace/stats/v0.82.0","Subdir":"pkg/trace/stats","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/trace/stats	v0.82.0	b8a12451afea02d0aefd3d7ba1e9d3a3e3f7a43c8fe91ae81a3f9691cb59c9fd	19945
+zip	github.com/!data!dog/datadog-agent/pkg/trace/stats	v0.82.0	93ef8e832b0034d70fd26017c71c2b2fdf2ec977c9766826cd8ae6f79efebd52	69782
+info	github.com/!data!dog/datadog-agent/pkg/trace/traceutil	v0.82.0	d7a34535c08168449fc31c678795314d9b4f9fb15822346300700764f70234cb	250	{"Origin":{"Hash":"ffd5b5759900f0d00080dab5e2e6aeebc0a9c14d","Ref":"refs/tags/pkg/trace/traceutil/v0.82.0","Subdir":"pkg/trace/traceutil","URL":"https://github.com/DataDog/datadog-agent","VCS":"git"},"Time":"2026-08-04T10:36:09Z","Version":"v0.82.0"}
+mod	github.com/!data!dog/datadog-agent/pkg/trace/traceutil	v0.82.0	df21c5749e2fc181e55ccf2b12b132f4bf5a0d149acb2bf0d2d8f73f0c210999	17712
+zip	github.com/!data!dog/datadog-agent/pkg/trace/traceutil	v0.82.0	ff0e10b56ca5a3da920654ee4f935b80e9b5cecb8f856f5b065b2bf0ad7cacaf	34944
+info	github.com/!data!dog/datadog-go/v5	v5.9.0	30c6e6899ae715faf44e248b156eddfea4b0117314a4ded70123a8574f3dd7aa	194	{"Origin":{"Hash":"4c98ef209d326200f8923e74c22e12d3c1a4a12a","Ref":"refs/tags/v5.9.0","URL":"https://github.com/DataDog/datadog-go","VCS":"git"},"Time":"2026-06-24T08:39:11Z","Version":"v5.9.0"}
+mod	github.com/!data!dog/datadog-go/v5	v5.9.0	2b297f3cb164f1bfcd6842387e954bbfab8c7cb80428bc9887872dce8b476729	300
+zip	github.com/!data!dog/datadog-go/v5	v5.9.0	ea062484d44b2cc2058c2c6194ff6423d0281af8fafdc87068fc71d9874a6f5c	121608
+info	github.com/!data!dog/dd-trace-go/v2	v2.10.1	abedefa101e7bd8e162ad1eeb4840815b080c01488690687efbe66e16315b35c	197	{"Origin":{"Hash":"cad99b7e5a9b4b7566f1d909a5b5e2262103ef5c","Ref":"refs/tags/v2.10.1","URL":"https://github.com/DataDog/dd-trace-go","VCS":"git"},"Time":"2026-08-31T07:23:09Z","Version":"v2.10.1"}
+mod	github.com/!data!dog/dd-trace-go/v2	v2.10.1	fb321fbd0d1ca9dd4e654392b0c83ed309c20eaf381ddd58d178b1980216f107	5328
+zip	github.com/!data!dog/dd-trace-go/v2	v2.10.1	72347d4728ac80c32545b5adc9b15353c9583753819b63d2ac899f8aa9ee7ed1	3277668
+info	github.com/!data!dog/go-libddwaf/v5	v5.0.1	1aa3040726692b222ac3ed5805e21b30ba0c6aca00fdf5c503f98d3132fc2682	195	{"Origin":{"Hash":"2d0b974fefeb85d0d718d1e8f2f28e16e77eef5c","Ref":"refs/tags/v5.0.1","URL":"https://github.com/DataDog/go-libddwaf","VCS":"git"},"Time":"2026-08-19T11:34:00Z","Version":"v5.0.1"}
+mod	github.com/!data!dog/go-libddwaf/v5	v5.0.1	46eb57215e4a0c49c8d3908a708a69aa4fa9af939267289092a1967284fc47f7	473
+zip	github.com/!data!dog/go-libddwaf/v5	v5.0.1	942149f42a5bb003a8f19600f701f81006ec34c7cbf4a40da1888c6751937222	3620663
+info	github.com/!data!dog/go-runtime-metrics-internal	v0.0.4-0.20260217080614-b0f4edc38a6d	656948bd7446ec63ced86c04847428fe9bf0276af9610d24dcbcdd6936805a7b	216	{"Origin":{"Hash":"b0f4edc38a6d5fdb3964f5a1b83341efeb127404","URL":"https://github.com/DataDog/go-runtime-metrics-internal","VCS":"git"},"Time":"2026-02-17T08:06:14Z","Version":"v0.0.4-0.20260217080614-b0f4edc38a6d"}
+mod	github.com/!data!dog/go-runtime-metrics-internal	v0.0.4-0.20260217080614-b0f4edc38a6d	53d38f78815ac4c6d41723d9670a1d3a4d63a96cf4a7a84f97d3b6cc01e9a1df	255
+zip	github.com/!data!dog/go-runtime-metrics-internal	v0.0.4-0.20260217080614-b0f4edc38a6d	57cfea1f913b16023c219e8067c819fbcc368c7e42c34985a9aec25623540d1f	36289
+info	github.com/!data!dog/go-sqllexer	v0.2.3	22ce4fb216f094cc49458a4127c150df1715c95ee002bbf1a72ec74316d9bbc9	195	{"Origin":{"Hash":"4dc6921da33fda2f6d1f3667af9ce7451dd35094","Ref":"refs/tags/v0.2.3","URL":"https://github.com/DataDog/go-sqllexer","VCS":"git"},"Time":"2026-07-06T15:42:52Z","Version":"v0.2.3"}
+mod	github.com/!data!dog/go-sqllexer	v0.2.3	543badbf0c0316fcce6547db00aae24b02ae79e3eda9012a3dab055f5a48a658	311
+zip	github.com/!data!dog/go-sqllexer	v0.2.3	8d2a70c5ad89cd0857a27ecdd929da5d5e021d60d95c4344dc32e384412491d5	275084
+info	github.com/!data!dog/go-tuf	v1.1.1-0.5.2	67629a65b13719f554c1515a9b0d9781b2c14e7b980193893d080ba40ab376d5	202	{"Origin":{"Hash":"8c61504ba9faabf79d42a801a350464863a601e7","Ref":"refs/tags/v1.1.1-0.5.2","URL":"https://github.com/DataDog/go-tuf","VCS":"git"},"Time":"2025-07-23T13:22:37Z","Version":"v1.1.1-0.5.2"}
+mod	github.com/!data!dog/go-tuf	v1.1.1-0.5.2	9ebfc2bfaf4d239bec70339ceac837dcd6b9553b98148586bab2e4231bd0f683	769
+zip	github.com/!data!dog/go-tuf	v1.1.1-0.5.2	6562cc821c37e05716bd992274385567cc76cd45a32c9bedd94f7d3ba2a21d83	1584606
+info	github.com/!data!dog/sketches-go	v1.4.8	7ebaddf98694ab7fd1493514c123f09af06a07fc5215a5a229f5227fcd957407	195	{"Origin":{"Hash":"36e98e05d756ccb225b94882831c1443fb4ed535","Ref":"refs/tags/v1.4.8","URL":"https://github.com/DataDog/sketches-go","VCS":"git"},"Time":"2026-02-20T20:34:42Z","Version":"v1.4.8"}
+mod	github.com/!data!dog/sketches-go	v1.4.8	d06f63eda901bb730aa0c538655e76557fdafe8ea22014b71ae2f8a247f59bca	314
+zip	github.com/!data!dog/sketches-go	v1.4.8	d5366b981d7f9dc36d9cc9bb910580c95e82d74756d2881f01700bd4012bb63e	71069
+mod	github.com/!microsoft/go-winio	v0.5.0	87be104ed50fc8c425d224186cb1e5e260c26b3521da3f3b6936b395aa230b0c	177
+mod	github.com/!microsoft/go-winio	v0.6.2	47fb19990ebb31954f3aa784ff45f4c93a9e86ac3e1297d7ca87c614aeffe2cb	194
+zip	github.com/!microsoft/go-winio	v0.6.2	cd007bdb877a578efde2780bf5dd2f57dd557b5b08c3614597b820d0369ebb0f	158677
+info	github.com/apparentlymart/go-cidr	v1.1.1	f6788940f2eb37538e0566069e89c4c4fd4efb46ddd2c34878780bc24ab76e7f	199	{"Origin":{"Hash":"5730b04c510e662932577c247c0b194f97fb101f","Ref":"refs/heads/master","URL":"https://github.com/apparentlymart/go-cidr","VCS":"git"},"Time":"2026-04-27T15:51:40Z","Version":"v1.1.1"}
+mod	github.com/apparentlymart/go-cidr	v1.1.1	36847bdcdcb38658733f3b55df00cc436d25a908cec96a3399874217c94013a7	41
+zip	github.com/apparentlymart/go-cidr	v1.1.1	6bc2578905c487bdc42c3e8bea78c9247c8a0c11234b6aba332c005690ff278e	7691
+info	github.com/aws/aws-sdk-go-v2	v1.47.0	91971d94e8d4c84e440febccbfcdc6b1b952d0ff50820be7919421f824b4aa64	195	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/v1.47.0","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.47.0"}
+mod	github.com/aws/aws-sdk-go-v2	v1.47.0	d839da36554f1aafa9e9944ed9d979b88952e233c2f39a0a9a7264be29e957b6	87
+zip	github.com/aws/aws-sdk-go-v2	v1.47.0	86316f5160d058070acc82beb4225ee9c3bd0244826cd650506eeb805be8864c	831169
+info	github.com/aws/aws-sdk-go-v2/config	v1.33.5	82b358b1df685d5ad49465efd9418e40d2c5cb8a1f20f5c969dcd7a5bab9becb	220	{"Origin":{"Hash":"4e0240a139dc4638067f89502ea38ba465fef164","Ref":"refs/tags/config/v1.33.5","Subdir":"config","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-14T19:03:55Z","Version":"v1.33.5"}
+mod	github.com/aws/aws-sdk-go-v2/config	v1.33.5	5f9df4b4ee344ab704801f664c69291de3dffe62f6d0c1e40d54a88bde875f0b	1784
+zip	github.com/aws/aws-sdk-go-v2/config	v1.33.5	e22014c5d6b3112a869b6c232303d53e901be06c09e80886dd0d722db0c61337	132547
+info	github.com/aws/aws-sdk-go-v2/credentials	v1.20.5	a9ef3c4edf1a2351dc36fef82fb1a3751c4b218166e5f10321df5c14f0e03806	230	{"Origin":{"Hash":"4e0240a139dc4638067f89502ea38ba465fef164","Ref":"refs/tags/credentials/v1.20.5","Subdir":"credentials","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-14T19:03:55Z","Version":"v1.20.5"}
+mod	github.com/aws/aws-sdk-go-v2/credentials	v1.20.5	8de41e33f9b93fdb1349c42cef2040a45b5ac924742745eeb68c50732de324eb	1670
+zip	github.com/aws/aws-sdk-go-v2/credentials	v1.20.5	7416fec887b9681feb4aad5eb8248589cde210a65f711600df8c06dbf9e7c425	76437
+info	github.com/aws/aws-sdk-go-v2/feature/ec2/imds	v1.20.0	c9f125c03813d202ecaeccb0de59b4eabb761c658198aa3639f8f179e5e8a30f	240	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/feature/ec2/imds/v1.20.0","Subdir":"feature/ec2/imds","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.20.0"}
+mod	github.com/aws/aws-sdk-go-v2/feature/ec2/imds	v1.20.0	6dd69e7afaf36335971f4ba0108ee40ebf1914888e2f8d59308f3358b51ada53	198
+zip	github.com/aws/aws-sdk-go-v2/feature/ec2/imds	v1.20.0	a7e436ec8ab20d8debc95681b7c7915c39c098c3b7e38a84a32a10a903859584	45569
+info	github.com/aws/aws-sdk-go-v2/internal/configsources	v1.5.3	d9568f370d0ab259cd426138b5d074e56e3763c7c55149a0c4fe6ec6a74825de	250	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/internal/configsources/v1.5.3","Subdir":"internal/configsources","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.5.3"}
+mod	github.com/aws/aws-sdk-go-v2/internal/configsources	v1.5.3	03c0017a2bd039c72ebaea2c6990fdcac8d74b5c7644ca2937637f1df60e48f9	216
+zip	github.com/aws/aws-sdk-go-v2/internal/configsources	v1.5.3	03061e5b669d0809ef0b96bf9bc14a8ed822a648932f9634783d3b93e1c709a1	9234
+info	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2	v2.8.3	8e00c161fbb23014e489847ad14c51c5d1459c09a965629c1a5d911c55b3fa30	242	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/internal/endpoints/v2.8.3","Subdir":"internal/endpoints","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v2.8.3"}
+mod	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2	v2.8.3	aef227e5174fe9775ba6712911835dba5255a4f2c9c812c2b97b9a891186d17c	203
+zip	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2	v2.8.3	34cdeb5d32175e9e7d3c9d9bfb4f0aaf1e7fc112efb1e40dd52cc74d0e71abb2	14365
+info	github.com/aws/aws-sdk-go-v2/internal/v4a	v1.5.3	17262b340e72b0e026c5b4fe92e2ac496d0cdba818a129ee4d62f792803ad95d	230	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/internal/v4a/v1.5.3","Subdir":"internal/v4a","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.5.3"}
+mod	github.com/aws/aws-sdk-go-v2/internal/v4a	v1.5.3	ce6b6365b73140b397e6251c62985606c23d9875e415517e2b88b06af4710460	191
+zip	github.com/aws/aws-sdk-go-v2/internal/v4a	v1.5.3	ae2c3903b5ce6d2363da1743cc4e3fe4364cdcdd7358cbc6b29e7075404f2e43	38569
+info	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding	v1.13.19	ed89fecac60315ecbcf62be7727e8834c1a16705d00fdfc663d733935a18bd5c	274	{"Origin":{"Hash":"a30468cff35d6e385287a0cbff0ac11aa7202529","Ref":"refs/tags/service/internal/accept-encoding/v1.13.19","Subdir":"service/internal/accept-encoding","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-08-26T18:43:21Z","Version":"v1.13.19"}
+mod	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding	v1.13.19	104f41e3a90a5b75dfbd394fa4d8c423c25dd024d533c0a7c67663044a8be6f3	120
+zip	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding	v1.13.19	cd55f71c785b8d9b08ae8eeb8d9803e38a4c6f4905c1cf9ff54a30f1cd5c858d	11309
+info	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url	v1.14.3	84077a6637f45b3569b3c3262fb7208c198bdeea1182faa2151f15efab736429	268	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/service/internal/presigned-url/v1.14.3","Subdir":"service/internal/presigned-url","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.14.3"}
+mod	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url	v1.14.3	21f30116da9d157b61a81f42163c6b1847a53ec2221ff9cc38d6331567a915d2	212
+zip	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url	v1.14.3	80eb7bb3b353f93ba38c961750ec5e350bd07d68907dc76c8ea24705c75fa4a8	12198
+info	github.com/aws/aws-sdk-go-v2/service/route53	v1.70.0	9ca05780a1343b8738ebfeb7c5d5bb6959d782ef2da4020580a45c75b58152f7	238	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/service/route53/v1.70.0","Subdir":"service/route53","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.70.0"}
+mod	github.com/aws/aws-sdk-go-v2/service/route53	v1.70.0	2313900215a0438be9cb921b03c0885aca1a453baa5fbb4a01aeb60cbeed79c9	499
+zip	github.com/aws/aws-sdk-go-v2/service/route53	v1.70.0	1e62d476d9d742c93ff119862fb8421a3f8cb7b0b4ab8b3170c349d25f205de1	346905
+info	github.com/aws/aws-sdk-go-v2/service/secretsmanager	v1.50.0	37fcc3debf00a569b3b97660aa8b9f1c2fa18cb5aec72b671f4d99880daaacde	252	{"Origin":{"Hash":"368ea9271e5a3ee2a730cb7fac82f3fa6125e5c5","Ref":"refs/tags/service/secretsmanager/v1.50.0","Subdir":"service/secretsmanager","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-15T18:17:17Z","Version":"v1.50.0"}
+mod	github.com/aws/aws-sdk-go-v2/service/secretsmanager	v1.50.0	3164835dfc76abbd30ae1dd2687877e35c2c0a347bb13a39d92b1307648b2493	506
+zip	github.com/aws/aws-sdk-go-v2/service/secretsmanager	v1.50.0	d3ba5673d4998d4ed61097470d4fefd96ab8c8b5602aa1987ba238dfdaee677f	184467
+info	github.com/aws/aws-sdk-go-v2/service/signin	v1.10.0	be6b928bc5ca6b881bb2501dc81dc069884b2a2ef7efbdaced672be8d08b9e2c	236	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/service/signin/v1.10.0","Subdir":"service/signin","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.10.0"}
+mod	github.com/aws/aws-sdk-go-v2/service/signin	v1.10.0	0d29e01e64120508163d499e8f35843ab8c6c1a4932afec5693625d143016101	498
+zip	github.com/aws/aws-sdk-go-v2/service/signin	v1.10.0	ae52f22eb436d1790b68553ea46067ab481d894bfc3b2349cd7561305dec8b4c	83706
+info	github.com/aws/aws-sdk-go-v2/service/sso	v1.38.0	8cb81c94296c77411da6361654481697747439e1d3c59b22c0fb85298db64a9d	230	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/service/sso/v1.38.0","Subdir":"service/sso","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.38.0"}
+mod	github.com/aws/aws-sdk-go-v2/service/sso	v1.38.0	07612f72853d68e39367f6b980c01d921a307b5cbf380415f17662af6f3bb0ac	495
+zip	github.com/aws/aws-sdk-go-v2/service/sso	v1.38.0	c479a781b8f851a9e86c272c7fb96a83e17229f07cae05addfd8574ae373f414	61664
+info	github.com/aws/aws-sdk-go-v2/service/ssooidc	v1.43.0	dd84b4c22b190c54c93c40ccf71ff4ad07596f82ada24312697c047483889b32	238	{"Origin":{"Hash":"b189f382f4924bc6c948c9942e17c547553faf0d","Ref":"refs/tags/service/ssooidc/v1.43.0","Subdir":"service/ssooidc","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-09T18:16:59Z","Version":"v1.43.0"}
+mod	github.com/aws/aws-sdk-go-v2/service/ssooidc	v1.43.0	08bcbe29345a84ed2c630796631798584a4aee3e46fbd0b23db4b108e7c81366	499
+zip	github.com/aws/aws-sdk-go-v2/service/ssooidc	v1.43.0	5b04bfe49ef9d167539bcbb4b4a9d768ea7baf6237e79bd6d8b005a3a336db7e	68128
+info	github.com/aws/aws-sdk-go-v2/service/sts	v1.51.0	7c6dc41276eca5de149b0122560a6a90e075e2f5356d96690a1ca4194498108d	230	{"Origin":{"Hash":"4e0240a139dc4638067f89502ea38ba465fef164","Ref":"refs/tags/service/sts/v1.51.0","Subdir":"service/sts","URL":"https://github.com/aws/aws-sdk-go-v2","VCS":"git"},"Time":"2026-09-14T19:03:55Z","Version":"v1.51.0"}
+mod	github.com/aws/aws-sdk-go-v2/service/sts	v1.51.0	897db2ea0af12326f465ce6bf5f029ce4e11d98aaaa7147eee04301b7a2c1e79	984
+zip	github.com/aws/aws-sdk-go-v2/service/sts	v1.51.0	1812bd9ea22bd880ff947ff7b739f0bf8ff6114b907a5fb56bd3df1c12821b18	114746
+info	github.com/aws/smithy-go	v1.28.1	b84dce0992808ea969a0297c944ac0d5cb741bb355be6bd364695e442f19068b	191	{"Origin":{"Hash":"73ba51d486a810a87e398d427b3b48c6927c30bd","Ref":"refs/tags/v1.28.1","URL":"https://github.com/aws/smithy-go","VCS":"git"},"Time":"2026-08-26T15:15:51Z","Version":"v1.28.1"}
+mod	github.com/aws/smithy-go	v1.28.1	77bb1f126ec520dade5c97d14a05deb9696fc29a853520b943aecd3849219e81	41
+zip	github.com/aws/smithy-go	v1.28.1	88b0cddd5c35c76652b846b3a8ad2cbe52db0738af592e791976f1ac590750de	533610
+info	github.com/beorn7/perks	v1.0.1	2867695b251c0785ccf00468efa89a87fd3b4fb299fec553cd2e496053437631	50	{"Time":"2019-07-31T12:00:54Z","Version":"v1.0.1"}
+mod	github.com/beorn7/perks	v1.0.1	c870b3fe50b6944fab095b06208d9c8898763e9173cb1eed3258c3d58309ba66	40
+zip	github.com/beorn7/perks	v1.0.1	25bd9e2d94aca770e6dbc1f53725f84f6af4432f631d35dd2c46f96ef0512f1a	14678
+info	github.com/caddyserver/certmagic	v0.25.4	21405fd1a5494006ae6b62599aafb055517d7fc613eb7d68d23feaa1ec24ca59	199	{"Origin":{"Hash":"cf6f57dc2126cf91f2b582c63a8668c6bf3b785d","Ref":"refs/tags/v0.25.4","URL":"https://github.com/caddyserver/certmagic","VCS":"git"},"Time":"2026-06-09T22:06:08Z","Version":"v0.25.4"}
+mod	github.com/caddyserver/certmagic	v0.25.4	44921499a28abaaa07388ba7ed4abb7384011e453fd374898b0a914c77865bf5	627
+zip	github.com/caddyserver/certmagic	v0.25.4	0695eebc04c499ab2b0b0e6d0e28e22b84c0e5f5f5fb61e289fb372eda8f6ce3	256179
+info	github.com/caddyserver/zerossl	v0.1.5	874f4c5c80177c569ad9f43d767c71998d80e271949341f9de771c2694c07e27	195	{"Origin":{"Hash":"7bb50019be842e1453e62b9529e9c2a72c186a84","Ref":"refs/tags/v0.1.5","URL":"https://github.com/caddyserver/zerossl","VCS":"git"},"Time":"2026-02-16T15:01:48Z","Version":"v0.1.5"}
+mod	github.com/caddyserver/zerossl	v0.1.5	a88b3c5a9a7aedabaa3457347106338d801db5e448cc31ac6b8be61ad78d6d9b	49
+zip	github.com/caddyserver/zerossl	v0.1.5	96e5fc179f77464888efe39d426151797b003171076ea451e3ca4132b18b7b4e	8841
+info	github.com/cenkalti/backoff/v5	v5.0.3	baf090ecfc2b550e2da65bbf1e8806941347086a932e7ac36be9ba43e4db96e2	192	{"Origin":{"Hash":"7cad66a637c4ffff09d0795608116ddcc7eb1769","Ref":"refs/tags/v5.0.3","URL":"https://github.com/cenkalti/backoff","VCS":"git"},"Time":"2025-07-23T16:23:35Z","Version":"v5.0.3"}
+mod	github.com/cenkalti/backoff/v5	v5.0.3	43ecf1255f004bf9e5e18749c275507326aa1f26b2b504185dd6db07efbbffc7	47
+zip	github.com/cenkalti/backoff/v5	v5.0.3	58e4d9014277bc1c5c7ab64539137923964cc3920303a4f771d02a532939bedb	15764
+mod	github.com/cespare/xxhash/v2	v2.1.1	a090f8eaaf59cc2adf163299ebefe797e1dca3f6add2c8e88a6a3b90ba538b02	45
+info	github.com/cespare/xxhash/v2	v2.3.0	3430177c73d37fcd2771ca178514a2eb723c84430e275dd31f1cb116a5547c74	190	{"Origin":{"Hash":"998dce232f17418a7a5721ecf87ca714025a3243","Ref":"refs/tags/v2.3.0","URL":"https://github.com/cespare/xxhash","VCS":"git"},"Time":"2024-04-04T20:00:10Z","Version":"v2.3.0"}
+mod	github.com/cespare/xxhash/v2	v2.3.0	a090f8eaaf59cc2adf163299ebefe797e1dca3f6add2c8e88a6a3b90ba538b02	45
+zip	github.com/cespare/xxhash/v2	v2.3.0	145a26cdc7c49db566017b807c4989ee7f7ddeb569423e9cb99f995fac3621d3	17573
+info	github.com/cihub/seelog	v0.0.0-20170130134532-f561c5e57575	a103f9b2da8134cde308172d505a101679c3f4fd712a9433d492891b9c3a1c21	78	{"Time":"2017-01-30T13:45:32Z","Version":"v0.0.0-20170130134532-f561c5e57575"}
+mod	github.com/cihub/seelog	v0.0.0-20170130134532-f561c5e57575	96cda2cc26b1ca501fcd4e6e3022a159e65bf3e0b9c92724ea7f5422b1daf593	31
+zip	github.com/cihub/seelog	v0.0.0-20170130134532-f561c5e57575	fc279208e6094fb22c8ea651c6e9794844069693c9b916c225276c54f7e76bfe	128564
+info	github.com/coredns/caddy	v1.1.4	174ab4f99769e334ea103516d4cdbb53fb6a7e5e93800d77e326bf8d551f37d3	189	{"Origin":{"Hash":"32b690fa1f905e22b2f836cd18445dc98d3e9c8c","Ref":"refs/tags/v1.1.4","URL":"https://github.com/coredns/caddy","VCS":"git"},"Time":"2025-12-29T22:35:01Z","Version":"v1.1.4"}
+mod	github.com/coredns/caddy	v1.1.4	c1e0194bea93f74650a3ed6b5a04c2206a6a7ab514b74f534661b28bc2226eba	147
+zip	github.com/coredns/caddy	v1.1.4	8556ebb9dbd48f3d032836c9d74022945d1f692aa716498b1a57883405290390	69757
+info	github.com/coreos/go-semver	v0.3.1	bc16d75511ca03ad08bb038c2231f5f564836498a5b2bdf2d640507b9d7bdf8d	192	{"Origin":{"Hash":"c16f28124668daf02b2a32a431dec2f183977ffc","Ref":"refs/tags/v0.3.1","URL":"https://github.com/coreos/go-semver","VCS":"git"},"Time":"2023-01-16T22:04:39Z","Version":"v0.3.1"}
+mod	github.com/coreos/go-semver	v0.3.1	08609c644cbcd0a4801e2585ee5a9dd283f92a412224d86e0dbd431530e6ce38	76
+zip	github.com/coreos/go-semver	v0.3.1	e72820542b5913afe0a52e956e0b3834e9fbb080641fed183117f862fab74e8a	14749
+info	github.com/coreos/go-systemd/v22	v22.7.0	4976f5ae1f80f31f122d2e2aa9ac20e763ae687513821b2dd99008f739d27a7d	195	{"Origin":{"Hash":"4dc4ee60b8394d431f19a3c599040ef758884a27","Ref":"refs/tags/v22.7.0","URL":"https://github.com/coreos/go-systemd","VCS":"git"},"Time":"2026-01-27T23:34:05Z","Version":"v22.7.0"}
+mod	github.com/coreos/go-systemd/v22	v22.7.0	502642c96e9d9996d696fcb269ac99aa9f5ab9f3a4d98b21931230af69967140	121
+zip	github.com/coreos/go-systemd/v22	v22.7.0	25c78b5dae5afa61291a8559328007cc77e60dd6747454af5c83423c26cfdfba	133635
+mod	github.com/davecgh/go-spew	v1.1.0	bcb29393251237b79a17b6c19bf29134f43e8f438c3198988fcd461a1cdf05cc	34
+mod	github.com/davecgh/go-spew	v1.1.1	bcb29393251237b79a17b6c19bf29134f43e8f438c3198988fcd461a1cdf05cc	34
+info	github.com/davecgh/go-spew	v1.1.2-0.20180830191138-d8f796af33cc	724bf7eb786b3b7ec5f8d5bd9acbe4e1328518dc8eeea6bf1bd1cf05c8673d55	80	{"Time":"2018-08-30T19:11:38Z","Version":"v1.1.2-0.20180830191138-d8f796af33cc"}
+mod	github.com/davecgh/go-spew	v1.1.2-0.20180830191138-d8f796af33cc	bcb29393251237b79a17b6c19bf29134f43e8f438c3198988fcd461a1cdf05cc	34
+zip	github.com/davecgh/go-spew	v1.1.2-0.20180830191138-d8f796af33cc	b4d0923b169b194f0016ec46f3df1ab0c68e27999743e43fe2de59ecb2484128	61763
+mod	github.com/dgryski/go-farm	v0.0.0-20190423205320-6a90982ecee2	4d1cce88c7c7ee061c9f13e4acaa521f725087a74c77429f1105b40844d9cedb	34
+mod	github.com/dgryski/go-farm	v0.0.0-20240924180020-3414d57e47da	4d1cce88c7c7ee061c9f13e4acaa521f725087a74c77429f1105b40844d9cedb	34
+zip	github.com/dgryski/go-farm	v0.0.0-20240924180020-3414d57e47da	e933606e2e726e6f07db98d1ce0ce38b3af3bdbb85c384f4f7eb3607cf00525f	32465
+info	github.com/dimchansky/utfbom	v1.1.1	43c68cec9459d58bcef74db0da7cc3c802f2e4b1b94913ee6b3510cf5c4348a6	50	{"Time":"2020-11-06T16:33:08Z","Version":"v1.1.1"}
+mod	github.com/dimchansky/utfbom	v1.1.1	a34a2d63f18472cff12bb0a6d29d758c75a29053e766c949412534eafba31bd5	36
+zip	github.com/dimchansky/utfbom	v1.1.1	0c1a11101602d5f57ac3e790c0b72e09ff87d8d535535f43fbee9e6a42327350	9862
+info	github.com/dnstap/golang-dnstap	v0.4.0	183e1d8fb36ed16f786778d956bda204526a6712e2d82235d2f0d790c72cb99e	50	{"Time":"2021-02-09T20:50:54Z","Version":"v0.4.0"}
+mod	github.com/dnstap/golang-dnstap	v0.4.0	d77e2dbfe4fc6f9029789e8699eec680a8ea0347b4bf38e24bef9130978bac5c	168
+zip	github.com/dnstap/golang-dnstap	v0.4.0	0d41562a609c0987542047baf17a1cb7ab8f76c148da0321732d0f25415b9c52	49464
+mod	github.com/docker/go-units	v0.5.0	ed45577dfb3562bc693dced91b172f710f1a9089c40808529f447348754e0c58	34
+zip	github.com/docker/go-units	v0.5.0	039d53ebe64af1aefa0be94ce42c621a17a3052c58ad15e5b3f357529beeaff6	14824
+mod	github.com/dustin/go-humanize	v1.0.0	149e3cc4c5086fe06604be0bf16260f3881bd7af82b41e48d9291ebb5a0cd83b	37
+info	github.com/dustin/go-humanize	v1.0.1	13d13f3851f5b206af82030b9de1280c26f8ee0e45cd6e0dc27849adef8c4257	194	{"Origin":{"Hash":"9ec74ab2f7a7161664182fd4e5e292fccffbc75f","Ref":"refs/tags/v1.0.1","URL":"https://github.com/dustin/go-humanize","VCS":"git"},"Time":"2023-01-10T06:44:38Z","Version":"v1.0.1"}
+mod	github.com/dustin/go-humanize	v1.0.1	4325999d0a6841031258a2561c22879d9fbdf77abc6b32a17b1cb6edf0810fb2	46
+zip	github.com/dustin/go-humanize	v1.0.1	319404ea84c8a4e2d3d83f30988b006e7dd04976de3e1a1a90484ad94679fa46	27015
+info	github.com/ebitengine/purego	v0.10.0	434011f7ad290eb0d2eff5bd5dded2dd2a41be6942e60b8bec37c3a6373513b5	195	{"Origin":{"Hash":"bb9b1f4a53d96a474537a6f1a25bf304b95450a7","Ref":"refs/tags/v0.10.0","URL":"https://github.com/ebitengine/purego","VCS":"git"},"Time":"2026-02-23T08:46:21Z","Version":"v0.10.0"}
+mod	github.com/ebitengine/purego	v0.10.0	4920ecc5239d79446d9b61542c3749c7389d2178d3a142e557e0379051866514	45
+zip	github.com/ebitengine/purego	v0.10.0	df60829d7715bf609e78ebb6c945bdb865ccdfec56a71603d6e12346f98065c9	219025
+info	github.com/emicklei/go-restful/v3	v3.13.0	7293e6ac259f60a07aedcee38bef78843900f6d6c2e877f3b668a9e275ec215d	197	{"Origin":{"Hash":"3fae6e4c6809ebc26315d163196ea7ab8e0685cb","Ref":"refs/tags/v3.13.0","URL":"https://github.com/emicklei/go-restful","VCS":"git"},"Time":"2025-08-14T12:44:48Z","Version":"v3.13.0"}
+mod	github.com/emicklei/go-restful/v3	v3.13.0	de61515c41eaf0be524b2c8aa7a3f321b339f19788129ac44449af7e1278fd5e	50
+zip	github.com/emicklei/go-restful/v3	v3.13.0	06bd60484b324de0b8e4366d4ed326db2e1dc730459b46e19a5306a108439c77	90992
+info	github.com/expr-lang/expr	v1.17.8	c19e9b6156cf86facd8072ca6cb89daf413ba421ec1e0835c5ca62cf3034dcc3	192	{"Origin":{"Hash":"21f4f0575591d7097e576edd7983daf23c1e4afe","Ref":"refs/tags/v1.17.8","URL":"https://github.com/expr-lang/expr","VCS":"git"},"Time":"2026-02-14T13:16:09Z","Version":"v1.17.8"}
+mod	github.com/expr-lang/expr	v1.17.8	257ec8bf588caa33dc310e26ee1c6763759ad3b7fc0a9da8e6efa43da847b558	42
+zip	github.com/expr-lang/expr	v1.17.8	82210321f9078349af5dbf774e2a2d9f4aabe79db23a3124034722cdc632cd80	2142024
+info	github.com/farsightsec/golang-framestream	v0.3.0	5319f0ea07296e102d0dca593e51a9121afa89b6651895021abaefe4f07f3250	50	{"Time":"2020-09-08T18:24:14Z","Version":"v0.3.0"}
+mod	github.com/farsightsec/golang-framestream	v0.3.0	c0055e2e243e5e135e8d363d4cdcb7bae93139b5510878fdc6db3298f5d7c926	49
+zip	github.com/farsightsec/golang-framestream	v0.3.0	a6f3455ee44059ebe426feb6edb2608a4374bc465c099dd91060f0a6b544be32	17636
+info	github.com/felixge/httpsnoop	v1.0.4	7ab384685466bd85b8642b017fa4e294e92bd0ce1221c58131933d30b360fff6	193	{"Origin":{"Hash":"c5817c27ec125409c069052fdd171023c353501c","Ref":"refs/tags/v1.0.4","URL":"https://github.com/felixge/httpsnoop","VCS":"git"},"Time":"2023-03-12T10:31:09Z","Version":"v1.0.4"}
+mod	github.com/felixge/httpsnoop	v1.0.4	3d0a6d397b775e49388eb75e7903691058d7a8cb7ce4f11637a876f387115bb9	45
+zip	github.com/felixge/httpsnoop	v1.0.4	75aa471311265e9860df0e523400b4650ed0c1a33262786a421f07226792e494	17593
+info	github.com/flynn/go-shlex	v0.0.0-20150515145356-3f9db97f8568	d4f4e565b605600ed60e931088c8d18c9a9a73fe2af9c860db3ac8325cd76603	78	{"Time":"2015-05-15T14:53:56Z","Version":"v0.0.0-20150515145356-3f9db97f8568"}
+mod	github.com/flynn/go-shlex	v0.0.0-20150515145356-3f9db97f8568	7dc3e995133889aadd6baa20c0311206cc525cb8b55b721c152e43b74bb5c50e	33
+zip	github.com/flynn/go-shlex	v0.0.0-20150515145356-3f9db97f8568	ea68a1d391e59ebc04ce986b88e000327bb141e5e8e80ef93af950bca42bb4cc	9718
+info	github.com/fxamacker/cbor/v2	v2.9.1	7ea486a674922c9f5db363e3f546507d13fcf171f9bb70105eefe2f9295e403f	190	{"Origin":{"Hash":"63d1c6649d4235ae97b78c40888d9b2a0b426878","Ref":"refs/tags/v2.9.1","URL":"https://github.com/fxamacker/cbor","VCS":"git"},"Time":"2026-03-30T13:23:16Z","Version":"v2.9.1"}
+mod	github.com/fxamacker/cbor/v2	v2.9.1	d7bbc7167a38275831838773356370c370d2ce3ed28c60486f52cdd5a799c92b	85
+zip	github.com/fxamacker/cbor/v2	v2.9.1	e1e319f75e5565aab662a6afd7ddc1565ab415bd46ee82ff4958fde909da20eb	208895
+mod	github.com/go-jose/go-jose/v4	v4.1.4	e069e6002d29495b8c2dc6cf0d3b56a075ec5be7abb6c2eb1a1c0845cb66b8b3	48
+zip	github.com/go-jose/go-jose/v4	v4.1.4	06a37b6668012a2dd109a5f71f6ae15387dc808b35d3cf73f5e406e78a17b027	370134
+mod	github.com/go-logr/logr	v1.2.2	519b1d6da5eeef675b4a1857d628f05f110a2b8cb3c423b715fea80d0975a518	40
+info	github.com/go-logr/logr	v1.4.4	2fb556eeb8cdf7d913bc075a96ee5f23203a4ec8ccf958ba8222e11550c16b0f	188	{"Origin":{"Hash":"96a9abaa56526dd5d51745e817732a2d61505fb7","Ref":"refs/tags/v1.4.4","URL":"https://github.com/go-logr/logr","VCS":"git"},"Time":"2026-07-20T18:51:02Z","Version":"v1.4.4"}
+mod	github.com/go-logr/logr	v1.4.4	c496f30d700f02b49a1b50bc2486a27c2f74df3dce75d9db6d2d43975b381727	40
+zip	github.com/go-logr/logr	v1.4.4	3ab107c1d280ce798eaa744efd595982fa709d4023f3f38d24189827483c1710	91231
+info	github.com/go-logr/stdr	v1.2.2	feaeb4f7f13498ebd0af44d8a5c123ea0f82dee42c9b8f8a24e5dec57446f259	50	{"Time":"2021-12-14T08:00:35Z","Version":"v1.2.2"}
+mod	github.com/go-logr/stdr	v1.2.2	0812160f77474d8dbf692b7caaee7fd5508448c705d9b54b5a3496ac44468c2c	80
+zip	github.com/go-logr/stdr	v1.2.2	9dd6893bf700198485ae699640b49bc1efbc6c73b37cb5792a0476e1fd8f7fef	12533
+mod	github.com/go-ole/go-ole	v1.2.6	de7da59858d6121956da002ded711242cc14ecf597e932a8625246418fd3bbaa	102
+mod	github.com/go-ole/go-ole	v1.3.0	fcf0840f2ff50fbc3b5a54b9d4cb240c64d47003ab03e420aeff0057015a8953	74
+zip	github.com/go-ole/go-ole	v1.3.0	bbf5b3bfa227a5daa06eb16ecdecccc0b20e08749bf103afb523fd72764e727a	83920
+info	github.com/go-openapi/jsonpointer	v1.0.0	2fed589cf29751614bf936a7ccdf512aa8dc6a3fa7eb5006e0b807987b924498	198	{"Origin":{"Hash":"94e86086395062d3094c09c01aea3592df0fcba3","Ref":"refs/tags/v1.0.0","URL":"https://github.com/go-openapi/jsonpointer","VCS":"git"},"Time":"2026-07-07T18:49:54Z","Version":"v1.0.0"}
+mod	github.com/go-openapi/jsonpointer	v1.0.0	99718351aaec019f59f73768dc790f08175880594df60df508d8ffc2c42fca38	101
+zip	github.com/go-openapi/jsonpointer	v1.0.0	403cc887595921a24880a173862ea95b7c46f0747725d7b75c31165e0647e157	62938
+info	github.com/go-openapi/jsonreference	v1.0.0	d74c2f3db1331608554ad1ecdd132cfeceefb1aca859955e7f1886660d415327	200	{"Origin":{"Hash":"edb350b0a13c936c03de055a3483ea334a50478c","Ref":"refs/tags/v1.0.0","URL":"https://github.com/go-openapi/jsonreference","VCS":"git"},"Time":"2026-07-07T18:58:49Z","Version":"v1.0.0"}
+mod	github.com/go-openapi/jsonreference	v1.0.0	5b1fe7285e7a218123374db46a7cc2d2ece0940f0671fee7dc58a11aa503f890	150
+zip	github.com/go-openapi/jsonreference	v1.0.0	381714f9c672c76e573155e6e6fb38ab1ccceafba6163d672a52d4460a999f5b	34743
+info	github.com/go-openapi/swag	v0.27.1	9caf6d06ea2dc1a1da4aea59f0cfff8d1d8ae09760b6f3e1dc5e236eab6aa1df	193	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/v0.27.1","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag	v0.27.1	4b7f761e2d2f5f88b457e134e7f3d435abf1239d1f794d96c27126314b614c18	1478
+zip	github.com/go-openapi/swag	v0.27.1	974f84d06abf41b07a2746ead15d63fd60e54097d59aaef2e64f48d037dc526a	53579
+info	github.com/go-openapi/swag/cmdutils	v0.27.1	1bf0ed1c7428ef57b532fd38af6338691fea8c700849db3a92dd7e45373a0101	222	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/cmdutils/v0.27.1","Subdir":"cmdutils","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/cmdutils	v0.27.1	5d7f7850b93cda7e6677fd07091f0925eeb6cfe15de595079182c5d2ba7f5ba4	54
+zip	github.com/go-openapi/swag/cmdutils	v0.27.1	78db276543527cb558989674ce270209df6011240431fcf97b1e70c5bddae7da	5402
+info	github.com/go-openapi/swag/conv	v0.27.1	82f6c42be99537757d856a284fdc2051a95626a5e781a487b0120cb5ed14259a	214	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/conv/v0.27.1","Subdir":"conv","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/conv	v0.27.1	4c384595c3c91de7f524dc6ab6ffd217f1d09efa3316c0fab85d4b2925d442b7	212
+zip	github.com/go-openapi/swag/conv	v0.27.1	05937194045677859dec6bdb3408ac359294e68e2188bc9a37bed759f2cdb040	14783
+info	github.com/go-openapi/swag/fileutils	v0.27.1	c5ebaa347c528b4a123b40bc1c4d6cefb1158e8ff33a8ad3ff9a01ab663617d8	224	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/fileutils/v0.27.1","Subdir":"fileutils","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/fileutils	v0.27.1	99b8aeceb39266188bcd3e78692e07a0bde3af694bf7472e2f01d87b296fca51	104
+zip	github.com/go-openapi/swag/fileutils	v0.27.1	9a155475b4da15cf5375405cad7faa79ec05b29e47ec6eb5fce9640f491b4438	8089
+info	github.com/go-openapi/swag/jsonutils	v0.27.1	ea8e6edb0a16188184f7030466c73006da1a0a31c0e194a5a2b033cbb6677145	224	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/jsonutils/v0.27.1","Subdir":"jsonutils","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/jsonutils	v0.27.1	6dddc8d66e4184bdcb14b524130985e7bb1893121d513471a769e566c0b6d4b1	643
+zip	github.com/go-openapi/swag/jsonutils	v0.27.1	6b89134110a6c678522007a7cae3ab24f1ce1be43189a913562dc36a9ed6384d	46587
+mod	github.com/go-openapi/swag/jsonutils/fixtures_test	v0.27.1	5611b10227f9ade2e719bfd9551df3e7b2a8d895672d92b9008989d941125166	203
+zip	github.com/go-openapi/swag/jsonutils/fixtures_test	v0.27.1	1b05b410fc2754c6c1ac941e22a5d9a0f89644897e41ccdb2e73cc17047ab1cc	10361
+info	github.com/go-openapi/swag/loading	v0.27.1	6968eaab0dc3382efdefe7c80bf502f98cd3aebfe93b6e1f9303c69e607b032f	220	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/loading/v0.27.1","Subdir":"loading","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/loading	v0.27.1	9dee7499914ac49e08197358d07e434e2e978dc04baf49619ecbd4f85977db6c	828
+zip	github.com/go-openapi/swag/loading	v0.27.1	a18fe594620951693c40e617782f03163ecf81027d2fb6929c98cd950855fd38	23362
+info	github.com/go-openapi/swag/mangling	v0.27.1	2e16570579bf0844345e41e9a0236220213352acd356addbd86a2d110a9975e7	222	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/mangling/v0.27.1","Subdir":"mangling","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/mangling	v0.27.1	26566798d5fde5067aa46b8df8ac4316a486ca45c712f0e4d5df44c44b1d2164	103
+zip	github.com/go-openapi/swag/mangling	v0.27.1	394d88863125724f54693ec9d45bd1bba5fda66357e4ea9fac042b081147c72d	31208
+info	github.com/go-openapi/swag/netutils	v0.27.1	9efcd8ca1a9812806c4110a1948e60c7c6baa11c0f71f9672919accd58017c66	222	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/netutils/v0.27.1","Subdir":"netutils","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/netutils	v0.27.1	06ec2dd38c56224e4c28f83cf5a19f644cc9e337648cabecd2ec11cb8bf90ef8	103
+zip	github.com/go-openapi/swag/netutils	v0.27.1	6a4137f74a3fb4c41554c5a381dd41de399d3b19e6147b9d530c9b4c97a6716d	6280
+info	github.com/go-openapi/swag/pools	v0.27.1	8af8019ebd6e4d56f06c0cc475cf708b8179bfc98aecdf96bdf5ed7f0b846727	216	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/pools/v0.27.1","Subdir":"pools","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/pools	v0.27.1	a87f0b8df04b856635e539184142e3fcfdf2822053b7e8ef7a1f052adfec9f67	100
+zip	github.com/go-openapi/swag/pools	v0.27.1	5adc28aefb0f58ae71048e25013a0ca2f38ed527435f18483c1a74053c880208	23186
+info	github.com/go-openapi/swag/stringutils	v0.27.1	1b72a1f471328add37118329207c5f922266526b4b2d3211f63921f9232a714c	228	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/stringutils/v0.27.1","Subdir":"stringutils","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/stringutils	v0.27.1	9185eaef13046d583adbf6c5b032ce36652845a1a76d35922dd48d37c1a0cb7b	106
+zip	github.com/go-openapi/swag/stringutils	v0.27.1	304a9c1f952d40ec55ee92ca095b73f3eb54f402b4ec522cf1d717841d8b67f9	7734
+info	github.com/go-openapi/swag/typeutils	v0.27.1	af0825af57ddb909322cfe4d3abc5a7611d467d69749e4fbef0338b7f6ab4a6c	224	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/typeutils/v0.27.1","Subdir":"typeutils","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/typeutils	v0.27.1	95bf7bf393f25816f6ee9c0a6abab246fef35ac0b07395ed91e49c6ccdcc1101	104
+zip	github.com/go-openapi/swag/typeutils	v0.27.1	e5872b1ec074f1def37dc53b7d9d58cff9ba44a36f16bc024cf46e29df787f95	7128
+info	github.com/go-openapi/swag/yamlutils	v0.27.1	0a9449ad3d4933ae60f58e1238ab3d2e1c4f0bf5ec1fb7cdf3ae1043f72a071f	224	{"Origin":{"Hash":"c8a41f7226ee09d8f74ac3e9375d071041836b7c","Ref":"refs/tags/yamlutils/v0.27.1","Subdir":"yamlutils","URL":"https://github.com/go-openapi/swag","VCS":"git"},"Time":"2026-07-19T21:15:48Z","Version":"v0.27.1"}
+mod	github.com/go-openapi/swag/yamlutils	v0.27.1	6ecc5db9cd86d0e3a195ea74f27d81168d7f5c53f502b0020423e559b97341e6	737
+zip	github.com/go-openapi/swag/yamlutils	v0.27.1	13c63f3dde3719ad527ce413051a9fa6cb59c0357205f010c3713ad8f21db0da	22204
+mod	github.com/go-openapi/testify/enable/yaml/v2	v2.6.0	18955adab29dbe9baa8dd22fadcef06866ab1eb1788aae02d2d47d3895c32eba	195
+zip	github.com/go-openapi/testify/enable/yaml/v2	v2.6.0	985eeb1d1df3582dded573d476253753e81de708a3d47b36721acd3114b3439f	11032
+mod	github.com/go-openapi/testify/v2	v2.6.0	9c96c94216218464efe47ca6d168d4ed2cdc5738ea84eed3f258f5616814bbd4	67
+zip	github.com/go-openapi/testify/v2	v2.6.0	bcee6bf36660ceb6cc307e5302e4ff7087f26df7f7ee7c591a7b0c5d19024f72	702136
+mod	github.com/golang-jwt/jwt/v4	v4.0.0	885fa9e7e2976337502c9036b1e23a613a48cd8f1af387866321ded24124d1c9	45
+mod	github.com/golang-jwt/jwt/v4	v4.2.0	885fa9e7e2976337502c9036b1e23a613a48cd8f1af387866321ded24124d1c9	45
+mod	github.com/golang-jwt/jwt/v4	v4.5.0	0f8e678e6495b652c5c8aec1879c8171cd6ff1cf435fb47fe536362f88994299	138
+info	github.com/golang-jwt/jwt/v4	v4.5.2	5186c432126e44cca41d2e97f7ab9ad2ff744633ad31a8b0bd02cf546e1fd1b8	190	{"Origin":{"Hash":"2f0e9add62078527821828c76865661aa7718a84","Ref":"refs/tags/v4.5.2","URL":"https://github.com/golang-jwt/jwt","VCS":"git"},"Time":"2025-03-21T20:49:30Z","Version":"v4.5.2"}
+mod	github.com/golang-jwt/jwt/v4	v4.5.2	0f8e678e6495b652c5c8aec1879c8171cd6ff1cf435fb47fe536362f88994299	138
+zip	github.com/golang-jwt/jwt/v4	v4.5.2	ec5ee69a31fd478fc197fddce7c06dad1abe7543095a55c4ee6546ae79d99a0f	78336
+info	github.com/golang-jwt/jwt/v5	v5.3.1	232ad36211bcd6be8342aa763f68ec07c6ae19bc503ec483e5622bb8d4c7ef8c	190	{"Origin":{"Hash":"7ceae619e739dc8a7bf577214aa8ebf26668e9db","Ref":"refs/tags/v5.3.1","URL":"https://github.com/golang-jwt/jwt","VCS":"git"},"Time":"2026-01-28T19:58:13Z","Version":"v5.3.1"}
+mod	github.com/golang-jwt/jwt/v5	v5.3.1	ce98fa479154259db056ded8254a6ae9c66f2b42e613e76ba0f026699b5e542f	45
+zip	github.com/golang-jwt/jwt/v5	v5.3.1	5c9a74494e2bc746cee56558b5473252af5767f7ea4044caa9ea0fa2a056fec7	91789
+mod	github.com/golang/mock	v1.6.0	bfb6a97ee76c72a56da2e8ac5dfd926166f793dfeafbbfb80cb33e6a060301a8	104
+mod	github.com/golang/protobuf	v1.4.0	0d092f7aa2877feb9e55aee2668286ebbf7e3d0711b1702d84c9225e4cca73f8	124
+mod	github.com/golang/protobuf	v1.4.0-rc.1	eb386ed18bb8d6092974524bd0cda610ad87bee1a4485c9f01bccb713e7dab1e	151
+mod	github.com/golang/protobuf	v1.4.0-rc.1.0.20200221234624-67d41d38c208	78c95913aee9dfebd1e84f8b862e98bb1848d1d3e9f22aaf909c4ef4f7e7293d	151
+mod	github.com/golang/protobuf	v1.4.0-rc.2	e2622048b96cd87173bd9aeb801a1010807a412e89529509e9a5099f1fc69ab4	151
+mod	github.com/golang/protobuf	v1.4.0-rc.4.0.20200313231945-b860323f09d0	1edf9512236391b88764083bde0391fc49864738432acfdcdd3229572dc71be1	154
+info	github.com/golang/protobuf	v1.5.4	724770b5dd45877bd2061c9821bcff28f31cd2efecee1cbb032fd987b84a162e	191	{"Origin":{"Hash":"75de7c059e36b64f01d0dd234ff2fff404ec3374","Ref":"refs/tags/v1.5.4","URL":"https://github.com/golang/protobuf","VCS":"git"},"Time":"2024-03-06T06:45:40Z","Version":"v1.5.4"}
+mod	github.com/golang/protobuf	v1.5.4	c5f873c621cfaaf563f8b66a0501a5be14390cb0859e5187ce616d0312a6c8f8	193
+zip	github.com/golang/protobuf	v1.5.4	9a2f43d3eac8ceda506ebbeb4f229254b87235ce90346692a0e233614182190b	208060
+info	github.com/google/gnostic-models	v0.7.0	089fe400ac655d831bd0fd83efa775f096981e6f2937440afee102daba2b2d44	197	{"Origin":{"Hash":"82b4ba06c153dcd30e1dbcf93601b3bee5cb3792","Ref":"refs/tags/v0.7.0","URL":"https://github.com/google/gnostic-models","VCS":"git"},"Time":"2025-06-26T15:23:00Z","Version":"v0.7.0"}
+mod	github.com/google/gnostic-models	v0.7.0	d7c113d94383eb3acf6dece22054fa47b8101ffaeca6e351d0c82ddfe3e8b953	125
+zip	github.com/google/gnostic-models	v0.7.0	797a05cd73a30624ece79633c4db4631676adc1f30f07a0a7051ab39beca96c8	230134
+mod	github.com/google/go-cmp	v0.3.0	81df7917c225a9da7604b230d952fa278c60a8832c10d799385d134b05d5b087	40
+mod	github.com/google/go-cmp	v0.3.1	81df7917c225a9da7604b230d952fa278c60a8832c10d799385d134b05d5b087	40
+mod	github.com/google/go-cmp	v0.4.0	4036ab5636aa42bd313296cd3bfcb4c88912760c56a9e6655ae422d8767c80da	105
+mod	github.com/google/go-cmp	v0.7.0	31c874a1d2a18e62b0550f823ce7a575c8dec7f8fd9d4fa1959bb12d7f7c0f14	41
+zip	github.com/google/go-cmp	v0.7.0	64a9ce046f2c320e3783fba0d1f4a15f8a18f0b009b67bf27f7630919db3f539	130179
+mod	github.com/google/gofuzz	v1.0.0	fb009c01ee165bbaa85c85e8a3a794ea8e83f80714d4183465dc81d811b54427	41
+mod	github.com/google/gofuzz	v1.2.0	fb009c01ee165bbaa85c85e8a3a794ea8e83f80714d4183465dc81d811b54427	41
+zip	github.com/google/gofuzz	v1.2.0	5948f40af1923d8f98dc1d4191311030e40e0057fb255df19ebc0360f2faac16	22166
+mod	github.com/google/pprof	v0.0.0-20250403155104-27863c87afa6	3ff283dafc0c438033caee63bf323a84a1b18f9fd082c9577646aa012b4bfa4c	204
+zip	github.com/google/pprof	v0.0.0-20250403155104-27863c87afa6	03b371ebfb8b938c5b93ded8bd7d2451f984179d1b537a6c909621201e1145e3	4897988
+info	github.com/google/s2a-go	v0.1.9	7ad34d7e0e3009d2045d366ea88b7d7b2ed82611141f18d8dcbe88d83f5e7188	189	{"Origin":{"Hash":"b293be1aa7a6e6e4565f9967c093dd412253b267","Ref":"refs/tags/v0.1.9","URL":"https://github.com/google/s2a-go","VCS":"git"},"Time":"2025-01-06T17:53:46Z","Version":"v0.1.9"}
+mod	github.com/google/s2a-go	v0.1.9	47d4257200a74c3210f4bf07264f3a27eb39817ff01e24d92cc069dfb421325b	1712
+zip	github.com/google/s2a-go	v0.1.9	bf8f4b159d3fc201477822ed2514e4f05f58c764b78ffed73ec0accce5fb7f07	367776
+mod	github.com/google/uuid	v1.1.1	73da47b6338b00a082fd451aa35a3273d3adc09b8e9bba98dab01091e402af6e	30
+info	github.com/google/uuid	v1.6.0	3703c19d7d948a8bc5354b7e515d5297d3c5a8316958bcdd69eec2a7629513d7	187	{"Origin":{"Hash":"0f11ee6918f41a04c201eceeadf612a377bc7fbc","Ref":"refs/tags/v1.6.0","URL":"https://github.com/google/uuid","VCS":"git"},"Time":"2024-01-23T18:54:04Z","Version":"v1.6.0"}
+mod	github.com/google/uuid	v1.6.0	73da47b6338b00a082fd451aa35a3273d3adc09b8e9bba98dab01091e402af6e	30
+zip	github.com/google/uuid	v1.6.0	d0f02f377217f42702e259684e06441edbf5140dddcc34ba9bea56038b38a6ed	31981
+info	github.com/googleapis/enterprise-certificate-proxy	v0.3.20	8a8b4cb7f138a91f0b398ef8a0a3d1b6dbe044b3708cef11969bc3b7a0813e91	217	{"Origin":{"Hash":"99b47472c2d4d3e61fdfe2e56f0f5836318f61c1","Ref":"refs/tags/v0.3.20","URL":"https://github.com/googleapis/enterprise-certificate-proxy","VCS":"git"},"Time":"2026-08-03T21:28:31Z","Version":"v0.3.20"}
+mod	github.com/googleapis/enterprise-certificate-proxy	v0.3.20	cd84f86fd5b3ca10cd8c7f6ba2a603592d8cada3956d77f08d7cef2cfd19d73d	193
+zip	github.com/googleapis/enterprise-certificate-proxy	v0.3.20	45223f043df0c3132546ce277befc8014ec561e5cde52a90b751ba54e4eea9a3	101227
+info	github.com/googleapis/gax-go/v2	v2.24.0	44f365e9a023872e984aaf3b43c24e17151c5475113055716b5203debaebc4be	195	{"Origin":{"Hash":"9b9173c6aa5a5b9f95154e6f1fa69595342253f6","Ref":"refs/tags/v2.24.0","URL":"https://github.com/googleapis/gax-go","VCS":"git"},"Time":"2026-08-21T16:11:25Z","Version":"v2.24.0"}
+mod	github.com/googleapis/gax-go/v2	v2.24.0	c89e11dd9b7518025edd799e8fb42c2dd6eb1dfdaa9dfddd30928ebdc4ee057a	1152
+zip	github.com/googleapis/gax-go/v2	v2.24.0	b9d0bdf890ece7df5876904acb494808f1c0a1a0cfd3760b4a9a047358ea16ce	106074
+info	github.com/gorilla/websocket	v1.5.4-0.20250319132907-e064f32e3674	32659a109ccf4e7554ada81edee05ac774a4ea3b6edfac10af6e01986b89570e	198	{"Origin":{"Hash":"e064f32e3674d9d79a8fd417b5bc06fa5c6cad8f","URL":"https://github.com/gorilla/websocket","VCS":"git"},"Time":"2025-03-19T13:29:07Z","Version":"v1.5.4-0.20250319132907-e064f32e3674"}
+mod	github.com/gorilla/websocket	v1.5.4-0.20250319132907-e064f32e3674	ac9fb47d533c1e80480b5baa66ec6bd5e36e2d2a254470916a369fbb64c41cbf	135
+zip	github.com/gorilla/websocket	v1.5.4-0.20250319132907-e064f32e3674	81809e9741b37f386c8d28c9c6a23511f4a2465fd024a690a4c44a439e32e832	88847
+info	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	c396be1041fd6085e8b285a38dc6a1c472b6919b6d73ad5d251df55e6109a5a1	205	{"Origin":{"Hash":"ba9b55c1c15c84633be18c45463e123f31a5e999","Ref":"refs/tags/v2.29.0","URL":"https://github.com/grpc-ecosystem/grpc-gateway","VCS":"git"},"Time":"2026-04-15T18:42:47Z","Version":"v2.29.0"}
+mod	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	0d759d4a6c23af4bd39f85fd0c9f4de3931ce0d480432683e806c5bd116ffa45	683
+zip	github.com/grpc-ecosystem/grpc-gateway/v2	v2.29.0	92aa0dbc15037aeddca97ff7f8e4c61bdc3841a34a0df9bc27af30265e598f2d	1242184
+info	github.com/grpc-ecosystem/grpc-opentracing	v0.0.0-20180507213350-8e809c8a8645	8a7c6fb7b627521c19c61ce8e4f5a388a690042b7d7d6cdff3823537daeebefd	78	{"Time":"2018-05-07T21:33:50Z","Version":"v0.0.0-20180507213350-8e809c8a8645"}
+mod	github.com/grpc-ecosystem/grpc-opentracing	v0.0.0-20180507213350-8e809c8a8645	4c0013a0f8ac739efd7374ceb730f3e503085d68c4c1814654a57c5891b9695c	50
+zip	github.com/grpc-ecosystem/grpc-opentracing	v0.0.0-20180507213350-8e809c8a8645	0606bde24e978e9cd91ae45ca9e5222ce695c21a07ae02e77546496bf23b1c62	88686
+info	github.com/hashicorp/cronexpr	v1.1.3	b8499f19b2333314a93b39fdc9b340a2742568931b73287d087de3afaace8d7f	194	{"Origin":{"Hash":"b51b75078bc43f5cae9bb0def73d37eaae9a513b","Ref":"refs/tags/v1.1.3","URL":"https://github.com/hashicorp/cronexpr","VCS":"git"},"Time":"2025-08-28T19:03:39Z","Version":"v1.1.3"}
+mod	github.com/hashicorp/cronexpr	v1.1.3	2e86c491add9b37a0498d6bef913914d1553d794e37e15c4462efcb2af3ffd53	37
+zip	github.com/hashicorp/cronexpr	v1.1.3	5177182e567a934500ab3512da05d49e7234462c199aefff8addff78084a2157	36961
+mod	github.com/hashicorp/errwrap	v1.0.0	93985e11af40e6301f25d7f83cc4032d2d6d22f338aee277471a89364c700b29	36
+info	github.com/hashicorp/errwrap	v1.1.0	d2206055e4d6bce4374b8859b4fada0cb0473d36f982dd66b31943507aac5212	50	{"Time":"2020-07-14T15:51:01Z","Version":"v1.1.0"}
+mod	github.com/hashicorp/errwrap	v1.1.0	93985e11af40e6301f25d7f83cc4032d2d6d22f338aee277471a89364c700b29	36
+zip	github.com/hashicorp/errwrap	v1.1.0	209ae99bc039443e28e4d6bb66517d1756d9468b7578d31f1b63a28103d8e18c	9497
+info	github.com/hashicorp/go-cleanhttp	v0.5.2	133ca9cfbab28cc9653acf25a8f964b34d74067f3ef0440d88037a9f87854d12	50	{"Time":"2021-02-03T18:51:13Z","Version":"v0.5.2"}
+mod	github.com/hashicorp/go-cleanhttp	v0.5.2	5f02d28672d1bc0c8ea1fc95699582c7595495b4f8606bd551591cebe3daa011	50
+zip	github.com/hashicorp/go-cleanhttp	v0.5.2	e9f3dcfcb33172ba499b4f8e888169252d7f1e072082182124a6e2053523f7df	9586
+info	github.com/hashicorp/go-multierror	v1.1.1	05e4a631fa3994cc89b577ae7eb411db5d1de28aaefe350aad597296a1b68a0c	50	{"Time":"2021-03-11T20:17:12Z","Version":"v1.1.1"}
+mod	github.com/hashicorp/go-multierror	v1.1.1	6b44c7b8cf8c5ec59df682c5e882d5daf4d4a2f036a98f9e5add13919bc22d0d	96
+zip	github.com/hashicorp/go-multierror	v1.1.1	972cd841ee51fdeac69c5a301e57f8ea27aebf15fddd7f621d5c240f28c3000c	19419
+info	github.com/hashicorp/go-rootcerts	v1.0.2	6ec58330dc64160eb3c437f93d74cd49a870e3b258ca5fff2097465a47e1c820	50	{"Time":"2019-12-10T09:55:28Z","Version":"v1.0.2"}
+mod	github.com/hashicorp/go-rootcerts	v1.0.2	35a1cf75e24cb06f2b6013c16fdfbb13b740a8dd289fc33214b0c03b29976513	98
+zip	github.com/hashicorp/go-rootcerts	v1.0.2	864a48e642e87a273fb5ef60bb3575bd74a7090510f93143163fa6700be31948	15463
+info	github.com/hashicorp/go-version	v1.9.0	059b434099f956c1593ed70c867c3f760ad4469209e9a1d39abebb22bc657bbb	196	{"Origin":{"Hash":"b80b1e68c4854757b38663ec02bada2d839b6f56","Ref":"refs/tags/v1.9.0","URL":"https://github.com/hashicorp/go-version","VCS":"git"},"Time":"2026-03-30T11:17:49Z","Version":"v1.9.0"}
+mod	github.com/hashicorp/go-version	v1.9.0	eaae97e899a62e9c8e02ac5d173c3ab6834385fc18ef89b6dcbdf6986bab3ed1	39
+zip	github.com/hashicorp/go-version	v1.9.0	b6c05489bf11a28c81cf38119782284c859d6c2d193b811d3f0117592eb31fcb	24132
+info	github.com/hashicorp/golang-lru/v2	v2.0.7	45f84f6c839965ab7cf80e3fc2dc08584246db7bfdc9ed7bb20b958d8d5a1456	196	{"Origin":{"Hash":"d8515860cebc7b25ff2d29fada3f10a43611c28b","Ref":"refs/tags/v2.0.7","URL":"https://github.com/hashicorp/golang-lru","VCS":"git"},"Time":"2023-09-21T18:26:40Z","Version":"v2.0.7"}
+mod	github.com/hashicorp/golang-lru/v2	v2.0.7	c6b886c0242ffeac92b6b6aecf1123bc63c86faee81b16fff3a13273e50f6824	51
+zip	github.com/hashicorp/golang-lru/v2	v2.0.7	2eb92ff13970bccd460efae14255bfc03bb51474da0137e477a60f95561acc30	29453
+info	github.com/hashicorp/nomad/api	v0.0.0-20250909143645-a3b86c697f38	42774238e766160ac2fddba3793fc84161e8def64151a733ce7aa36cb2c2ac37	209	{"Origin":{"Hash":"a3b86c697f38ab032e1acaae8503ed10815bc4a2","Subdir":"api","URL":"https://github.com/hashicorp/nomad","VCS":"git"},"Time":"2025-09-09T14:36:45Z","Version":"v0.0.0-20250909143645-a3b86c697f38"}
+mod	github.com/hashicorp/nomad/api	v0.0.0-20250909143645-a3b86c697f38	4431f824cfce93668b5dd7bb86a495e523288b9692e9919b6eddf37e8191705c	616
+zip	github.com/hashicorp/nomad/api	v0.0.0-20250909143645-a3b86c697f38	9fc8c56e11469510c7127425598f54e71d3a876969fec71c1e1414549e282787	221088
+info	github.com/infobloxopen/go-trees	v0.0.0-20200715205103-96a057b8dfb9	ab7668af0832484f0c76af84923dfcd2b99aa5616abb2e2f05cd21d564c8ed7a	78	{"Time":"2020-07-15T20:51:03Z","Version":"v0.0.0-20200715205103-96a057b8dfb9"}
+mod	github.com/infobloxopen/go-trees	v0.0.0-20200715205103-96a057b8dfb9	c0ecc14ee0a4d8a0ff69384826e0117e117c83c0a7b7471e34f968b310b62810	125
+zip	github.com/infobloxopen/go-trees	v0.0.0-20200715205103-96a057b8dfb9	b559c683c4c934680dafa715fa285b5620d214409225016f3e5a961d9d899855	512851
+info	github.com/jpillora/backoff	v1.0.0	93df09181771cd05bc02dd83a91ada294723bebed5a7029fe28c2dbc0dfbf418	50	{"Time":"2019-10-03T12:57:08Z","Version":"v1.0.0"}
+mod	github.com/jpillora/backoff	v1.0.0	bd54c7ac2f7e662161201749d6283a23465cae73baa38fa5a7ce96277103c67b	44
+zip	github.com/jpillora/backoff	v1.0.0	f856692c725143c49b9cceabfbca8bc93d3dbde84a0aaa53fb26ed3774c220cc	4359
+info	github.com/json-iterator/go	v1.1.12	e3cea722514a658156cbb24ef96593e6bda7e6c4e3273686c9b9a69700170142	51	{"Time":"2021-09-11T02:17:26Z","Version":"v1.1.12"}
+mod	github.com/json-iterator/go	v1.1.12	518e57c22d1781c59ab33788c9a9fc2edc43583ef7c9fc8892a3490c12d61226	267
+zip	github.com/json-iterator/go	v1.1.12	d001ea57081afd0e378467c8f4a9b6a51259996bb8bb763f78107eaf12f99501	139706
+info	github.com/klauspost/compress	v1.19.1	5c986e5730d95806e9930ed0f7c023cedc278ecf1c560cb6222a127dc6bda3e6	196	{"Origin":{"Hash":"2602f4afea09fe72f2b58d4ed04d43a6047a0131","Ref":"refs/tags/v1.19.1","URL":"https://github.com/klauspost/compress","VCS":"git"},"Time":"2026-07-20T09:36:27Z","Version":"v1.19.1"}
+mod	github.com/klauspost/compress	v1.19.1	0d66d6069d9e2fb875c5b464d15b2c80232cfc8991e6f88336ce461ca810e0cf	201
+zip	github.com/klauspost/compress	v1.19.1	a77e019f60dff8bdf00ad137985c808957cc657381daa4281824843bc6b46910	39237053
+info	github.com/klauspost/cpuid/v2	v2.3.0	d1e758a2d9f4ebd60a6c4308ba89975539ccb59287c9f0af869da2a3f1b0405a	191	{"Origin":{"Hash":"f871662950fd6434e19bb056fb1f6efb6eba6144","Ref":"refs/tags/v2.3.0","URL":"https://github.com/klauspost/cpuid","VCS":"git"},"Time":"2025-07-11T09:57:38Z","Version":"v2.3.0"}
+mod	github.com/klauspost/cpuid/v2	v2.3.0	ff61d47f254f2333bf44a8ff4187a2f2e973693807c10025033bb37143577237	80
+zip	github.com/klauspost/cpuid/v2	v2.3.0	e6766f75ecfadf12fd045e4bdd9383f2a5bd3f9bd4c88a6db72861c84cf41486	55006
+mod	github.com/kr/pretty	v0.3.1	84f3e40803b1ebd4a802e55794b9997df0b173c4809e8572ff9042ec558ca1bc	117
+zip	github.com/kr/pretty	v0.3.1	ecf5a4af24826c3ad758ce06410ca08e2d58e4d95053be3b9dde2e14852c0cdc	13388
+mod	github.com/kr/text	v0.2.0	f63879b204f6ce895cea53594b814f5ac0af08486b33b1ca79c657384efbc726	68
+zip	github.com/kr/text	v0.2.0	368eb318f91a5b67be905c47032ab5c31a1d49a97848b1011a0d0a2122b30ba4	12607
+mod	github.com/kylelemons/godebug	v1.1.0	1605871e895331a39f5952559ebbc91228d86b8100354f857b562866eca5bb13	46
+zip	github.com/kylelemons/godebug	v1.1.0	dbbd0ce8c2f4932bb03704d73026b21af12bd68d5b8f4798dbf10a487a2b6d13	25634
+mod	github.com/letsencrypt/challtestsrv	v1.4.2	25c80fe145f8c53d41f3e3239e7d7160858684e6d20e353e67cab6788f387f23	295
+zip	github.com/letsencrypt/challtestsrv	v1.4.2	01447f5d74f6fd0c313b09f49ba4997c4a28016ea143bc4b59eabf9ef9c37527	21923
+mod	github.com/letsencrypt/pebble/v2	v2.10.1	35d549f00b6ef889a436e7982e31116ddb7d0428645708717852483bc9677a88	402
+zip	github.com/letsencrypt/pebble/v2	v2.10.1	e192e248ad0322420af7c769a8e48286c1ebc561b5c9e89f04acc264594f26ca	106112
+info	github.com/libdns/libdns	v1.1.1	c2aa2c8e41aa581d2a13897f5d8e2c32774981774e31c78215be6546e58f35d7	189	{"Origin":{"Hash":"6071c1f4fbaa59dac34d456c5b701dc8ecb73bbe","Ref":"refs/tags/v1.1.1","URL":"https://github.com/libdns/libdns","VCS":"git"},"Time":"2025-08-13T15:29:26Z","Version":"v1.1.1"}
+mod	github.com/libdns/libdns	v1.1.1	a399d6c02c1e6c66c35cb297ed55c0c812b551695f20e3ff8cc40349ba48f3f9	41
+zip	github.com/libdns/libdns	v1.1.1	3122839648415fd29ffeec46014a54e040611775ad696e0345502b9fe6011263	23530
+mod	github.com/linkdata/deadlock	v0.5.5	83313dff8117030de928090f61db83ab6b40a4ae77f69d872e7cb6dcc2f340ce	117
+zip	github.com/linkdata/deadlock	v0.5.5	24e91d37245d95f165c578879ae1db24ab9bad2bcd8297b1b2c4e72bd7380fc0	17530
+mod	github.com/lufia/plan9stats	v0.0.0-20260330125221-c963978e514e	37a53f16d9ab910339d4395983695afb4490aae01435c0a59980675c45d0bd95	105
+zip	github.com/lufia/plan9stats	v0.0.0-20260330125221-c963978e514e	4d366f3433bced8da7afa5e6984f24af7a64dd3ab46be5c1a802e215e2f165cf	25314
+info	github.com/mdlayher/socket	v0.6.0	4a1ae6b56f0db42e5d962be71f302c646a0950f01ec5b76fe6100f65cb433be7	191	{"Origin":{"Hash":"501098e9308b6c2d2ab9bf1f48a50040c7a86bd9","Ref":"refs/tags/v0.6.0","URL":"https://github.com/mdlayher/socket","VCS":"git"},"Time":"2026-03-31T15:14:23Z","Version":"v0.6.0"}
+mod	github.com/mdlayher/socket	v0.6.0	7b2e411d7e8c51d3d06545aabc5eaf336b3801b51b5c3492a6d6490eea513799	170
+zip	github.com/mdlayher/socket	v0.6.0	0b6d1f9f64462bcf94a8dc7dc9fc0084f35af3434ab67a724464a95d47bc87af	29741
+info	github.com/mdlayher/vsock	v1.3.0	fe6134f241e2a38906c69fc010871a807025d703dc2902001739ee46d5589c71	190	{"Origin":{"Hash":"ffafd72337a099bdd3828f03a78e19994afb50fd","Ref":"refs/tags/v1.3.0","URL":"https://github.com/mdlayher/vsock","VCS":"git"},"Time":"2026-05-26T06:47:18Z","Version":"v1.3.0"}
+mod	github.com/mdlayher/vsock	v1.3.0	9c4392c6a3f07b3af17d75ad05db25a8af0925c761706493fa92372239bf3fb2	204
+zip	github.com/mdlayher/vsock	v1.3.0	ba913d18b9506ccc9f1f391a499ca31a74c12fb01c9cf3bdbd218e56e27ad97e	26819
+info	github.com/mholt/acmez/v3	v3.1.6	157e8dbfe50be224ffc9a970ad5f0e6ebe76564fbc5c96fc7db3efb39c63028b	187	{"Origin":{"Hash":"7dcf056529711646f5b419cac305fa170b108bb7","Ref":"refs/tags/v3.1.6","URL":"https://github.com/mholt/acmez","VCS":"git"},"Time":"2026-02-20T19:16:43Z","Version":"v3.1.6"}
+mod	github.com/mholt/acmez/v3	v3.1.6	31a8bfeccf2302b3252db4d655a2b8a76722d16a6bc19355110f1a3118937891	536
+zip	github.com/mholt/acmez/v3	v3.1.6	e122eb1244f36260351913a688fca9ff6aa75e17cd62946718e79fd308932acf	92226
+mod	github.com/miekg/dns	v1.1.31	c96ce78bdedf49fe1da8ee652b351bae4f0e6524c84cc699086583d365a130d5	333
+info	github.com/miekg/dns	v1.1.73	fa9d8a90037fdc0621b482d0762adf9b8543cb78490f33ce591d570a581ec492	187	{"Origin":{"Hash":"d854399da1ee385b432e8b07f79e53bbfc1ab1b0","Ref":"refs/tags/v1.1.73","URL":"https://github.com/miekg/dns","VCS":"git"},"Time":"2026-08-19T05:07:32Z","Version":"v1.1.73"}
+mod	github.com/miekg/dns	v1.1.73	6fff101d9257c75ca97ac59ac8f30141eea883992ae44937157412f7d1119b84	283
+zip	github.com/miekg/dns	v1.1.73	bbed3c53b503db53002598615bf9bdb59918a6f9d72bd9151e0c52ab19e22a6f	265362
+info	github.com/minio/simdjson-go	v0.4.5	25d04a7ff6fd83da7e3b15d91ba6e6de45c948c55ba8481f4552828207afd747	193	{"Origin":{"Hash":"d82c779820b28b701fc258ee32f5df4ffc368f2d","Ref":"refs/tags/v0.4.5","URL":"https://github.com/minio/simdjson-go","VCS":"git"},"Time":"2023-03-11T19:16:56Z","Version":"v0.4.5"}
+mod	github.com/minio/simdjson-go	v0.4.5	afc315c1d484f830f1f214dd583ba68b2333a33ccd3f42e134c894d6c758da6f	209
+zip	github.com/minio/simdjson-go	v0.4.5	bd171ea96272c882507128f869714932e156a07f58b0091a1a27f7dddde61b9b	3646499
+info	github.com/mitchellh/go-homedir	v1.1.0	224767675b8644d9b413f3d6c96f356791c794fd08a36a3c3f6f94cba7bcbd08	50	{"Time":"2019-01-27T04:21:35Z","Version":"v1.1.0"}
+mod	github.com/mitchellh/go-homedir	v1.1.0	ec2c40e2ac86bdd92d64a25589ddeef65227789a8f428bede86bdc42064f60f1	39
+zip	github.com/mitchellh/go-homedir	v1.1.0	fffec361fc7e776bb71433560c285ee2982d2c140b8f5bfba0db6033c0ade184	4163
+info	github.com/mitchellh/mapstructure	v1.5.1-0.20231216201459-8508981c8b6c	d3138c4555b454de0ee4e04d15653923b15b4bab44206cba305a6b7771fb5a0d	203	{"Origin":{"Hash":"8508981c8b6c964e6986dd8aa85490e70ce3c2e2","URL":"https://github.com/mitchellh/mapstructure","VCS":"git"},"Time":"2023-12-16T20:14:59Z","Version":"v1.5.1-0.20231216201459-8508981c8b6c"}
+mod	github.com/mitchellh/mapstructure	v1.5.1-0.20231216201459-8508981c8b6c	d12bdf0950c494088fd93604ade1596974054ba165729d6ba133633c27daffe3	50
+zip	github.com/mitchellh/mapstructure	v1.5.1-0.20231216201459-8508981c8b6c	1cc37cf0bb7849d0fb29daabe5597450c565e334564ed28eabf3f0602259733b	36303
+mod	github.com/modern-go/concurrent	v0.0.0-20180228061459-e0a39a4cb421	27a5e9f05c71089b6fd5e119fc1c8ce81f0c16da4ec3357157b1d85e2ba85ae2	39
+info	github.com/modern-go/concurrent	v0.0.0-20180306012644-bacd9c7ef1dd	eea68b34df158b89ee7c344e62305c3e85148948e9242aea8cb9e8027c16e149	78	{"Time":"2018-03-06T01:26:44Z","Version":"v0.0.0-20180306012644-bacd9c7ef1dd"}
+mod	github.com/modern-go/concurrent	v0.0.0-20180306012644-bacd9c7ef1dd	27a5e9f05c71089b6fd5e119fc1c8ce81f0c16da4ec3357157b1d85e2ba85ae2	39
+zip	github.com/modern-go/concurrent	v0.0.0-20180306012644-bacd9c7ef1dd	91ef49599bec459869d94ff3dec128871ab66bd2dfa61041f1e1169f9b4a8073	10936
+mod	github.com/modern-go/reflect2	v1.0.2	099ee58ec210155280692f9e2360f523272e525f06272754be7a2a44dbfa0623	46
+info	github.com/modern-go/reflect2	v1.0.3-0.20250322232337-35a7c28c31ee	b6493fc64b6eefd53b56100c3e59c4911d7a6fd195c52577048bb00cb076c351	199	{"Origin":{"Hash":"35a7c28c31ee079903db043180532306a621943a","URL":"https://github.com/modern-go/reflect2","VCS":"git"},"Time":"2025-03-22T23:23:37Z","Version":"v1.0.3-0.20250322232337-35a7c28c31ee"}
+mod	github.com/modern-go/reflect2	v1.0.3-0.20250322232337-35a7c28c31ee	099ee58ec210155280692f9e2360f523272e525f06272754be7a2a44dbfa0623	46
+zip	github.com/modern-go/reflect2	v1.0.3-0.20250322232337-35a7c28c31ee	49f3fb0f76b1b98b52b5e6e8eab2a48454eab33904b937625941c28138a7fea4	27471
+info	github.com/munnerz/goautoneg	v0.0.0-20191010083416-a7dc8b61c822	0f2d1eaf773bce94b7a83953053c19cfea843209ce63c3cffd3410cdede08b94	78	{"Time":"2019-10-10T08:34:16Z","Version":"v0.0.0-20191010083416-a7dc8b61c822"}
+mod	github.com/munnerz/goautoneg	v0.0.0-20191010083416-a7dc8b61c822	90d8fdca000e05d751cfafb1546f4a1440a5696ab06c8c91c365cf9bbbc8bcef	36
+zip	github.com/munnerz/goautoneg	v0.0.0-20191010083416-a7dc8b61c822	3d7ce17916779890be02ea6b3dd6345c3c30c1df502ad9d8b5b9b310e636afd9	5674
+info	github.com/mwitkow/go-conntrack	v0.0.0-20190716064945-2f068394615f	a209ca2085b4689335525bc53fc581e9d2c2a370d5503cb0914f7c1b81b9085b	78	{"Time":"2019-07-16T06:49:45Z","Version":"v0.0.0-20190716064945-2f068394615f"}
+mod	github.com/mwitkow/go-conntrack	v0.0.0-20190716064945-2f068394615f	3f15a518f37228f2d08c6b43762d43869a5ab8ae7ba3b5124bf961035e71cc18	39
+zip	github.com/mwitkow/go-conntrack	v0.0.0-20190716064945-2f068394615f	d6fc513490d5c73e3f64ede3cf18ba973a4f8ef4c39c9816cc6080e39c8c480a	24595
+info	github.com/opentracing-contrib/go-observer	v0.0.0-20170622124052-a52f23424492	769e97b0c328173ccd0e6fc3671447adabebd29a34792c369a07b81af38786c1	78	{"Time":"2017-06-22T12:40:52Z","Version":"v0.0.0-20170622124052-a52f23424492"}
+mod	github.com/opentracing-contrib/go-observer	v0.0.0-20170622124052-a52f23424492	a34af907ca22347c61135b9e2c703e776b1c2bc08474f89b24f4bdbb18f7c13d	50
+zip	github.com/opentracing-contrib/go-observer	v0.0.0-20170622124052-a52f23424492	50023eee1ef04412410f43d8b5dcf3ef481c0fc39067add27799654705fa84b2	7087
+info	github.com/opentracing/opentracing-go	v1.2.0	36f93450176f17401b83adb5d786364e1f18239f771597b0155ee31a2659c014	50	{"Time":"2020-07-01T21:27:29Z","Version":"v1.2.0"}
+mod	github.com/opentracing/opentracing-go	v1.2.0	b4f734164fad79079776b063d5f8f5244962647d938ccf8913a8d8633b381385	98
+zip	github.com/opentracing/opentracing-go	v1.2.0	9b1a75e9a454a0cf01a26c18e48cd321e3b300943ac5adb9098ba033dbd40db5	49529
+info	github.com/openzipkin-contrib/zipkin-go-opentracing	v0.5.0	c1a5edafa2bcf5f7553af66cb22e9552c024118f8ff25d7c16dfb0cf5a13cf1d	216	{"Origin":{"Hash":"64b8ed72825851bd67ff32b3679dd70b2bbb041d","Ref":"refs/tags/v0.5.0","URL":"https://github.com/openzipkin-contrib/zipkin-go-opentracing","VCS":"git"},"Time":"2022-10-11T19:01:14Z","Version":"v0.5.0"}
+mod	github.com/openzipkin-contrib/zipkin-go-opentracing	v0.5.0	9f81776591712f9be7be93cbcd328a90e25c1217f5d2d4928faeea0636831cff	461
+zip	github.com/openzipkin-contrib/zipkin-go-opentracing	v0.5.0	7f65ec9f726dac933853dbb14abed5bba18a3266aee3d55035967f9f541273e3	24051
+info	github.com/openzipkin/zipkin-go	v0.4.3	5ff1a7a2f1fb9d8aaf153729218721aacef96612a7ba3ad76220c610c1743de1	196	{"Origin":{"Hash":"e609ce4fbeb610ff0c19b342956a040b0e2f8c67","Ref":"refs/tags/v0.4.3","URL":"https://github.com/openzipkin/zipkin-go","VCS":"git"},"Time":"2024-04-29T00:11:29Z","Version":"v0.4.3"}
+mod	github.com/openzipkin/zipkin-go	v0.4.3	c301cb242b5ca823c839959adda58957ef2db36bd1f5f0f68b14c9d157a5945c	1787
+zip	github.com/openzipkin/zipkin-go	v0.4.3	566322f65e65e7b277c92847eb75eb7842b0a061c7d9c2ff30014e3414d11ef1	157529
+info	github.com/oschwald/geoip2-golang/v2	v2.4.0	75ff39f65e926457334b26c36a815de98e2574496fa4dd1e6511f5b0069dd279	198	{"Origin":{"Hash":"2dd0b098e24563b3ba15bc438671b3374d895767","Ref":"refs/tags/v2.4.0","URL":"https://github.com/oschwald/geoip2-golang","VCS":"git"},"Time":"2026-09-07T17:41:27Z","Version":"v2.4.0"}
+mod	github.com/oschwald/geoip2-golang/v2	v2.4.0	3998ef38df91102c98a2172fe704004a7d628beed68e69f35b3c835400c60124	420
+zip	github.com/oschwald/geoip2-golang/v2	v2.4.0	5832262f7c1793b5d88599b1466e8403e51bb4b0ce98e1b22e4abff68e294eeb	47705
+info	github.com/oschwald/maxminddb-golang/v2	v2.6.0	e180191d1d18b58bd58b3674c2289ee98ae820e4e02ce3c88a4dd69ff0b64f34	201	{"Origin":{"Hash":"cd80b4ae3a1118aa8b35f281afdf1d46d5c92eee","Ref":"refs/tags/v2.6.0","URL":"https://github.com/oschwald/maxminddb-golang","VCS":"git"},"Time":"2026-09-07T16:58:49Z","Version":"v2.6.0"}
+mod	github.com/oschwald/maxminddb-golang/v2	v2.6.0	d8d864f480ae9e736dd4f5f122c012cbc6c959966448ca9672791605b6c9ab71	351
+zip	github.com/oschwald/maxminddb-golang/v2	v2.6.0	4f50dcc090df69b808bdd90a5796696bebaad5620f965ed0d2d18d4530933b09	231200
+info	github.com/outcaste-io/ristretto	v0.2.3	6c16b8c2668f67e1761feb646e83620502bbb02e1da4a707de2441232b040d83	197	{"Origin":{"Hash":"a9bee0151d186b422d4d6cc23e41a08f6c21f152","Ref":"refs/tags/v0.2.3","URL":"https://github.com/outcaste-io/ristretto","VCS":"git"},"Time":"2023-07-27T04:07:33Z","Version":"v0.2.3"}
+mod	github.com/outcaste-io/ristretto	v0.2.3	0224f3f0208e6e5eff2ca4e6ad9b88ee730db7ce8befabe9561b79bf17e8abfb	346
+zip	github.com/outcaste-io/ristretto	v0.2.3	34f3ff45493cdd3bfb5843b268a9241d412959657c5f69a745f8f1a96d17eb74	344380
+mod	github.com/petermattis/goid	v0.0.0-20250813065127-a731cc31b4fe	7a9463cb866b7b5560996d7d0ce2491c0fcd8c1edae80ad5f159b54223ca9e1d	44
+mod	github.com/petermattis/goid	v0.0.0-20260226131333-17d1149c6ac6	7a9463cb866b7b5560996d7d0ce2491c0fcd8c1edae80ad5f159b54223ca9e1d	44
+zip	github.com/petermattis/goid	v0.0.0-20260226131333-17d1149c6ac6	2a5e75f6ca196ae2cacd1fa420ec3fb4ce2308397822670847747fcd0d5f5eee	19536
+info	github.com/philhofer/fwd	v1.2.0	f1d250f80ba838ee669228f6e23d5acd72c19d162613663699a417a303653ee2	189	{"Origin":{"Hash":"20a13a1f6b7cb47a126dcb75152e21e1383bbaba","Ref":"refs/tags/v1.2.0","URL":"https://github.com/philhofer/fwd","VCS":"git"},"Time":"2024-09-16T14:44:58Z","Version":"v1.2.0"}
+mod	github.com/philhofer/fwd	v1.2.0	3b980d413f4498590980f5e907f60c3a9b35e9ffdd78be493bec3e4a15e83ae6	87
+zip	github.com/philhofer/fwd	v1.2.0	de507513c5985cd0eebc0eccd6b4955da5e2a31814323775b886f29cf9971e98	15422
+info	github.com/pires/go-proxyproto	v0.15.0	6ce47e77206460555db19add6b9612d19153c6c4ab3dde8d779415413f3a4913	197	{"Origin":{"Hash":"bd986c0a99dccc91fea506d5a6b8c14c5e0cda7c","Ref":"refs/tags/v0.15.0","URL":"https://github.com/pires/go-proxyproto","VCS":"git"},"Time":"2026-07-09T10:32:47Z","Version":"v0.15.0"}
+mod	github.com/pires/go-proxyproto	v0.15.0	25373a5701f1d91e8f1653e157660cb3011ad7a806fa1543fbc88acb422f7bc5	130
+zip	github.com/pires/go-proxyproto	v0.15.0	2237420b2bf86755a4ef462d7b9eff2d66f87756dc8d247bb7a47e0c8702094a	124105
+info	github.com/pkg/errors	v0.9.1	5d8c58c4cf06efa07ac322b254ced1c5a61a2515113f54f7b63c324a144c1280	50	{"Time":"2020-01-14T19:47:44Z","Version":"v0.9.1"}
+mod	github.com/pkg/errors	v0.9.1	df28c6a823f181d76179697177c0c5943c6ffb38f3c10b2dc53be360ee7d4589	29
+zip	github.com/pkg/errors	v0.9.1	d4c36b8bcd0616290a3913215e0f53b931bd6e00670596f2960df1b44af2bd07	17866
+info	github.com/planetscale/vtprotobuf	v0.6.1-0.20240319094008-0393e58bdf10	c0e5f5146e8160835922c9f36f37f5b744b61cbbe701a7850f27b06950c46e33	203	{"Origin":{"Hash":"0393e58bdf106fe0347e554d272a8f2c84d12461","URL":"https://github.com/planetscale/vtprotobuf","VCS":"git"},"Time":"2024-03-19T09:40:08Z","Version":"v0.6.1-0.20240319094008-0393e58bdf10"}
+mod	github.com/planetscale/vtprotobuf	v0.6.1-0.20240319094008-0393e58bdf10	e94bb181f3ef78dec16609d3c2d276c75c5668694bdc97b72bac22c84528debb	566
+zip	github.com/planetscale/vtprotobuf	v0.6.1-0.20240319094008-0393e58bdf10	6fdbac53c6ace58d732be8ec29c1aae928639eb12960cc4c52a9f7a25395ca05	278238
+mod	github.com/pmezard/go-difflib	v1.0.0	74b2e766eb215377864d587badf57e95521f692d2a7860b3c7759093f9c9bec2	37
+info	github.com/pmezard/go-difflib	v1.0.1-0.20181226105442-5d4384ee4fb2	821752bb31ec89f312309ed632ab9c9e644c1d9836df470a77a1c9c06783c147	80	{"Time":"2018-12-26T10:54:42Z","Version":"v1.0.1-0.20181226105442-5d4384ee4fb2"}
+mod	github.com/pmezard/go-difflib	v1.0.1-0.20181226105442-5d4384ee4fb2	74b2e766eb215377864d587badf57e95521f692d2a7860b3c7759093f9c9bec2	37
+zip	github.com/pmezard/go-difflib	v1.0.1-0.20181226105442-5d4384ee4fb2	24ff45e356f638a53bd0c89fff961fbeaecfdb0dc5e482ceed0a2230e0e5f3b7	12506
+mod	github.com/power-devops/perfstat	v0.0.0-20240221224432-82ca36839d55	05744a9262bcd294613e65624f3f8bae83d79a58aa48b8328c7df91190aa07bf	110
+zip	github.com/power-devops/perfstat	v0.0.0-20240221224432-82ca36839d55	66cb26a26f3282bc0cea7dc89da5f83249705a53e566259f226dc03477036f32	52527
+mod	github.com/prashantv/gostub	v1.1.0	8f4839873761658b95dd66c929c8e6e01ec0c7831946abc97b80719a09741e0e	263
+zip	github.com/prashantv/gostub	v1.1.0	9a56047ad14092b80489df340d6ff1adbb7db588f1558714dd5584f4d163d41e	13601
+info	github.com/prometheus/client_golang	v1.24.1	e0957ad918acd6b3889a9da7875b76bee31596263cbb90f4753972c5cea6fd37	202	{"Origin":{"Hash":"d6087ee482e06716ee21dc03819432d5d40f72db","Ref":"refs/tags/v1.24.1","URL":"https://github.com/prometheus/client_golang","VCS":"git"},"Time":"2026-07-24T06:32:04Z","Version":"v1.24.1"}
+mod	github.com/prometheus/client_golang	v1.24.1	7182f5b80fd56a1b0632595002cd9cb82b9ea2a8c27cdafbdabcc420fb2ee81d	1142
+zip	github.com/prometheus/client_golang	v1.24.1	90b627e392d9936cf410ed23066d6198fecc11130bbab2e17dda627da3a86fc3	427374
+info	github.com/prometheus/client_model	v0.6.3	b3df073d82bc90efba18d855be14b766744dabb063e6f43244c97cb3a07e16af	199	{"Origin":{"Hash":"a834711dbe83d46508daa32d3389f109cc85f53b","Ref":"refs/tags/v0.6.3","URL":"https://github.com/prometheus/client_model","VCS":"git"},"Time":"2026-08-31T09:02:46Z","Version":"v0.6.3"}
+mod	github.com/prometheus/client_model	v0.6.3	c04d4e46b836c84588f8f619881d135653a157e233d3a87475940e15068b70a3	96
+zip	github.com/prometheus/client_model	v0.6.3	92f5d9a39b75bdc3f6733563934438148a3c3661420a8f742fea8cbf40d39abe	23447
+info	github.com/prometheus/common	v0.71.0	9722365471f702b5f63c2604b508c9977678ce268a5a0fb16de2db081ced248f	195	{"Origin":{"Hash":"9a4aff03c12e71d3fc29e32a4581deb8e456d88e","Ref":"refs/tags/v0.71.0","URL":"https://github.com/prometheus/common","VCS":"git"},"Time":"2026-08-31T08:47:38Z","Version":"v0.71.0"}
+mod	github.com/prometheus/common	v0.71.0	69206256e0d6539af3701950e71f5a15d7f0f579c3a41b207edf8b12ad8d6409	1686
+zip	github.com/prometheus/common	v0.71.0	d78a22ba3919910cb3bc8a1953b1e0b930f16363c6ca6d13d613e4845f921716	258705
+info	github.com/prometheus/exporter-toolkit	v0.19.0	8addc3069519ef084921b351dcb3802142ef39b1b0766660a05a3d27ab83aea9	205	{"Origin":{"Hash":"007f1cdfb9feb621954b5969e152e0a2b8985a6c","Ref":"refs/tags/v0.19.0","URL":"https://github.com/prometheus/exporter-toolkit","VCS":"git"},"Time":"2026-08-25T18:59:54Z","Version":"v0.19.0"}
+mod	github.com/prometheus/exporter-toolkit	v0.19.0	1715a5c3e3d5e4c0425e6d70e320c48a7a46fd441e4c63a6c8ce4f99ccb2e687	1283
+zip	github.com/prometheus/exporter-toolkit	v0.19.0	fd5fc94414908744c378dd5606581deffd51ea63418488bd8a535c36e669546a	89756
+info	github.com/prometheus/procfs	v0.21.1	76234ee1220e81f67fc3afa018fcf0fa720b4668666cb3b7c98f492fbdd6a295	195	{"Origin":{"Hash":"3c943fdba94a978d990553698da4add62bb11a30","Ref":"refs/tags/v0.21.1","URL":"https://github.com/prometheus/procfs","VCS":"git"},"Time":"2026-06-30T13:35:04Z","Version":"v0.21.1"}
+mod	github.com/prometheus/procfs	v0.21.1	129232c45b86548cedb3cd2ae1aa6cc1fb46826847ce0ab24be7a3cee2191d23	146
+zip	github.com/prometheus/procfs	v0.21.1	b417ab3081ad334ce4c6b367b2d5e74dea49e2eb3b5431c1dd5a65e1256736f9	472764
+info	github.com/puzpuzpuz/xsync/v3	v3.5.1	3885d20d560892e94cd4c2db209bfbb7db22266d4a52528b0fd82ef06454fc73	191	{"Origin":{"Hash":"800e3a0ceeab7d9a5c17df16241c1a4cca0da524","Ref":"refs/tags/v3.5.1","URL":"https://github.com/puzpuzpuz/xsync","VCS":"git"},"Time":"2025-01-27T07:29:28Z","Version":"v3.5.1"}
+mod	github.com/puzpuzpuz/xsync/v3	v3.5.1	5f9e296c55206f2cfc6dd8e017e905744c8ae3eb7df4d007ebf5ededfdde6b8f	46
+zip	github.com/puzpuzpuz/xsync/v3	v3.5.1	f7fcd1eeb1bc96bc497dc0bca05ed0d64d194fdb1a73460dd42cd2bc42ae00e6	64355
+mod	github.com/quic-go/go-ossfuzz-seeds	v0.1.0	d50527304783ab156b78d902401f9444f461266714bef06b726392086fd0e895	244
+zip	github.com/quic-go/go-ossfuzz-seeds	v0.1.0	7bbde287f0cc4727ddf4f7e4d06b84bdfb3fa27475bd062b5ceac32a62e815bc	9122
+info	github.com/quic-go/qpack	v0.6.0	2eb2df18c1b82af40726754086b2a9b5e000bab70d34653b3d70849f2f391fdc	189	{"Origin":{"Hash":"1661efa70093a118695f62e222b94ce192119092","Ref":"refs/tags/v0.6.0","URL":"https://github.com/quic-go/qpack","VCS":"git"},"Time":"2025-11-17T02:04:08Z","Version":"v0.6.0"}
+mod	github.com/quic-go/qpack	v0.6.0	7cdce4a0772f217deb859f405b7d58c84d909fcdab5e547e3e3d3aeb1148e641	263
+zip	github.com/quic-go/qpack	v0.6.0	3ac037cd1747420bc00bd6a793b4b197a2359fc354de12dc2187477417564914	48205
+info	github.com/quic-go/quic-go	v0.62.0	a763eafc4f75545ed72a4ade0449aa275a4a21915d99ecb2437218a2baa0fab1	193	{"Origin":{"Hash":"793f74d8e03368c5aded128af6f48d21dbb47f73","Ref":"refs/tags/v0.62.0","URL":"https://github.com/quic-go/quic-go","VCS":"git"},"Time":"2026-08-30T06:05:43Z","Version":"v0.62.0"}
+mod	github.com/quic-go/quic-go	v0.62.0	93c5c1f3f837ecdc220b8bba0a91cf3e00662cb54ac8e3d152eb5a648baff145	636
+zip	github.com/quic-go/quic-go	v0.62.0	92beca3d3ef957b4d9de3b11d28acb7e6fdb98603111ca4a74139ae7e2a618f3	1013707
+mod	github.com/richardartoul/molecule	v1.0.1-0.20240531184615-7ca0df43c0b3	9c7b74f7ee7f99df22668558fad59c0979aff092b296b187f97bf68d39381f71	244
+zip	github.com/richardartoul/molecule	v1.0.1-0.20240531184615-7ca0df43c0b3	f2f1709cb2b81f329cbc033b44228c677ff6794d0fbd0d2e6d16532817bcd048	36862
+mod	github.com/rogpeppe/go-internal	v1.14.1	5146850223a460d7bfb5e3e4caf323337f745903e829c96083bd2c9a722caf8d	141
+zip	github.com/rogpeppe/go-internal	v1.14.1	ab3d18283cef2f46ddfd489b6b14b970eb7dbbb642786f025ee1ac5291dc4e70	190962
+info	github.com/secure-systems-lab/go-securesystemslib	v0.11.0	6f3a328a238718bd38f7588c5ef733a182b77f54f05c98741b552b3cd25ab415	216	{"Origin":{"Hash":"1ce0aca0c8640e2b119fb8de53fb193759085c6a","Ref":"refs/tags/v0.11.0","URL":"https://github.com/secure-systems-lab/go-securesystemslib","VCS":"git"},"Time":"2026-04-22T18:48:08Z","Version":"v0.11.0"}
+mod	github.com/secure-systems-lab/go-securesystemslib	v0.11.0	6d0051d1cbe554e87be8e2bae521eb03bb90fbe64b50336a5b5bf4dc06fe8afc	396
+zip	github.com/secure-systems-lab/go-securesystemslib	v0.11.0	bcc6c768b802666b5ad3aea122e15b34049655e5e8934c1e2a3e65b1fb59e692	57858
+info	github.com/shirou/gopsutil/v4	v4.26.6	d26fc2fd5b9be43a4c1e8c4e620787df77d8a797a376c1eabf188f196829832b	193	{"Origin":{"Hash":"50a6b053353503fd630f5b1c60fe652d470d773f","Ref":"refs/tags/v4.26.6","URL":"https://github.com/shirou/gopsutil","VCS":"git"},"Time":"2026-06-20T12:59:40Z","Version":"v4.26.6"}
+mod	github.com/shirou/gopsutil/v4	v4.26.6	f5adf3bef8088923ff4754d0159e104202c7e997e342bdac49839cde5d4bfa6f	645
+zip	github.com/shirou/gopsutil/v4	v4.26.6	76049a616fbe980670f733d430a1a3d4ee5d585cf22459fff9ae3b3b902936c4	367109
+mod	github.com/shoenig/test	v1.12.1	ed48a7f6b6a4f80ffbf0c57f9f9b7e0c0d4cf353663fff38e540385a5fb1c233	81
+zip	github.com/shoenig/test	v1.12.1	42bd53cb2cda9486090c1d6c233d6ba8a68dcde74c9d44d774a98cafc2543316	88803
+mod	github.com/sirupsen/logrus	v1.7.0	da2caaacef970c4c3f36c137d5567faef9403e6f62194804c7672a3975219322	242
+mod	github.com/spaolacci/murmur3	v1.1.0	55565ffdc59d315a952774815afa98668ab9011e8cc11e35be5243e63a23260d	36
+zip	github.com/spaolacci/murmur3	v1.1.0	60bd43ada88cc70823b31fd678a8b906d48631b47145300544d45219ee6a17bc	9830
+info	github.com/spf13/pflag	v1.0.10	30055d4c1b7b6232468a685492b16c7d548f04ab1bff9ebba822cf980558f825	189	{"Origin":{"Hash":"0491e5702ad2bb108bc519a5221bcc0f52aa9564","Ref":"refs/tags/v1.0.10","URL":"https://github.com/spf13/pflag","VCS":"git"},"Time":"2025-09-02T06:08:29Z","Version":"v1.0.10"}
+mod	github.com/spf13/pflag	v1.0.10	16c6dfc0eb58eb3c9113ce197d460c6725c647e4688ac26d31c8ed69f1ebbc68	39
+zip	github.com/spf13/pflag	v1.0.10	a246b8c9d3daa87d6c634cdfee1bdf7fa53d5817eeef4fa0c6da43edd12de4ca	108741
+mod	github.com/stretchr/objx	v0.1.0	1350354d52d2287a62336ecc0d56232d4c47699af9bba49c67c2b48254da98f1	32
+mod	github.com/stretchr/objx	v0.4.0	31b2fdcdee870f0f61bffafafb96220967e5bca08a76a920d574216fc1f91355	137
+mod	github.com/stretchr/objx	v0.5.0	cb326540efcb1274a6e4e970d7fc9de2e8062f08a058fc296d859025e62e807a	85
+mod	github.com/stretchr/objx	v0.5.3	6791b5edf7bd0ad12f53a046718d24b3a395191419167aa0bda604e866892cc5	41
+zip	github.com/stretchr/objx	v0.5.3	cdc804051b06efceea75ee9b0b6349d2f92f17cd46c6193c4a8dfb0f51465a44	44017
+mod	github.com/stretchr/testify	v1.12.1	a6aa921ea6dedc1cbb384d3c1b79c58b6e5d6ce26d13b786ec60a99809ae1daa	216
+zip	github.com/stretchr/testify	v1.12.1	6874ed1c4b0b7e9feb27989b16c179b36590020633436ae260cefc5f5565589f	208461
+mod	github.com/stretchr/testify	v1.2.2	4ab463f68c370041f950c10cab5104903d4598c50cf824f9aad1b7b7f69255af	35
+mod	github.com/stretchr/testify	v1.3.0	ab063d5154a8e8730bced4c52698e5770eb50bfae347bebc35eca488b8e3f6e3	154
+mod	github.com/stretchr/testify	v1.7.0	fff8168d98e6a07156c454a1b6e925509f3177e96c155516d7f96b4079cca3bf	216
+mod	github.com/stretchr/testify	v1.7.1	fff8168d98e6a07156c454a1b6e925509f3177e96c155516d7f96b4079cca3bf	216
+mod	github.com/stretchr/testify	v1.8.0	e076074c1560ad1dda98b8b00fea6308c4b6ccd06ddd088d22db4626ed68f738	188
+mod	github.com/stretchr/testify	v1.8.1	af1a5dcb331ace7a3f9fc1b5d7eee9c0bc82b4a2a182fe4cec2add217e2853d6	188
+info	github.com/tinylib/msgp	v1.6.4	40b7c2d4b8e4aaf77b4b4ee7ac91c097c2fdf722a522fb3b601d40cd9796d7b7	188	{"Origin":{"Hash":"6f99c863451752e6aa9c7aacde4215a471a64242","Ref":"refs/tags/v1.6.4","URL":"https://github.com/tinylib/msgp","VCS":"git"},"Time":"2026-03-16T20:23:41Z","Version":"v1.6.4"}
+mod	github.com/tinylib/msgp	v1.6.4	0a9f1c371dd41cbf543da2eadbade60b906ff1a80cb63c0939af7f89e5a28b8a	160
+zip	github.com/tinylib/msgp	v1.6.4	bd9770f34c96b48454a1721bb5c595305eb7f13ede94b53527882bf7bf157a39	306939
+info	github.com/tklauser/go-sysconf	v0.3.16	a0e0841a584968b2d15203b4c8f81eec6b6b8fbdf4868395e92bf7dd4bc2fae7	197	{"Origin":{"Hash":"a74cd97f38000a90d4c7bba747028c7c602919e2","Ref":"refs/tags/v0.3.16","URL":"https://github.com/tklauser/go-sysconf","VCS":"git"},"Time":"2025-11-12T12:31:00Z","Version":"v0.3.16"}
+mod	github.com/tklauser/go-sysconf	v0.3.16	d31ed60086fa58f00dc607615e62631415d5ff99ec4775295401ea14170c0bc1	125
+zip	github.com/tklauser/go-sysconf	v0.3.16	d4c896f77e5934f54d772b5f6a8f8043b8d34df189f6581bc2ba84d239a6b643	95853
+info	github.com/tklauser/numcpus	v0.11.0	4ea573c4de0b0db527da25464ab71215b8291b189155d020153ffe293f1ee4b8	194	{"Origin":{"Hash":"a430329828d6a83fc67d0a8d1c73c63ed3eed4c2","Ref":"refs/tags/v0.11.0","URL":"https://github.com/tklauser/numcpus","VCS":"git"},"Time":"2025-11-12T12:13:05Z","Version":"v0.11.0"}
+mod	github.com/tklauser/numcpus	v0.11.0	559a8ffb8966ac8cb9ff08cd07fd5e5a5d89a032d8946d3e6c3f3f63eed32a2e	80
+zip	github.com/tklauser/numcpus	v0.11.0	7a7527e1f68059a77189ae875c294e5c310925fbb8ba5a6c794edd2b7e687267	18783
+info	github.com/trailofbits/go-mutexasserts	v0.0.0-20250514102930-c1f3d2e37561	7b830a0d4924537213121715c85c6e537023674eff9d2cf85030ec470f21e946	206	{"Origin":{"Hash":"c1f3d2e37561985332053f242a6af636f5a74719","URL":"https://github.com/trailofbits/go-mutexasserts","VCS":"git"},"Time":"2025-05-14T10:29:30Z","Version":"v0.0.0-20250514102930-c1f3d2e37561"}
+mod	github.com/trailofbits/go-mutexasserts	v0.0.0-20250514102930-c1f3d2e37561	fd67c9276857947a9f91da2ec95b7018ea50ed968ee8ab22a68a5a374086ed66	55
+zip	github.com/trailofbits/go-mutexasserts	v0.0.0-20250514102930-c1f3d2e37561	2894369a7449948e834ba661ac730be63cbad9350c9c1c088da97b742687094a	6723
+mod	github.com/vmihailenco/msgpack/v5	v5.4.1	78123be71349515b283280cac807dff2b8e84798a86501341a1b2cae6e3663dc	318
+zip	github.com/vmihailenco/msgpack/v5	v5.4.1	f966b8091c59efce1b44e265097f239be5d4174a827be0a5debebae09517d2b8	53493
+mod	github.com/vmihailenco/tagparser/v2	v2.0.0	421006040b7c0c6e4e4257ec9f69a85fb0d6120f5a526b5ef174d6cd34ce4f34	52
+zip	github.com/vmihailenco/tagparser/v2	v2.0.0	70096ead331b4ac4efc0bf740674cbe55772beee6eace39507a610c5652aa8b5	6151
+info	github.com/x448/float16	v0.8.4	06f9483061813e32210ae41f092abb82609a062ac7dff685be18290c7c65c132	50	{"Time":"2020-01-17T18:31:28Z","Version":"v0.8.4"}
+mod	github.com/x448/float16	v0.8.4	f8a8238aa734c1d2463d48f8808e35124546bd5222b13e4c097746ded5a57e1e	40
+zip	github.com/x448/float16	v0.8.4	73b24a41037ea999ab66851e3798a0973dbb1f214925915b01f0820f7b2f1500	14960
+mod	github.com/yuin/goldmark	v1.3.5	dab1d663b860ebe545fcdcec24e5f933d517bd2019af68d7a6b5a8764aa61b0f	41
+mod	github.com/yuin/goldmark	v1.4.13	ee7fe4466203a01d3ac19adc134cdec99bc6de71992c28f3dd9a74480bff0603	41
+mod	github.com/yusufpapurcu/wmi	v1.2.4	ff2a9c8c99aaed6bc6984eae094a9e8cdc36f6ab2ef2c56779dd98ecc583135b	85
+zip	github.com/yusufpapurcu/wmi	v1.2.4	c2a0a12203162ef8fd6f65e191aac359823d370e113122cbd8e80711ddc9c1f9	16351
+mod	github.com/zeebo/assert	v1.1.0	cb8cea69ecbc99692af21d44909083f4d962e95dcb7adcb5fd0676b773587e9c	40
+zip	github.com/zeebo/assert	v1.1.0	14795d89e1d9937bab9e3d6d54df37a870fb70efb74d8bc1e1abc676de8a32a3	998
+info	github.com/zeebo/blake3	v0.2.4	2aa491dbe31af1da06afdc30d7198367aaed75d0d59ff8e4ac545390c3fdabca	188	{"Origin":{"Hash":"1a8215cf69be4db5e416684937d35bcba0636026","Ref":"refs/tags/v0.2.4","URL":"https://github.com/zeebo/blake3","VCS":"git"},"Time":"2024-08-14T14:47:02Z","Version":"v0.2.4"}
+mod	github.com/zeebo/blake3	v0.2.4	9e2d9f5afaefb91d63405907f73f80f1d1471fd2bec2642068106dd19d1df141	153
+zip	github.com/zeebo/blake3	v0.2.4	65aaa3487c097fa0140f52041e8e6fe8214c244a29223fd4caaa60986192a08f	111107
+mod	github.com/zeebo/pcg	v1.0.1	4d5bb3fec7485e54c1c7d9119091aaddd071f9f4a8969b6c82a588f4c8e08179	77
+zip	github.com/zeebo/pcg	v1.0.1	39ff069b9eb1fd6f9edd138b12338a1b0a761f47b0544f4148d3d27dd74c52c0	9144
+info	go.etcd.io/bbolt	v1.5.0	9afab7c9f7cb665edc25607a770293ece6777cb23912858a5213dd060593f4c7	189	{"Origin":{"Hash":"e7a8b2dd498494a3766ba24dd94d3509e5588485","Ref":"refs/tags/v1.5.0","URL":"https://github.com/etcd-io/bbolt","VCS":"git"},"Time":"2026-06-03T16:37:36Z","Version":"v1.5.0"}
+mod	go.etcd.io/bbolt	v1.5.0	3acf3f97a95e4028c1bbe27e58a1a6ba4ec8fc510e17d3166c47c50f601b4a2e	774
+zip	go.etcd.io/bbolt	v1.5.0	2c350ca36afba707b917529a8049b001c71915c99c152d5e2600ed4bac6fbc37	255081
+info	go.etcd.io/etcd/api/v3	v3.7.1	5433b4f07ef160bc0992c13417e79a3c930df19412fa9ce9de815fe1970d1f02	207	{"Origin":{"Hash":"5e7fd0de9a57db03ecc11794dc40403a734c07bb","Ref":"refs/tags/api/v3.7.1","Subdir":"api","URL":"https://github.com/etcd-io/etcd","VCS":"git"},"Time":"2026-07-23T19:30:42Z","Version":"v3.7.1"}
+mod	go.etcd.io/etcd/api/v3	v3.7.1	97856fea81c3e83a9084c23b3e88590e9cd6c0b4021b38dd4d3a63ebad5a975f	882
+zip	go.etcd.io/etcd/api/v3	v3.7.1	9493e920ac41efc005e48f2080607ef054483eed010cf239c8f2259f82859d2c	98570
+info	go.etcd.io/etcd/client/pkg/v3	v3.7.1	eee17290ac4b153c9ee7f4c27c032abca181e96ddaf91d43d42ad6dfc9eeeba4	221	{"Origin":{"Hash":"5e7fd0de9a57db03ecc11794dc40403a734c07bb","Ref":"refs/tags/client/pkg/v3.7.1","Subdir":"client/pkg","URL":"https://github.com/etcd-io/etcd","VCS":"git"},"Time":"2026-07-23T19:30:42Z","Version":"v3.7.1"}
+mod	go.etcd.io/etcd/client/pkg/v3	v3.7.1	4bf074304513366fd2e546ca51c304a39e0a018beb225057ad27b12ad35cdedb	618
+zip	go.etcd.io/etcd/client/pkg/v3	v3.7.1	fccc41f845920f03ec079a595233c083a0034fe965e66a77a7f5b04a4de4bb46	121014
+info	go.etcd.io/etcd/client/v3	v3.7.1	337661ddaabb0fca4ec83f621983552983f3a2851b82c317719eaeb574fb6d1e	213	{"Origin":{"Hash":"5e7fd0de9a57db03ecc11794dc40403a734c07bb","Ref":"refs/tags/client/v3.7.1","Subdir":"client","URL":"https://github.com/etcd-io/etcd","VCS":"git"},"Time":"2026-07-23T19:30:42Z","Version":"v3.7.1"}
+mod	go.etcd.io/etcd/client/v3	v3.7.1	3947aa98abf56e58ed169b95db80c568ae651b5a429768f82850104878d1ee81	1712
+zip	go.etcd.io/etcd/client/v3	v3.7.1	df9ad9deac93b7623efe1359c777ec6ec75189e16b21ae9588ed8b745f6b21b6	168777
+info	go.opentelemetry.io/auto/sdk	v1.2.1	57299bdae0a8f70f6013277d1c3b8088147b81161ff1bcc74e9bf7c58a37ac74	242	{"Origin":{"Hash":"715f58ce2f17e2176b8e53b871e47531a259cc1d","Ref":"refs/tags/sdk/v1.2.1","Subdir":"sdk","URL":"https://github.com/open-telemetry/opentelemetry-go-instrumentation","VCS":"git"},"Time":"2025-09-15T16:53:44Z","Version":"v1.2.1"}
+mod	go.opentelemetry.io/auto/sdk	v1.2.1	6c4d2df014d59fd6555897fd4e5bbc0316e8df4c737fbfdde5cd119fdefeeea9	478
+zip	go.opentelemetry.io/auto/sdk	v1.2.1	a08a16fc0a7041cdb875f47a260a56000632212c85f65a302a043c76380c8335	46873
+info	go.opentelemetry.io/collector/component	v1.61.0	f231775f84444646baa8b2c6b05ac1aa12b276e114f1a75985b3aa8683239e92	247	{"Origin":{"Hash":"41da2fbd7dd58a5dd299587ebb159025b28521d2","Ref":"refs/tags/component/v1.61.0","Subdir":"component","URL":"https://github.com/open-telemetry/opentelemetry-collector","VCS":"git"},"Time":"2026-06-23T14:50:44Z","Version":"v1.61.0"}
+mod	go.opentelemetry.io/collector/component	v1.61.0	120b7d0c1e0e3eed30c94b7db7c2eaf65f15d7321d8f13e12c4ccd19d454b31f	1278
+zip	go.opentelemetry.io/collector/component	v1.61.0	79c6e89b5f1e07147c03bea0931c4ded8a85852aec10f5fc3cc8b83905e7c9b6	20379
+mod	go.opentelemetry.io/collector/component/componenttest	v0.155.0	f45d533ec8bd62fa941be33cadd012cebcebe213eadbce4b25db51d2c838eb9c	1518
+zip	go.opentelemetry.io/collector/component/componenttest	v0.155.0	91e0d13d4de892aa7de2e56a7fc49c2900495741afb25f980b475f1cf560635a	17114
+info	go.opentelemetry.io/collector/featuregate	v1.61.0	24e63554463e4eafa1c4e1f7562c894058c59c67cad4bad4efc4cf3277b185f2	251	{"Origin":{"Hash":"41da2fbd7dd58a5dd299587ebb159025b28521d2","Ref":"refs/tags/featuregate/v1.61.0","Subdir":"featuregate","URL":"https://github.com/open-telemetry/opentelemetry-collector","VCS":"git"},"Time":"2026-06-23T14:50:44Z","Version":"v1.61.0"}
+mod	go.opentelemetry.io/collector/featuregate	v1.61.0	38e68fe85167fdfbc62e4139b62acb000c48a4ef127a8733c156c3ea03ce4ba6	638
+zip	go.opentelemetry.io/collector/featuregate	v1.61.0	fc20645c467c111a489e611609f9c03cb6e943996e8d5616620ee39214438424	19025
+mod	go.opentelemetry.io/collector/internal/testutil	v0.155.0	797467ef74ec1c4c9b4d1a316e415f4bfdc561bd8d503001b12413037d0de065	329
+zip	go.opentelemetry.io/collector/internal/testutil	v0.155.0	00343fda83daf73119d4a81b430d874a980e8680ff5c7d67c4a9d8bc87bab0ab	10704
+info	go.opentelemetry.io/collector/pdata	v1.61.0	f3e7e92e180bc92e77c6b0aa5382706b59e26467abc106358181a5a38ae1099e	239	{"Origin":{"Hash":"41da2fbd7dd58a5dd299587ebb159025b28521d2","Ref":"refs/tags/pdata/v1.61.0","Subdir":"pdata","URL":"https://github.com/open-telemetry/opentelemetry-collector","VCS":"git"},"Time":"2026-06-23T14:50:44Z","Version":"v1.61.0"}
+mod	go.opentelemetry.io/collector/pdata	v1.61.0	56e8e06980261b934afe2e5f7987d5143be0e6a30d84da67c220991505421106	1464
+zip	go.opentelemetry.io/collector/pdata	v1.61.0	76dbd040a7ae2c3855d5001c63c51be410bbf971db4c426b458a4cbf37cde99e	601892
+info	go.opentelemetry.io/collector/pdata/pprofile	v0.155.0	464e70653f37147f0da70ef7d2b4cb5a2445d36018562cd476fd4c582269b2ac	259	{"Origin":{"Hash":"41da2fbd7dd58a5dd299587ebb159025b28521d2","Ref":"refs/tags/pdata/pprofile/v0.155.0","Subdir":"pdata/pprofile","URL":"https://github.com/open-telemetry/opentelemetry-collector","VCS":"git"},"Time":"2026-06-23T14:50:44Z","Version":"v0.155.0"}
+mod	go.opentelemetry.io/collector/pdata/pprofile	v0.155.0	cff88f8b7bf1c8aa52ca71a19e13e8d72913a43b50cf2f35edde265820b4e9ff	1510
+zip	go.opentelemetry.io/collector/pdata/pprofile	v0.155.0	a6bbac4cefe1b1f79658dc7cc183ba1f8e6a748e0de219de9e64699c1ecd02f9	155579
+info	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp	v0.68.0	b1d3c6958669dd9adb35a563dda1a920451adf34349c3fec025e511f177ec250	296	{"Origin":{"Hash":"45977a4b9cf4a60effd1ee07367043f7e9bcae66","Ref":"refs/tags/instrumentation/net/http/otelhttp/v0.68.0","Subdir":"instrumentation/net/http/otelhttp","URL":"https://github.com/open-telemetry/opentelemetry-go-contrib","VCS":"git"},"Time":"2026-04-07T08:53:54Z","Version":"v0.68.0"}
+mod	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp	v0.68.0	c387ffc8169a6d8db5f786193f104631543f286ef762d6bbc1abe009de280fc2	779
+zip	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp	v0.68.0	84a5f546bebf91ebebe431b04f13230e0bd189a0eefcc6652f523e4c29ae12ba	61049
+info	go.opentelemetry.io/otel	v1.44.0	11c81234ccfb0528043ec5a8184309be4cf892bf7837c9d94b4d81674b4af4d0	209	{"Origin":{"Hash":"b62d92831b2dd142f5a0cc89c828270274196877","Ref":"refs/tags/v1.44.0","URL":"https://github.com/open-telemetry/opentelemetry-go","VCS":"git"},"Time":"2026-05-27T16:42:37Z","Version":"v1.44.0"}
+mod	go.opentelemetry.io/otel	v1.44.0	f466441934839f12a009415b4c16a77d221e1aa5d767f878e2af5888f1ad839f	635
+zip	go.opentelemetry.io/otel	v1.44.0	4b7ef50caaf3dc6fc1a058f9ce2ccda6aad2ab3e8657acc4c8bb3102f79c53bc	3561245
+info	go.opentelemetry.io/otel/metric	v1.44.0	aa05b63561fbb844cf7d87e956796906020a7c7ff3dcd314f2524caff95c1541	234	{"Origin":{"Hash":"b62d92831b2dd142f5a0cc89c828270274196877","Ref":"refs/tags/metric/v1.44.0","Subdir":"metric","URL":"https://github.com/open-telemetry/opentelemetry-go","VCS":"git"},"Time":"2026-05-27T16:42:37Z","Version":"v1.44.0"}
+mod	go.opentelemetry.io/otel/metric	v1.44.0	328a1fe2bc702b8c26765f18a9a26fc08748283bdbba26d538d4037b0fcb6afb	612
+zip	go.opentelemetry.io/otel/metric	v1.44.0	4442ba5f269f81251f549acb14ac16176f23967f4a0706163440b0df91592f96	37850
+mod	go.opentelemetry.io/otel/sdk	v1.44.0	1ed05d21feab2b3bf987b687ca7343fe7b695bc53b9326a8a40d31ca6d1a0844	957
+zip	go.opentelemetry.io/otel/sdk	v1.44.0	36533893b3f21a777f89620bac33557e42cd2d608176979f2d1bafe71b75c2fd	163455
+mod	go.opentelemetry.io/otel/sdk/metric	v1.44.0	5f52df5d5f791931de752c32f98795cde604edf12f668c9000babd0e2602938a	984
+zip	go.opentelemetry.io/otel/sdk/metric	v1.44.0	86fa30d460efc36ed8d5e47f680ffb8af4c5a1bdad96edd21a40a95b0971a65e	195896
+info	go.opentelemetry.io/otel/trace	v1.44.0	997138a118c66ac4cc4e08ce286332598b8c37760efad5d48550954873d914d6	232	{"Origin":{"Hash":"b62d92831b2dd142f5a0cc89c828270274196877","Ref":"refs/tags/trace/v1.44.0","Subdir":"trace","URL":"https://github.com/open-telemetry/opentelemetry-go","VCS":"git"},"Time":"2026-05-27T16:42:37Z","Version":"v1.44.0"}
+mod	go.opentelemetry.io/otel/trace	v1.44.0	24b803fb358fb3456f788a98a7c18fb391685bc5a708a118f02116b8969a03c4	457
+zip	go.opentelemetry.io/otel/trace	v1.44.0	cd1abf8dcec62fe9788fae9105760db1711e6e994d2e31cdda57ccb467e7ceec	76671
+info	go.opentelemetry.io/proto/otlp	v1.10.0	11982a7e827fd51ab4cd53fc6f6c82d5a00b01bbc2e04e36243b33f61b9b174c	236	{"Origin":{"Hash":"5abb227a3efbfea092a8db5b89a8a9e59117cee1","Ref":"refs/tags/otlp/v1.10.0","Subdir":"otlp","URL":"https://github.com/open-telemetry/opentelemetry-proto-go","VCS":"git"},"Time":"2026-03-09T19:21:30Z","Version":"v1.10.0"}
+mod	go.opentelemetry.io/proto/otlp	v1.10.0	f140713fa137d4f5ac6182dfc9f159833b55c715c1597389dd5bd11b5c9a6221	490
+zip	go.opentelemetry.io/proto/otlp	v1.10.0	199278343f9a66953023278601384dbc9f42896c2e0581bfbd65bd5f044a9a66	73555
+mod	go.opentelemetry.io/proto/slim/otlp	v1.10.0	607495f0da532dfb229a3124b66e33a1b314dd20dbc1f92f61d905a421a59a1f	99
+zip	go.opentelemetry.io/proto/slim/otlp	v1.10.0	c21349f3c29a35b0a48d6d6bd5ccfc64b611e6ef737921b264c10d623eae5b74	61448
+mod	go.opentelemetry.io/proto/slim/otlp/collector/profiles/v1development	v0.3.0	38c04b608b4d4baa065c0b475799959987e016dbb361775d7f3b200db86555ad	431
+zip	go.opentelemetry.io/proto/slim/otlp/collector/profiles/v1development	v0.3.0	b5e78fd43b479e46f59e42caa6b21663d54f95c8072a08cc1cf58fe6e7007cad	9291
+mod	go.opentelemetry.io/proto/slim/otlp/profiles/v1development	v0.3.0	289d11b300a73c464dbfb690868ef3615cfe4df738d449923ee7f74ba59519d9	227
+zip	go.opentelemetry.io/proto/slim/otlp/profiles/v1development	v0.3.0	43e08ddd6ecca9232d6f66e387f3ede11cc82b3163cd20c0f6ca3a31ec623226	18255
+info	go.uber.org/atomic	v1.11.0	d2da9f4cfc55ff953a50d8586d128520758ae8823b57a8d752f6143e3816c843	192	{"Origin":{"Hash":"76f817c8b7e771cdffc2b9f11a7ebb80333ca92b","Ref":"refs/tags/v1.11.0","URL":"https://github.com/uber-go/atomic","VCS":"git"},"Time":"2023-05-03T17:25:03Z","Version":"v1.11.0"}
+mod	go.uber.org/atomic	v1.11.0	be1a68147c2f6be9dff2579714c251068d4b70ce3235449b587bb0503781c484	189
+zip	go.uber.org/atomic	v1.11.0	8109325abe17488245878b07f3c35b10ba7d1aa3310f792968f5b9deba432e2c	77346
+mod	go.uber.org/atomic	v1.9.0	f7476ceca88ad6eceea6936b4902d27c5071e88c24ed262e814923260e9778c7	131
+info	go.uber.org/automaxprocs	v1.6.0	cbd13ac75355b2a9df916d2ca390e3715046e98db2feb9a01afd845edb15bb4e	196	{"Origin":{"Hash":"1ea14c35ce47a73089b824e504d1c92eeb61a5a6","Ref":"refs/tags/v1.6.0","URL":"https://github.com/uber-go/automaxprocs","VCS":"git"},"Time":"2024-09-23T17:47:22Z","Version":"v1.6.0"}
+mod	go.uber.org/automaxprocs	v1.6.0	2e6d1ecf4cb29eb86182548f4690c991056ab15f18c127efaef2d0239f5fc10d	380
+zip	go.uber.org/automaxprocs	v1.6.0	964c6f548f7ee6df9fa3a9080d722c7950060bda0cb84ff9e2ae065f078813c4	55231
+mod	go.uber.org/goleak	v1.3.0	3f15dc6354aae8fe42d3cbd130230731d5c6aae6aa651ca6a73f4c646cda8fec	333
+zip	go.uber.org/goleak	v1.3.0	70edef0ce7d830d992f024e527fd3452069b884f94a27787a718bd68dd620702	37573
+mod	go.uber.org/mock	v0.6.0	6e7cbfe58aed5f4ab25b241d9d84e263fd8c5d8d8a3c18ef0baf70a1adc0e4c8	370
+zip	go.uber.org/mock	v0.6.0	64e9c159c974cd05c09eae2e0fa1558e7f5eef0c85434208526b052785e1b90f	170920
+info	go.uber.org/multierr	v1.11.0	f27049930a037d9d851561b9fc5c4cc77cd41bb1e58a4a858783d5149525b418	194	{"Origin":{"Hash":"de75ae527b39a27afcb50a84427ec7b84021d5f4","Ref":"refs/tags/v1.11.0","URL":"https://github.com/uber-go/multierr","VCS":"git"},"Time":"2023-03-29T23:00:37Z","Version":"v1.11.0"}
+mod	go.uber.org/multierr	v1.11.0	58a30dde730aba57576715d90841774f6344a879fec5633a2c66b37ec30c11f0	228
+zip	go.uber.org/multierr	v1.11.0	2249b5d2fdce61f6ee661a679d8552599af084a761cbbc871da77641bddce0c3	25681
+info	go.uber.org/zap	v1.28.0	2f38bcdca56e8930c6a19342ae7b3fe1ebbe3d650ec402797093a04ba0fd996f	189	{"Origin":{"Hash":"5b81b37b81b8e2ed447a6f57991e372ee4fa5c8f","Ref":"refs/tags/v1.28.0","URL":"https://github.com/uber-go/zap","VCS":"git"},"Time":"2026-04-28T02:13:09Z","Version":"v1.28.0"}
+mod	go.uber.org/zap	v1.28.0	19c87bf7cc2c86609e42258a6b08dbb28da81b9fbc33e2af40c6e785573d5d17	351
+zip	go.uber.org/zap	v1.28.0	49d6287497537480c2e9330e3dee9c38ac793fbf9fd2257dbc4fa5697818919c	290595
+info	go.uber.org/zap/exp	v0.3.0	b2a20fce867610ad8d1024e69a113e6a2c2da8a4e4c6bead5d5a492b8ed6df9f	206	{"Origin":{"Hash":"0ba452dbe15478739ad4bab1067706018a3062c6","Ref":"refs/tags/exp/v0.3.0","Subdir":"exp","URL":"https://github.com/uber-go/zap","VCS":"git"},"Time":"2024-10-22T15:46:07Z","Version":"v0.3.0"}
+mod	go.uber.org/zap/exp	v0.3.0	5dfb164a526b208436988b2d2d97409912a66d7ea31af84571eb5ae7b52fd184	331
+zip	go.uber.org/zap/exp	v0.3.0	1a71ce6ea8df554dc002af9d18d6f1083a9b2782ee0c971b929314e86e8aebd3	15842
+info	go.yaml.in/yaml/v2	v2.4.4	0b4bf5f53b0c18db7065837e185b775427b052b5a9c90bffc14fa8e22096bcdc	188	{"Origin":{"Hash":"43b627a9da72517e91dbcf07cd10dfd6618423d8","Ref":"refs/tags/v2.4.4","URL":"https://github.com/yaml/go-yaml","VCS":"git"},"Time":"2026-03-06T22:01:45Z","Version":"v2.4.4"}
+mod	go.yaml.in/yaml/v2	v2.4.4	4bba343588a8a81f5cc4884d3d7ac7f5dd612b21af59d3f2ebea37ec476079bb	275
+zip	go.yaml.in/yaml/v2	v2.4.4	1b98a6a498cf255c5f2982d32c74633bc7969770957e98103ac1e14345aa4576	81706
+info	go.yaml.in/yaml/v3	v3.0.5	cf5dd2de55f182478184ab6923cc1ad6d06e636e6e0341fe519ea3514e68caf5	188	{"Origin":{"Hash":"e16c7af9361b241fa02d91582fb59ce4954d8afc","Ref":"refs/tags/v3.0.5","URL":"https://github.com/yaml/go-yaml","VCS":"git"},"Time":"2026-07-26T14:51:55Z","Version":"v3.0.5"}
+mod	go.yaml.in/yaml/v3	v3.0.5	4bf9de8891d4d71507d92568022f8241fb828d8d0a6c9204c130bf030f3e3b2f	275
+zip	go.yaml.in/yaml/v3	v3.0.5	f2d70caa35f66283aec58b889af8c5f07c374c5934be27a738c1215263e19205	107640
+mod	golang.org/x/crypto	v0.0.0-20190308221718-c2843e01d9a2	33ed070a5a66e0960685ac5386440e1b59899e74d8a38a1180685e72a2195ded	88
+mod	golang.org/x/crypto	v0.0.0-20191011191535-87dc89f01550	3ab9f01f4610fe7b39bd85d68e8d97825351e7e282c39cda41457c2a276f3be3	146
+mod	golang.org/x/crypto	v0.0.0-20210921155107-089bfa567519	cd6311612a2aa4d0d7e03c41b3aa1fbc2d5f895ab3f61089fab80bfe9f8f5485	247
+mod	golang.org/x/crypto	v0.0.0-20220722155217-630584e8d5aa	af2c88eebff03e3a2afecb1b03669fc54e9d122c88f7b2ecfed051ec5dbc8bbb	255
+mod	golang.org/x/crypto	v0.17.0	dc40867bef3ca5179569cc2f8742bb618b8cc684b0d25a753250e81d6dc29442	190
+info	golang.org/x/crypto	v0.57.0	b5711159f8090af77db970774d86305791718dae7c54256a898a9b432e98375a	193	{"Origin":{"Hash":"3f62bf119e84c6e35e8518a2958089ade622d1a3","Ref":"refs/tags/v0.57.0","URL":"https://go.googlesource.com/crypto","VCS":"git"},"Time":"2026-09-08T18:05:01Z","Version":"v0.57.0"}
+mod	golang.org/x/crypto	v0.57.0	93438fc90cca15b1b253be9df648ca54fb80838400239cc294f794ca2f242575	192
+zip	golang.org/x/crypto	v0.57.0	856c916b92f1fc5b53983c04f6249f632f56c47ebc003bbcdfc503500dfb58b8	2312809
+info	golang.org/x/exp	v0.0.0-20260529124908-c761662dc8c9	0cf0d1b5ce1c5cd7bc35155b0158011eacf345f4e8c35810b1865caac9c36993	191	{"Origin":{"Hash":"c761662dc8c9094541728ca85181f2a84dd5ebe8","URL":"https://go.googlesource.com/exp","VCS":"git"},"Time":"2026-05-29T12:49:08Z","Version":"v0.0.0-20260529124908-c761662dc8c9"}
+mod	golang.org/x/exp	v0.0.0-20260529124908-c761662dc8c9	67ee078e135ada2cf6ad000b3bf7ce46d7f921b5d3167feaebab0a6a18775597	310
+zip	golang.org/x/exp	v0.0.0-20260529124908-c761662dc8c9	90a7bd719d9d199d78b481399c72fe938fb442755edca2260da29bfa6782a000	647075
+mod	golang.org/x/mod	v0.1.1-0.20191105210325-c90efee705ee	d76bbdea81d196d09858967a67ac805dacecdd1fb30c5001a187d24c129b1597	159
+mod	golang.org/x/mod	v0.4.2	b288f088fd851885a6d348339e2f588e58a94e6c76e5e634ae1d67c2749eb413	214
+info	golang.org/x/mod	v0.41.0	bed4e9e321ace8501613625b04436dbbaebc1821d01b9bc5306da23fcc9a7dfc	190	{"Origin":{"Hash":"d0a27b2d4a48460806692bf5c87fc157c3c65292","Ref":"refs/tags/v0.41.0","URL":"https://go.googlesource.com/mod","VCS":"git"},"Time":"2026-08-24T20:56:42Z","Version":"v0.41.0"}
+mod	golang.org/x/mod	v0.41.0	fc5b64ef51fd92f4b8763ebbd6fa95a70069d299c7de0f7c66661ef24283eb0c	86
+zip	golang.org/x/mod	v0.41.0	201e678d0a35b18b246abe58d80017b75d60be21cbaf4cbb9e963b48872565a9	180455
+mod	golang.org/x/mod	v0.6.0-dev.0.20220419223038-86c51ed26bb4	42d19023ff8f2eae700bc5495f371ecd998a22d19ba985d0af5f69900b254083	157
+mod	golang.org/x/mod	v0.8.0	624567459c6e9947ac4abde0b7034ee61dcbb6a9373f5970094c0bb3e8121964	84
+mod	golang.org/x/net	v0.0.0-20190404232315-eb5bcb51f2a3	f7046769daac02beb57cbcc481280df59fb403c96fe8262282aba858c7f7fa4d	119
+mod	golang.org/x/net	v0.0.0-20190620200207-3b0461eec859	e6efdaf78a29503f080cf6d2615e289cfb1d9e3ab7d570f53668eca2b4ab41da	181
+mod	golang.org/x/net	v0.0.0-20190923162816-aa69164e4478	e6efdaf78a29503f080cf6d2615e289cfb1d9e3ab7d570f53668eca2b4ab41da	181
+mod	golang.org/x/net	v0.0.0-20210226172049-e18ecbb05110	fef5896d103a0bce5055fdb5e96e830944334792437865347718edceb633348a	179
+mod	golang.org/x/net	v0.0.0-20210405180319-a5a99cb37ef4	f6b0f9968f5a7d986fcb57ebe2a14095118bbd1cbf6785d003f7afd711dcb1bd	179
+mod	golang.org/x/net	v0.0.0-20211112202133-69e39bad7dc2	fa915f5d022cfb0cb865aa2ee37d3a7741b406f84eb4a837862e29cc69ab4ef4	179
+mod	golang.org/x/net	v0.0.0-20220722155237-a158d28d115b	b315c52647d2da2f76e5cdb9d367e1d6727784236a9bffb612192b19b10a128d	179
+mod	golang.org/x/net	v0.10.0	d3b7e236ff09e6322be489170216e018d3221862f1a053dcb63e53eab8533c17	123
+info	golang.org/x/net	v0.59.0	f2f059aefc08c37826ae9739869ef4d9324e147c9897a79a5de3f2e2d2f00900	190	{"Origin":{"Hash":"540d04cfe5028e2655754591a4d3e08c586809f2","Ref":"refs/tags/v0.59.0","URL":"https://go.googlesource.com/net","VCS":"git"},"Time":"2026-09-08T19:18:02Z","Version":"v0.59.0"}
+mod	golang.org/x/net	v0.59.0	f7034587fa012c43de66d8c276ddab161032931abf116a629daa8d66f1c80023	157
+zip	golang.org/x/net	v0.59.0	1dc3bf31fcebe80d393288ac8fe5cac7f0e82e9b3a2630021dcdf5ffbfa3f601	1941034
+mod	golang.org/x/net	v0.6.0	41ec76ea2172f3ee3031e38f9a535939a584d6bb35ef480854fdcb8c2026701b	123
+info	golang.org/x/oauth2	v0.36.0	61d5b2b9cf0de3c5bad7717c19d06ffd492a333f830e7b1035cbf330c90b0775	193	{"Origin":{"Hash":"4d954e69a88d9e1ccb8439f8d5b6cbef230c4ef9","Ref":"refs/tags/v0.36.0","URL":"https://go.googlesource.com/oauth2","VCS":"git"},"Time":"2026-02-11T19:14:10Z","Version":"v0.36.0"}
+mod	golang.org/x/oauth2	v0.36.0	90ff0f4a036bc1c24e6c006fe18d97d6d11683431f8f197b7ad48a341da72682	91
+zip	golang.org/x/oauth2	v0.36.0	15bf65ff103e5dafc809d78cd037a1d1e88ccb8451824e851156002a13304504	155804
+mod	golang.org/x/sync	v0.0.0-20190423024810-112230192c58	421f6139686d5891f3dc5a563d0995780d3279f65cad4d225cea52686794161c	25
+mod	golang.org/x/sync	v0.0.0-20210220032951-036812b2e83c	421f6139686d5891f3dc5a563d0995780d3279f65cad4d225cea52686794161c	25
+mod	golang.org/x/sync	v0.0.0-20220722155255-886fb9371eb4	421f6139686d5891f3dc5a563d0995780d3279f65cad4d225cea52686794161c	25
+mod	golang.org/x/sync	v0.1.0	421f6139686d5891f3dc5a563d0995780d3279f65cad4d225cea52686794161c	25
+info	golang.org/x/sync	v0.23.0	0842b53e293bdd9e9574ddbf33bb39538b447cf336b6f385e69928b5df4cf5ff	191	{"Origin":{"Hash":"f75267d8412fc1dfd12b343644a7ea46e4d9c85d","Ref":"refs/tags/v0.23.0","URL":"https://go.googlesource.com/sync","VCS":"git"},"Time":"2026-08-31T03:04:41Z","Version":"v0.23.0"}
+mod	golang.org/x/sync	v0.23.0	febf4fed5dc12c0de24528f7065bf071cc74a2424070194aaf24617b91066cda	36
+zip	golang.org/x/sync	v0.23.0	c19a11baba5c1a093cb4fd2f6d0d8d79673c97a82cb0fe2d693c9b6ad84f0f82	26276
+mod	golang.org/x/sys	v0.0.0-20190215142949-d0b11bdaac8a	8969115e4a39108848324e79a1bd8a8445230e6e3aaccbe9f8057fb50fffc8c1	24
+mod	golang.org/x/sys	v0.0.0-20190412213103-97732733099d	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20190916202348-b4ddaad3f8a3	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20190924154521-2837fb4f24fe	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20191026070338-33540a1f6037	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20201119102817-f84b799fce68	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20201204225414-ed752295db88	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20210124154548-22da62e12c0c	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20210330210617-4fbd30eecc44	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20210423082822-04245dca01da	181979e8bd57d2d9e064182da86c9a6111aa69755e888f08431ece4742aec343	33
+mod	golang.org/x/sys	v0.0.0-20210510120138-977fb7262007	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.0.0-20210615035016-665e8c7367d1	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.0.0-20220520151302-bc2c85ada10a	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.0.0-20220627191245-f75cf1eec38b	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.0.0-20220722155257-8c9f86f7a55f	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.1.0	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.15.0	d227b325f621f4ebe28d39ba773ea99b870f393b7c09c34592c365b16dd560de	33
+info	golang.org/x/sys	v0.48.0	f52c0a8146a472f3c780756e50b62c11d7fcd1f29dd379a962b5cb5cc392cbec	190	{"Origin":{"Hash":"613e2570718ecde85c04e69ebd5585c3881c442c","Ref":"refs/tags/v0.48.0","URL":"https://go.googlesource.com/sys","VCS":"git"},"Time":"2026-08-31T19:43:43Z","Version":"v0.48.0"}
+mod	golang.org/x/sys	v0.48.0	9522f4c9806d1c26586ea80fa56292929bd295865e71981927f52996c6b1c831	35
+zip	golang.org/x/sys	v0.48.0	3a47e06431ba1e24d5b2aca3a7ce31fd13faff34df3e5d8e63f105ff9d0c1786	2094772
+mod	golang.org/x/sys	v0.5.0	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/sys	v0.8.0	f033333096fe198f3151deed93f2deba74e50bbfe7739134045bc3b7ce4a5024	33
+mod	golang.org/x/term	v0.0.0-20201126162022-7de9c90e9dd1	4cbab14f7706771b271d995a1b3cc131fe5a246aadc7ee6d1ba6f0bd894781fa	95
+mod	golang.org/x/term	v0.0.0-20210927222741-03fcf44c2211	740794e2914f5cc87e25656c5843222b2c65665821205f45632a0477c8d3f79b	95
+mod	golang.org/x/term	v0.15.0	4b86976f8c4efb87bbcbec283cbfb395a28177b4b8b83420b49d95728eb7a2f8	68
+info	golang.org/x/term	v0.46.0	9cc8085269ff2b8089d9b7e91363a1dd9d822d94e5c33c79bfc768cae41de5eb	191	{"Origin":{"Hash":"6226200ed12cba417a9d9e799c2a7179d3fc0e27","Ref":"refs/tags/v0.46.0","URL":"https://go.googlesource.com/term","VCS":"git"},"Time":"2026-09-08T16:27:41Z","Version":"v0.46.0"}
+mod	golang.org/x/term	v0.46.0	f94c7bd036a7d189950b7759a3f105e7bcc7164dc89d80d186c7e8a903d6c332	70
+zip	golang.org/x/term	v0.46.0	9147fdd982f1aed1392183d5b48055f4f74c85d496604766c7f0b1d3bbd61c7c	22601
+mod	golang.org/x/term	v0.5.0	0d6f58228aadc1a6528e6755da018516566e3ae5c5201f7ade1773f56fa8d934	67
+mod	golang.org/x/term	v0.8.0	5d362d6a83453f7024725e824c05c5949624ef8f4cb13f5d7e3d4b7f1ca0b327	67
+mod	golang.org/x/text	v0.14.0	971579f17e9abc5926ab76214f533bd517cf4925c885243ac4755a1a0a7c69ef	197
+mod	golang.org/x/text	v0.3.0	36879d586fd8001e84da8787190a11e4f78749e2a81dfe8b9b6931899fff31cf	25
+mod	golang.org/x/text	v0.3.3	fbb7a88ed140515e790eca7a10ffd319c9786b11c6a6c7e59f80f7fb37bb4542	97
+mod	golang.org/x/text	v0.3.6	fbb7a88ed140515e790eca7a10ffd319c9786b11c6a6c7e59f80f7fb37bb4542	97
+mod	golang.org/x/text	v0.3.7	c45d669089427bc4635d07b185f9b9680332d1c48c75b3c49cb715b81a04a5b0	97
+info	golang.org/x/text	v0.42.0	5b9b61f55293ec161f0cce9c4357abf80071864a801f8971490c68b84019df87	191	{"Origin":{"Hash":"fafe4a06967e06550e69ee42787d9902845d2a3f","Ref":"refs/tags/v0.42.0","URL":"https://go.googlesource.com/text","VCS":"git"},"Time":"2026-09-08T16:29:55Z","Version":"v0.42.0"}
+mod	golang.org/x/text	v0.42.0	4756c4b8eeeae2a20cb43c198c10701d20c53493bd90b91c6632153c9cbac240	190
+zip	golang.org/x/text	v0.42.0	a7b64e003056b6470303f408202098d8f3714a115f23091b8cac85edeb265476	7337550
+mod	golang.org/x/text	v0.7.0	15929e76fce04aea4c92a354426bb43370684645a4ee03f2e75d0c2eb1466304	258
+mod	golang.org/x/text	v0.9.0	436f592e77b593b02fbea374e23ad3369c8623ff0d29c91de7de1e6672db9a41	215
+info	golang.org/x/time	v0.15.0	89fe02bf3456a353438b3d1c84f7b2d3cb8aaadf5bd7ab81ddd530b52c8838b2	191	{"Origin":{"Hash":"812b343c8714c317b0dad633efa6d103e554c006","Ref":"refs/tags/v0.15.0","URL":"https://go.googlesource.com/time","VCS":"git"},"Time":"2026-02-11T19:14:29Z","Version":"v0.15.0"}
+mod	golang.org/x/time	v0.15.0	6149b2491c92f67545fc5da0083a791e369b3f99670d30f52bde0604c48c9e69	36
+zip	golang.org/x/time	v0.15.0	8cfb20e915fa5d6c3fd264304233f8d71a3385e48a37819239c532ad9da27f84	15014
+mod	golang.org/x/tools	v0.0.0-20180917221912-90fa682c2a6e	a0e02f0678fe62dc3c4b4bc77fa912c9b70de10fa9f7cf2f7aad0337392b52af	26
+mod	golang.org/x/tools	v0.0.0-20191119224855-298f0cb1881e	88d479265f886f5e598d76c003d0f257b42dbf1b895d820a12b5ab0b3501aca1	212
+mod	golang.org/x/tools	v0.0.0-20191216052735-49a3e744a425	5ea469c803b6ef8d41d1561b9e301a003fdd93976468bda5574b26b056ea7f49	267
+mod	golang.org/x/tools	v0.1.1	03697605374ee3b0fa9b502ea456d9c6ae1835dac22e35baa2a99c4058a0fe31	323
+mod	golang.org/x/tools	v0.1.12	2a8b9365898f0822face65ba089a1353e68a65d342f300ca317cceccde6421f3	327
+mod	golang.org/x/tools	v0.6.0	830ed78dcd3e9927c412e2641230308447749d513d31024d276e2443b2016609	211
+mod	golang.org/x/xerrors	v0.0.0-20190717185122-a985d3407aa7	aa5e3ec9bb7b9f681609efac019d9de1a7ba7719248ff1eaa27e78882db3d7f5	37
+mod	golang.org/x/xerrors	v0.0.0-20191011141410-1b5146add898	aa5e3ec9bb7b9f681609efac019d9de1a7ba7719248ff1eaa27e78882db3d7f5	37
+mod	golang.org/x/xerrors	v0.0.0-20191204190536-9bdfabe68543	aa5e3ec9bb7b9f681609efac019d9de1a7ba7719248ff1eaa27e78882db3d7f5	37
+mod	golang.org/x/xerrors	v0.0.0-20200804184101-5ec99f83aff1	aa5e3ec9bb7b9f681609efac019d9de1a7ba7719248ff1eaa27e78882db3d7f5	37
+info	golang.org/x/xerrors	v0.0.0-20240903120638-7835f813f4da	68dd13f146fc571252349d1eb8b7a65e7a5bdfa22c0c2d4adc5267d1e8071be4	195	{"Origin":{"Hash":"7835f813f4da395c9a1f7c0fe732a63d1c79d331","URL":"https://go.googlesource.com/xerrors","VCS":"git"},"Time":"2024-09-03T12:06:38Z","Version":"v0.0.0-20240903120638-7835f813f4da"}
+mod	golang.org/x/xerrors	v0.0.0-20240903120638-7835f813f4da	097a3f1d073ed5fb8ccdeaaa7da6828ee60cbf4c49e243f73ff6ce59625dfa09	37
+zip	golang.org/x/xerrors	v0.0.0-20240903120638-7835f813f4da	07ee9f680118861ee732ce0df4553b834383b87e0519fb9a0990c51d7abd6885	21783
+mod	gonum.org/v1/gonum	v0.17.0	8a17681ea0d86cd2de00b2a87745287f5a8d7a0ad55ec0c26c5b52f3552d30e7	1063
+zip	gonum.org/v1/gonum	v0.17.0	dadeb3d260548de27375f7188bdfd5a175110120fd8ee8085a63b0dff2cae501	4678507
+info	google.golang.org/api	v0.298.0	c7e48c8c81d867a6754a6ff573082059f8afc953c49c8f966305f5deac5489cb	211	{"Origin":{"Hash":"6dcd60047ebda7f68b4cc0ab9bffa8c73b887096","Ref":"refs/tags/v0.298.0","URL":"https://github.com/googleapis/google-api-go-client","VCS":"git"},"Time":"2026-09-14T15:29:43Z","Version":"v0.298.0"}
+mod	google.golang.org/api	v0.298.0	e0368440792d9b84bf6276ed8a53acf5851edb389df765caa5aefc4026947910	1476
+zip	google.golang.org/api	v0.298.0	37fa740ee5362a8598d26c87724676aeb6f840b39fdc4066baf41f96386a21ff	50202216
+mod	google.golang.org/genproto	v0.0.0-20260715232425-e75dac1f907d	394f9c308860a3277fcff9d64caa57729ca24ed412e94bb4a71b94fdc9ecd463	5175
+zip	google.golang.org/genproto	v0.0.0-20260715232425-e75dac1f907d	2bb3944dd73d398fb40cf3e7cbc3ccfaec83e9e37ec2e4fa5e516989ee74d0a0	6968193
+info	google.golang.org/genproto/googleapis/api	v0.0.0-20260715232425-e75dac1f907d	b2bd9c617fbae694d83c3defbf7ce7a907e46b9a65fce18867ed800b9f8e8174	227	{"Origin":{"Hash":"e75dac1f907dd223bc928a7873c2ade9dad07d87","Subdir":"googleapis/api","URL":"https://github.com/googleapis/go-genproto","VCS":"git"},"Time":"2026-07-15T23:24:25Z","Version":"v0.0.0-20260715232425-e75dac1f907d"}
+mod	google.golang.org/genproto/googleapis/api	v0.0.0-20260715232425-e75dac1f907d	1309519e93c4f282dda22d61e1b08db80e3d0779a74f8c245e49e2b28016bc99	348
+zip	google.golang.org/genproto/googleapis/api	v0.0.0-20260715232425-e75dac1f907d	8c32508cfd93a527e96997a75fb555bbf1220e3542aaf13bc2f07dce48eb25f1	235332
+info	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260819154853-08b0e4226688	b4a2d042f268cf5178af2efd2ff265ad7407155b777b55f5443014b3021241c0	227	{"Origin":{"Hash":"08b0e42266880154f3122364912db2b5cf01a32a","Subdir":"googleapis/rpc","URL":"https://github.com/googleapis/go-genproto","VCS":"git"},"Time":"2026-08-19T15:48:53Z","Version":"v0.0.0-20260819154853-08b0e4226688"}
+mod	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260819154853-08b0e4226688	0e8d084d06c6b1e680b6c9d86b4c9ac5f7e07cd70e624730daafe406e48de062	105
+zip	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260819154853-08b0e4226688	1ef9df1d981e17c7dc655aadcec493da958c8260fb6e690f77d6d51b22520e63	40889
+info	google.golang.org/grpc	v1.83.2	f736fba6ec5a7e19e5bb6bea033799d17ad0810521aac2bf9c648ba4bc161a73	190	{"Origin":{"Hash":"030ee8becb20ce4315d6bf2dfa26bdd876169dc4","Ref":"refs/tags/v1.83.2","URL":"https://github.com/grpc/grpc-go","VCS":"git"},"Time":"2026-08-25T15:47:16Z","Version":"v1.83.2"}
+mod	google.golang.org/grpc	v1.83.2	60f5c004181e7c03fe84131876418d157be7eb4ebea3c598fc5e37b816436780	2099
+zip	google.golang.org/grpc	v1.83.2	84292905a694e17862d15abc123a6f7f7efa9e1e3a77e80120982ff95b2605ea	3002440
+mod	google.golang.org/protobuf	v0.0.0-20200109180630-ec00e32a8dfd	a23990efb67ee10bb16d1d1936109cefa4e4262ae3da8d0748efb691614dbb78	83
+mod	google.golang.org/protobuf	v0.0.0-20200221191635-4d8936d0db64	a6d950dd2a7eb82e51cf459d3f61f614b09d730adb9e8094d5bf96b043f38174	128
+mod	google.golang.org/protobuf	v0.0.0-20200228230310-ab0ca4ff8a60	3b808d19947fb29e4db24ed5cb88941afc1927f538d80ad6f880ae4664a5d016	158
+mod	google.golang.org/protobuf	v1.20.1-0.20200309200217-e05f789c0967	420ec9fba7793b96dff1c5ae9983656e72e1c0bd1d14dda2398aec1b294780ff	128
+mod	google.golang.org/protobuf	v1.21.0	a532d488ff1097b330ff2e2929f39ecff8c2fa09dc7650b66ca5430c2d8303fb	158
+mod	google.golang.org/protobuf	v1.23.0	394a49462cbf6dca4dd86f3cf0e8ddcbb9adc9397f73e82fecae54c79e9e4d53	123
+info	google.golang.org/protobuf	v1.36.12	adcdfa99465b9d87edd7d05d540d6e0ce94a04824fe283552410f2c50188f51d	197	{"Origin":{"Hash":"cdd4c5f7406e82462949c7a65defa9f3029c162d","Ref":"refs/tags/v1.36.12","URL":"https://go.googlesource.com/protobuf","VCS":"git"},"Time":"2026-08-10T13:29:45Z","Version":"v1.36.12"}
+mod	google.golang.org/protobuf	v1.36.12	a75c105a852fbd8da8d8cfac09c2eab9a206cfd27ed37c973737e23f632ca96e	124
+zip	google.golang.org/protobuf	v1.36.12	68f8a3174aff42950fd9bd02c11b45c6986eb8060508d124d1c3dd6bf86b9be6	2354385
+mod	gopkg.in/check.v1	v0.0.0-20161208181325-20d25e280405	5c306e0d633cd66a11b40e2e5fbbc6da42110db7d72ea3c1524ceb45ee40c33f	25
+mod	gopkg.in/check.v1	v1.0.0-20201130134442-10cb98267c6c	6e6e2fca40eb8fe1455e6a08cd39833c7c2e9a2341a81fb181b89d0b1c725f48	71
+zip	gopkg.in/check.v1	v1.0.0-20201130134442-10cb98267c6c	f555684e5c5dacc2850dddb345fef1b8f93f546b72685589789da6d2b062710e	42835
+info	gopkg.in/evanphx/json-patch.v4	v4.13.0	3ecbe16477cd6de9aca3956aa9fb455cf6af6f095407b748a02894d55add8f8c	197	{"Origin":{"Hash":"84a4bb100ade42a86fce2647c95a7dbcbf569cb2","Ref":"refs/tags/v4.13.0","URL":"https://gopkg.in/evanphx/json-patch.v4","VCS":"git"},"Time":"2025-01-28T17:43:52Z","Version":"v4.13.0"}
+mod	gopkg.in/evanphx/json-patch.v4	v4.13.0	6b47b9be0c3be256798bae96456194f96ef8c286797ae901eff42da94f1efc31	38
+zip	gopkg.in/evanphx/json-patch.v4	v4.13.0	de94747c5023a2c83909845c76acc6b4bfe28b44994207394b5e057f3085625a	21859
+info	gopkg.in/inf.v0	v0.9.1	828e9bd5de99ca941616b28bdc1f08880489d42e26cd4faadd30d7ede6ddd0f8	50	{"Time":"2018-03-26T17:23:32Z","Version":"v0.9.1"}
+mod	gopkg.in/inf.v0	v0.9.1	ff919638534d3e5b7df9a4283eeb633040e6d206b200a18a47f9c7ff3c4bfabe	23
+zip	gopkg.in/inf.v0	v0.9.1	08abac18c95cc43b725d4925f63309398d618beab68b4669659b61255e5374a0	15882
+mod	gopkg.in/yaml.v2	v2.3.0	88d979d2f093d2397f756bc86efa2ca03f73a60d668ceb391b3510029f3f7cfc	95
+mod	gopkg.in/yaml.v3	v3.0.0-20200313102051-9f266ea9e77c	21579860a20306fcf43b1bd234d1fba319499c77611b71c05f9bf3ba90dab939	95
+mod	gopkg.in/yaml.v3	v3.0.1	21579860a20306fcf43b1bd234d1fba319499c77611b71c05f9bf3ba90dab939	95
+zip	gopkg.in/yaml.v3	v3.0.1	aab8fbc4e6300ea08e6afe1caea18a21c90c79f489f52c53e2f20431f1a9a015	104623
+info	k8s.io/api	v0.37.0	b5738efaabd4e4edf190bed5f4b59f5285ced84c6fc9cb3c41c64206669f126a	192	{"Origin":{"Hash":"34b5cc4a2603a1cdcad4aced5c83808fb7df7bb8","Ref":"refs/tags/v0.37.0","URL":"https://github.com/kubernetes/api","VCS":"git"},"Time":"2026-08-26T17:04:45Z","Version":"v0.37.0"}
+mod	k8s.io/api	v0.37.0	d49f28264a3e80645873498a3c3e4b6cf31d1f6aedf7b36e83c6f12bf94dd54f	1178
+zip	k8s.io/api	v0.37.0	7451225b8855d93b5b89a6797e2a9b875b2b429cc0720cd782e2d5481a7698e6	5557967
+info	k8s.io/apimachinery	v0.37.0	6a8f26e6dc9b4c9d399717a01a20db62246b562869e89be65b1fb6eb16db4573	201	{"Origin":{"Hash":"7164e39885ced1e843757da6423a337f6eae75f7","Ref":"refs/tags/v0.37.0","URL":"https://github.com/kubernetes/apimachinery","VCS":"git"},"Time":"2026-08-26T16:56:42Z","Version":"v0.37.0"}
+mod	k8s.io/apimachinery	v0.37.0	5c0adf6c58d5751659547f2d672bcb3ef954c7019e7bc07a4ec183ea69d11b02	2505
+zip	k8s.io/apimachinery	v0.37.0	798a5e971e7f0da7882b1c9c325894486285b956f0b004ba0343d5753d23d76b	1271121
+info	k8s.io/client-go	v0.37.0	38a8a950f81503f11d4a881a24c820c754b31638595c1c97f53c85d466fa4248	198	{"Origin":{"Hash":"28076445520055420e3be4255b4cd27fd19df1f9","Ref":"refs/tags/v0.37.0","URL":"https://github.com/kubernetes/client-go","VCS":"git"},"Time":"2026-08-26T17:15:48Z","Version":"v0.37.0"}
+mod	k8s.io/client-go	v0.37.0	d4e41d2bb92c5d3efff17c6df29f15964a044629775f0bcbc9374fd85c3f575c	2827
+zip	k8s.io/client-go	v0.37.0	e48557de0d71c7fe7365be5f325d033945df0bc55969a30be83a5f7e131835c4	4707330
+info	k8s.io/klog/v2	v2.140.0	04b9a5db64a1ef8e0918d9e352db694e47644e345e80a05007dcc8332f557826	192	{"Origin":{"Hash":"ef4b370a5578b77a401416e4d12f5900cc8850cb","Ref":"refs/heads/main","URL":"https://github.com/kubernetes/klog","VCS":"git"},"Time":"2026-03-03T11:17:23Z","Version":"v2.140.0"}
+mod	k8s.io/klog/v2	v2.140.0	382f54dfc864c3225b05d4bbb07e804e43f8d055cda2aa179944a1506257faa0	71
+zip	k8s.io/klog/v2	v2.140.0	46fab8686139b04c42f1b44e84c5a162667fbf22628216d5061d95206625a886	152306
+info	k8s.io/kube-openapi	v0.0.0-20260721132016-d427ff9ee9ad	63a264a05d4e0d188f45cd65758becb8a8a221db48ba4d7c123334391a4e851f	202	{"Origin":{"Hash":"d427ff9ee9ad05f5da435abbb7c5929cb713ac56","URL":"https://github.com/kubernetes/kube-openapi","VCS":"git"},"Time":"2026-07-21T13:20:16Z","Version":"v0.0.0-20260721132016-d427ff9ee9ad"}
+mod	k8s.io/kube-openapi	v0.0.0-20260721132016-d427ff9ee9ad	7a597d27869ac2e98a326173eb6aa09159e8a7fbfc10db93b7b933441dcfd572	1919
+zip	k8s.io/kube-openapi	v0.0.0-20260721132016-d427ff9ee9ad	d49441d035de2e04140f634bc3e4055d0ac59a05cd095cbb0717c3e36e16ed4c	2159228
+info	k8s.io/utils	v0.0.0-20260626114624-be93311217bd	0bd15f8bb88d310fd780c0ad8ee71f0a262c1d44bf68065e20a24f05ffcdc373	195	{"Origin":{"Hash":"be93311217bd4e42d0aa42a5987d08e8f5581ec0","URL":"https://github.com/kubernetes/utils","VCS":"git"},"Time":"2026-06-26T11:46:24Z","Version":"v0.0.0-20260626114624-be93311217bd"}
+mod	k8s.io/utils	v0.0.0-20260626114624-be93311217bd	11807797ae8f35c92a6ffef040b68e96bce6c30af949a595fe72fc7b35d12bc0	153
+zip	k8s.io/utils	v0.0.0-20260626114624-be93311217bd	11b292d2a6f02494c4d543c726426c307ad3901a7a781ab3fabeae40fd647840	243574
+info	sigs.k8s.io/json	v0.0.0-20250730193827-2d320260d730	fc9b5b6c84daea036d922237ba514891679ca4986db0c2e22592fab4470dd710	199	{"Origin":{"Hash":"2d320260d730f3842fef7b08d9a807bdbc617824","URL":"https://github.com/kubernetes-sigs/json","VCS":"git"},"Time":"2025-07-30T19:38:27Z","Version":"v0.0.0-20250730193827-2d320260d730"}
+mod	sigs.k8s.io/json	v0.0.0-20250730193827-2d320260d730	d584b68f8fa7ec7dbd71381e619036bbc64bfea3cc71c244e31f9ff429511620	33
+zip	sigs.k8s.io/json	v0.0.0-20250730193827-2d320260d730	7cec6eae3e4e4c9c1e0a009eef200740990fafbcb9cab081eb18ce32f6e7a7b9	227649
+info	sigs.k8s.io/mcs-api	v0.5.2	4ddcaa3be1c913bc0aef10ea37d18c7a5662d70ee70c43556a9a183de871df7e	199	{"Origin":{"Hash":"32672de8605f9719b9220992c75cb263ba6f3746","Ref":"refs/tags/v0.5.2","URL":"https://github.com/kubernetes-sigs/mcs-api","VCS":"git"},"Time":"2026-07-13T15:42:19Z","Version":"v0.5.2"}
+mod	sigs.k8s.io/mcs-api	v0.5.2	3f57306791ee6c018ffac897e4e2cb32f7e4e466ca7dd1016f26c093641a9f91	1970
+zip	sigs.k8s.io/mcs-api	v0.5.2	b25ccd50427f7de3b71d3acf83e3cc1596b96f45985af816bea2cc54de2498d8	124575
+info	sigs.k8s.io/randfill	v1.0.0	9f5801020c8d08394c49117542b8a0c1e68450595c9bd7d468652ac314553e63	200	{"Origin":{"Hash":"1b6128de8ceabf6d20c4d81d770bf439c1494960","Ref":"refs/tags/v1.0.0","URL":"https://github.com/kubernetes-sigs/randfill","VCS":"git"},"Time":"2025-03-04T18:23:53Z","Version":"v1.0.0"}
+mod	sigs.k8s.io/randfill	v1.0.0	1e6a13decd1d66ad37abfe7e3f7ede5732c6ca6e81eacd2cc7739650652d0e4a	37
+zip	sigs.k8s.io/randfill	v1.0.0	31dbbfc44ce12f78f1b68d6bbeed8526aa73c53243353d44d50b2532c828f5f1	26386
+info	sigs.k8s.io/structured-merge-diff/v6	v6.4.2	d747a52a3ac582d1394cffe38026c6cba013cce29353f811b802b5cdb7c23125	213	{"Origin":{"Hash":"15d075473efece0367330fd20a7cc2aad2eeb998","Ref":"refs/tags/v6.4.2","URL":"https://github.com/kubernetes-sigs/structured-merge-diff","VCS":"git"},"Time":"2026-07-07T22:38:29Z","Version":"v6.4.2"}
+mod	sigs.k8s.io/structured-merge-diff/v6	v6.4.2	7a7ab164fd592cdd515af7f0e556d2a5e9277652506943ba98e3d6ee035abe2c	363
+zip	sigs.k8s.io/structured-merge-diff/v6	v6.4.2	9af2aa83a0a0ddb17f658ee8aad2a1b187450b8c0cac5687f7cc94d27d63112d	350966
+info	sigs.k8s.io/yaml	v1.6.0	616c8885363abb8663dbc10fb73e639de92a9f0ce06444bc6f7cfedb1b50179c	196	{"Origin":{"Hash":"048d724aca2d37ddb5b03c90b5b4550a3a48766d","Ref":"refs/tags/v1.6.0","URL":"https://github.com/kubernetes-sigs/yaml","VCS":"git"},"Time":"2025-07-24T18:12:28Z","Version":"v1.6.0"}
+mod	sigs.k8s.io/yaml	v1.6.0	4e3c3c1d49a6652440ff70fb475e54ae46be2cab63cc46721b3c02fd9cca985e	162
+zip	sigs.k8s.io/yaml	v1.6.0	cf88648a471581817b00a42ee8d24fd73eb0e3503998cf46d8e63787e11e5052	60719

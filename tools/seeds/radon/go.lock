@@ -1,0 +1,21 @@
+# The Go modules of the release's build of this project: kind, module, version, sha256, size and the .info JSON (lay-out-sources gomodules). Do not edit.
+mod	github.com/davecgh/go-spew	v1.1.0	bcb29393251237b79a17b6c19bf29134f43e8f438c3198988fcd461a1cdf05cc	34
+info	github.com/dvyukov/go-fuzz-corpus	v0.0.0-20190920191254-c42c1b2914c7	ab38b0d188356bb67d194ae1e461675dcc1402fc6ac19196fa27d1a80dc70487	78	{"Time":"2019-09-20T19:12:54Z","Version":"v0.0.0-20190920191254-c42c1b2914c7"}
+mod	github.com/dvyukov/go-fuzz-corpus	v0.0.0-20190920191254-c42c1b2914c7	2899ff3c9421968ac14a05b06e6fc97899faed175fc26b6b38080d15a84fc926	41
+zip	github.com/dvyukov/go-fuzz-corpus	v0.0.0-20190920191254-c42c1b2914c7	fd0dbd56474c709aef8638d6d7b3e57e8f8b73b086a29f5fcc138fa319402460	45826297
+mod	github.com/pmezard/go-difflib	v1.0.0	74b2e766eb215377864d587badf57e95521f692d2a7860b3c7759093f9c9bec2	37
+info	github.com/shopspring/decimal	v1.2.0	01b1503f11c753c568fdb2a7a4b83196ff383f349d712f70964ed129fe88a4d3	50	{"Time":"2020-04-28T21:23:09Z","Version":"v1.2.0"}
+mod	github.com/shopspring/decimal	v1.2.0	983f79d79f2dfb76233371da2a6d6bd7980eed64c3e43ef7d815ebd37dae9c1e	46
+zip	github.com/shopspring/decimal	v1.2.0	65c34c248e7f736cadf03a7caa0c0870d15499eb593f933fe106c96c2b7699a7	40827
+mod	github.com/stretchr/objx	v0.1.0	1350354d52d2287a62336ecc0d56232d4c47699af9bba49c67c2b48254da98f1	32
+info	github.com/stretchr/testify	v1.12.1	614b1855bd69ff2e0b32149e4786be96849b9dcbc821d272ad57d61ff4ff044e	194	{"Origin":{"Hash":"959dbdacf1533e155162811ea90c90117a420463","Ref":"refs/tags/v1.12.1","URL":"https://github.com/stretchr/testify","VCS":"git"},"Time":"2026-08-17T08:24:05Z","Version":"v1.12.1"}
+mod	github.com/stretchr/testify	v1.12.1	a6aa921ea6dedc1cbb384d3c1b79c58b6e5d6ce26d13b786ec60a99809ae1daa	216
+zip	github.com/stretchr/testify	v1.12.1	6874ed1c4b0b7e9feb27989b16c179b36590020633436ae260cefc5f5565589f	208461
+mod	github.com/stretchr/testify	v1.7.0	fff8168d98e6a07156c454a1b6e925509f3177e96c155516d7f96b4079cca3bf	216
+info	github.com/xelabs/go-mysqlstack	v1.0.0	3bb71f18cefc038d70ff06e0a2bec921a19855988a95909353da116844841837	50	{"Time":"2021-05-11T15:08:42Z","Version":"v1.0.0"}
+mod	github.com/xelabs/go-mysqlstack	v1.0.0	bcb92d62249008e9d091e38f7fbe4fd9c0f405543ceb484ce7a6cbcdd089dce5	126
+zip	github.com/xelabs/go-mysqlstack	v1.0.0	5164f8eebdf310515c278c44f80752a60a4185b13032b9fcb84e66576402185d	271406
+mod	go.yaml.in/yaml/v3	v3.0.5	4bf9de8891d4d71507d92568022f8241fb828d8d0a6c9204c130bf030f3e3b2f	275
+zip	go.yaml.in/yaml/v3	v3.0.5	f2d70caa35f66283aec58b889af8c5f07c374c5934be27a738c1215263e19205	107640
+mod	gopkg.in/check.v1	v0.0.0-20161208181325-20d25e280405	5c306e0d633cd66a11b40e2e5fbbc6da42110db7d72ea3c1524ceb45ee40c33f	25
+mod	gopkg.in/yaml.v3	v3.0.0-20200313102051-9f266ea9e77c	21579860a20306fcf43b1bd234d1fba319499c77611b71c05f9bf3ba90dab939	95

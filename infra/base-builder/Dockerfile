@@ -14,9 +14,10 @@ COPY toolchain.sh link-fuzz-target recipes.sh release-target.sh /usr/local/lib/o
 COPY driver/ /usr/local/lib/oss-verify/driver/
 COPY rust/ /usr/local/lib/oss-verify/rust/
 COPY python/ /usr/local/lib/oss-verify/python/
+COPY go/ /usr/local/lib/oss-verify/go/
 COPY compile fetch-commit lay-out-sources /usr/local/bin/
 RUN chmod 0755 /usr/local/bin/compile /usr/local/bin/fetch-commit /usr/local/bin/lay-out-sources \
-               /usr/local/lib/oss-verify/link-fuzz-target \
+               /usr/local/lib/oss-verify/link-fuzz-target /usr/local/lib/oss-verify/go/compile-go \
  && mkdir -p /src /work /out
 
 ENV SRC=/src \

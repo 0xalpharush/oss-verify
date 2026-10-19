@@ -31,6 +31,9 @@ trees out under /work, where the release's build had them.
                                               the lock's sha256s
     corpus   <path>  <project file>           the inputs of one of the project's seed corpora (a zip file of files),
                                               each in the directory <path>
+    gomodules <path>  <project file>          the Go modules that a go.lock pins, as a module proxy directory for
+                                              GOPROXY=file://<root>/<path>: each .mod and .zip downloaded from
+                                              proxy.golang.org and checked, each .info as the lock holds it
     patch    <path>  <project file>           a build-only patch, applied to the tree at <path> with git apply
 
 The directives run in order, and the patches in the order the project's series file lists them, which must be the
@@ -278,6 +281,60 @@ def corpus(path, name, files):
             (path / info.filename).write_bytes(seeds.read(info))
 
 
+GO_PROXY = "https://proxy.golang.org"
+# A pseudo-version (v0.0.0-20230811130428-ced1acdcaa24 and its other forms), which a module's version list leaves out.
+GO_PSEUDO = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+-(?:0\.)?(?:[0-9A-Za-z.-]*\.)?[0-9]{14}-[0-9a-f]{12}(\+incompatible)?$"
+                       r"|^v[0-9]+\.0\.0-[0-9]{14}-[0-9a-f]{12}(\+incompatible)?$")
+
+
+def go_version_key(version):
+    """A sort key for the versions of a module, good enough for those a go.lock holds: a release sorts after its
+    pre-releases."""
+    core, _, rest = version[1:].partition("-")
+    pre = rest.partition("+")[0]
+    numbers = [int(part) if part.isdigit() else 0 for part in core.split("+")[0].split(".")]
+    numbers += [0] * (3 - len(numbers))
+    if not pre:
+        return (*numbers, 1)
+    return (*numbers, 0, *((0, int(part)) if part.isdigit() else (1, part) for part in pre.split(".")))
+
+
+def gomodules(path, name, files):
+    """The module proxy directory of a go.lock, as the release's Go build made it from its lock. Each row of the lock
+    is `<kind> <module> <version> <sha256> <size> [<info JSON>]`, with tabs, for the .mod, .zip and .info files of the
+    proxy protocol (module paths and versions as the proxy escapes them). The list of each module's versions and its
+    @latest are made from the .info rows: the list holds the versions that are not pseudo-versions, and a module with
+    none gets an @latest of its highest version."""
+    fresh(path)
+    path.mkdir()
+    infos = {}
+    count = 0
+    for number, line in enumerate((files / name).read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        row = line.split("\t")
+        if row[0] not in ("mod", "zip", "info") or len(row) != (6 if row[0] == "info" else 5):
+            raise Failed(f"{name}:{number}: not a row of a go.lock: {line!r}")
+        kind, module, version, sha256, size = row[:5]
+        target = under(path, f"{module}/@v/{version}.{kind}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if kind == "info":
+            target.write_text(row[5])
+            infos.setdefault(module, {})[version] = row[5]
+        else:
+            data = download(f"{GO_PROXY}/{module}/@v/{version}.{kind}", sha256)
+            if len(data) != int(size):
+                raise Failed(f"{module}@{version}.{kind}: {len(data)} bytes, the lock says {size}")
+            target.write_bytes(data)
+        count += 1
+    for module, versions in infos.items():
+        tagged = sorted((version for version in versions if not GO_PSEUDO.match(version)), key=go_version_key)
+        (path / module / "@v" / "list").write_text("".join(version + "\n" for version in tagged))
+        if not tagged:
+            (path / module / "@latest").write_text(versions[max(versions, key=go_version_key)])
+    print(f"lay-out-sources: gomodules {path}: {count} file(s) of {len(infos)} module(s)")
+
+
 def patch(path, name, files):
     subprocess.run(["git", "apply", "--whitespace=nowarn", "-p1", str(files / name)], cwd=path, check=True,
                    stdin=subprocess.DEVNULL)
@@ -314,6 +371,8 @@ def main():
                 crates(destination, *args, root)
             elif kind == "corpus" and len(args) == 1:
                 corpus(destination, args[0], files)
+            elif kind == "gomodules" and len(args) == 1:
+                gomodules(destination, args[0], files)
             elif kind == "copy" and len(args) == 1:
                 copy(destination, args[0], files)
             elif kind == "patch" and len(args) == 1:

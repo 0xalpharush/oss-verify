@@ -119,7 +119,7 @@ SOURCE_SUFFIXES = tuple(dict.fromkeys(suffix for suffixes in LANGUAGES.values() 
 PLAIN_ONLY = ("go", "jvm")
 # The languages that the builder builds today: those of the toolchains in infra/toolchains.tsv. The builders of the
 # others are pending.
-BUILT_TODAY = ("c", "c++", "rust", "python")
+BUILT_TODAY = ("c", "c++", "rust", "python", "go")
 # The languages whose UBSan builds are clang's UndefinedBehaviorSanitizer, which ubsan_checks changes (a python
 # project's builds compile CPython with it). A rust project's ubsan build is rustc's UB checks
 # (docs/build-contract.md#rust-fuzz-targets).
@@ -411,12 +411,13 @@ def series_entries(text):
 
 
 def copied_by_sources(files):
-    """The project files the sources file copies into place (its `copy` directives), which may have any name."""
+    """The project files the sources file copies into place or reads (its `copy` and `gomodules` directives), which
+    may have any name."""
     text = files.get(SOURCES)
     if not text:
         return set()
     return {fields[2] for line in text.splitlines() if not line.startswith("#")
-            for fields in [line.split("\t")] if len(fields) == 3 and fields[0] == "copy"}
+            for fields in [line.split("\t")] if len(fields) == 3 and fields[0] in ("copy", "gomodules")}
 
 
 def check_files(config, files):
