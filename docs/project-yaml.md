@@ -62,8 +62,8 @@ This table is the only list of languages in these documents. It gives the status
 | `c` | C | statements today | |
 | `c++` | C++, or C and C++ together | statements today | |
 | `rust` | Rust | statements today | `*.rs` |
-| `python` | Python | statements today, but Python binaries are over the current size cap | `*.py` |
-| `go` | Go | halts statements only, and Go binaries are over the current size cap | `*.go` |
+| `python` | Python | statements today | `*.py` |
+| `go` | Go | halts statements only | `*.go` |
 | `jvm` | Java, Kotlin and the other JVM languages | halts statements only; JVM binaries are not byte-reproducible yet | `*.java` `*.kt` |
 | `javascript` | JavaScript | held | `*.js` `*.mjs` `*.cjs` `*.ts` |
 | | Ruby, Lua | in progress: `tools/validate.py` does not accept them yet | |
