@@ -447,8 +447,8 @@ class Repository(unittest.TestCase):
         with self.assertRaises(seed.SeedError):
             seed.make_branch("plus", text, [], root=self.root, seeds=self.seeds, builds={"plus": ("reproduces", "")})
         # Build files that are being checked, or that build the same bytes twice with nothing of the release's to match.
-        for result, words in (("checking", "not checked yet"), ("reproducible", "release built no binaries"),
-                              ("reproduces-some", "byte for byte the release's; it built no others")):
+        for result, words in (("checking", "not checked yet"), ("reproducible", "release published no binaries"),
+                              ("reproduces-some", "that we have is byte for byte the same")):
             _, commit = seed.make_branch("cee", text, [], root=self.root, seeds=self.seeds,
                                          builds={"cee": (result, "")})
             self.assertIn(words, " ".join(self.run_git("log", "-1", "--format=%B", commit).split()))

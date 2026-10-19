@@ -636,13 +636,14 @@ def read_builds(path=BUILDS):
 WITH_FILES = {
     "reproduces": ("Build files: tools/check builds them and reproduces the release's binaries of these fuzz targets "
                    "byte for byte."),
-    # Each binary that the release has is byte for byte the release's, and a second build from scratch makes the same
-    # bytes; the release has none of the others.
-    "reproduces-some": ("Build files: tools/check builds them twice from scratch, with the same bytes each time. The "
-                        "binaries that the release built are byte for byte the release's; it built no others."),
-    # Two builds from scratch make the same bytes; the release built none of these binaries.
+    # The binaries of the release's build that we have are byte for byte the same, and a second build from scratch
+    # makes the same bytes; we have none of the others.
+    "reproduces-some": ("Build files: tools/check builds them twice from scratch, with the same bytes each time. Each "
+                        "binary of the release's build that we have is byte for byte the same; we have none of the "
+                        "others."),
+    # Two builds from scratch make the same bytes; we have no binary of the release's build to compare with.
     "reproducible": ("Build files: tools/check builds them twice from scratch, with the same bytes each time. The "
-                     "release built no binaries of these fuzz targets to compare with."),
+                     "release published no binaries of these fuzz targets to compare with."),
     "checking": "Build files: ported from the release's build, and not checked yet.",
 }
 
