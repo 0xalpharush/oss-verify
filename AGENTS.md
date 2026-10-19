@@ -2,7 +2,7 @@
 
 This file is for coding agents. It tells an agent how to enroll a project in OSS Verifier with the project's maintainer.
 
-If you read this file from a URL, get the repository first. Clone `https://github.com/theorem-labs/oss-verifier` next to the project, and do the work in that clone. Read the files that this page links to in that clone. Do not fork the repository: the maintainer pushes your branch to a fork when they open the pull request.
+If you read this file from a URL, get the repository first. Clone `https://github.com/theorem-labs/oss-verifier` next to the project. Do the work in that clone. In that clone, read each file that this file links to. Do not fork the repository. When you finish, tell the maintainer to push your branch to their fork. The maintainer opens the pull request from that fork.
 
 Follow the skill [.claude/skills/add-project/SKILL.md](.claude/skills/add-project/SKILL.md). It gives each step, the questions to ask the maintainer and the checks to run.
 

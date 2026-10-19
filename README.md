@@ -16,7 +16,9 @@ Enroll this project in OSS Verifier by following the instructions here:
 https://raw.githubusercontent.com/theorem-labs/oss-verifier/refs/heads/main/AGENTS.md
 ```
 
-The agent asks you what "correct" means for your code, and which findings and patches you want. Then it makes `projects/<name>/` and runs the checks. You open the pull request.
+The agent asks you what "correct" means for your code, and which findings and patches you want. Then it makes `projects/<name>/` and runs the checks. You push its branch to your fork of this repository, and you open the pull request.
+
+> **WARNING:** The agent runs `tools/check`. `tools/check` builds the project's `Dockerfile` with network access. Use the agent only on a project that you trust ([SECURITY.md](SECURITY.md)).
 
 ### For coding agents
 
