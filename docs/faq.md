@@ -92,6 +92,10 @@ The statements use a formal model of a riscv64 Linux process ([what-gets-proven.
 
 The [language table](project-yaml.md#language) gives the status of each language. It also tells which languages the builder builds today.
 
+## What is a DSL fuzz target?
+
+A DSL fuzz target reads its input as a small program of API calls. It is the starting point for a fuzz target at the level of the API. [dsl.md](dsl.md) describes the format.
+
 ## Why must two builds give the same bytes?
 
 A statement is about the exact bytes of a binary, which the lock pins by their SHA-256. You can rebuild a binary and compare it with the lock only if each build gives the same bytes. Thus we pin only binaries that two clean builds reproduce. `tools/check --twice` makes this test, and the Build check of each pull request runs it ([build-contract.md](build-contract.md#reproducibility)).
