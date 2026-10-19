@@ -32,7 +32,7 @@ Each binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp6
 
 A new toolchain image changes the bytes of each binary that it builds, and a proof is about specified bytes. Thus each project is built with one toolchain image, its vintage.
 
-* [infra/toolchains.tsv](../infra/toolchains.tsv) lists the published toolchain images, oldest first. Today it lists one image, the default above. We add a new image only after its publication.
+* [infra/toolchains.tsv](../infra/toolchains.tsv) lists the published toolchain images, oldest first. Today it lists one image, the default above, which builds C and C++ ([project-yaml.md](project-yaml.md#language)). We add a new image only after its publication.
 * The builder gets the toolchain image as a build argument (`--build-arg TOOLCHAIN=<image>`). Its `Dockerfile` uses the default above.
 * `tools/check --lock` builds with the toolchain that the lock names. For a manifest, this is `builder.toolchain`. For a `harness.yaml` of oss-fuzz-theorems, it is the `build.builder` field of the `project.yaml` two directories above.
 * If you give more than one lock, the locks must name the same toolchain.

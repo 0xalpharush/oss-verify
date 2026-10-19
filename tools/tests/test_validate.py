@@ -125,6 +125,42 @@ class Builds(unittest.TestCase):
             self.assertIsNone(validate.size_in_bytes(bad), bad)
 
 
+class Languages(unittest.TestCase):
+    def test_oss_fuzz_names(self):
+        for language in ("c", "c++", "rust", "python", "go", "jvm", "javascript"):
+            problems, _, _ = check(MINIMAL.replace("language: c", f"language: {language}"))
+            self.assertEqual(problems, [], language)
+        for language in ("ruby", "lua", "swift", "C", "java"):
+            problems, _, _ = check(MINIMAL.replace("language: c", f"language: {language}"))
+            self.assertTrue(any("language must be one of" in problem for problem in problems), language)
+
+    def test_only_c_and_cxx_build_today(self):
+        self.assertEqual(check(MINIMAL)[1], [])
+        _, warnings, _ = check(MINIMAL.replace("language: c", "language: rust"))
+        self.assertTrue(any("the builder cannot build it yet" in warning for warning in warnings), warnings)
+
+    def test_go_and_jvm_have_the_plain_build_only(self):
+        for language in ("go", "jvm"):
+            text = MINIMAL.replace("language: c", f"language: {language}")
+            self.assertIn("builds: plain;", check(text)[2])
+            self.assertIn("builds: plain;", check(text + "sanitizers: []\n")[2])
+            problems, _, _ = check(text + "sanitizers: [address]\n")
+            self.assertTrue(any("halts statements only" in problem for problem in problems), problems)
+        self.assertEqual(validate.builds_of({"language": "go"}), ["plain"])
+        self.assertEqual(validate.builds_of({"language": "rust"}), ["plain", "ubsan", "asan", "asan-ubsan"])
+
+    def test_harness_suffixes_follow_the_language(self):
+        files = {"Dockerfile": "FROM x\n", "build.sh": "#!/bin/bash\n", "fuzz_parse.rs": "fn main() {}\n",
+                 "shim.c": "int x;\n"}
+        self.assertEqual(check(MINIMAL.replace("language: c", "language: rust"), files)[0], [])
+        problems, _, _ = check(MINIMAL, files)
+        self.assertTrue(any(problem.startswith("fuzz_parse.rs: only") for problem in problems), problems)
+        self.assertEqual(validate.limit_for("fuzz.py", validate.source_suffixes({"language": "python"})),
+                         validate.MAX_SOURCE_BYTES)
+        self.assertEqual(validate.limit_for("fuzz.py", validate.source_suffixes({"language": "c"})),
+                         validate.MAX_FILE_BYTES)
+
+
 class Problems(unittest.TestCase):
     def assertProblem(self, text, fragment, files=None, name="example"):
         problems, _, summary = check(text, files, name)
@@ -164,7 +200,7 @@ class Problems(unittest.TestCase):
         self.assertProblem(MINIMAL + f"pgp: |\n  {private}\n", "pgp must be one armored public key")
 
     def test_build_fields(self):
-        self.assertProblem(MINIMAL.replace("language: c", "language: rust"), "language must be one of")
+        self.assertProblem(MINIMAL.replace("language: c", "language: swift"), "language must be one of")
         self.assertProblem(MINIMAL + "sanitizers: address\n", "sanitizers must be a list")
         self.assertProblem(MINIMAL + "sanitizers: [memory]\n", "'memory' is not one of")
         self.assertProblem(MINIMAL + "sanitizers: [address, address]\n", "names a sanitizer twice")

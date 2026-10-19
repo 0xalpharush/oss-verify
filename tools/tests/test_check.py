@@ -133,6 +133,14 @@ class Twice(unittest.TestCase):
         self.assertEqual(data["targets"], {"demo_fuzzer": {"builds": FIRST["demo_fuzzer"]}})
         self.assertEqual(manifest.load_lock(self.work / "manifest.yaml")[0], COMMIT)
 
+    def test_a_language_with_no_builder_yet(self):
+        text = (self.project / "project.yaml").read_text().replace("language: c", "language: rust")
+        (self.project / "project.yaml").write_text(text)
+        with mock.patch.object(sys, "argv", ["tools/check", "--no-shell", str(self.project)]), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as stop:
+            check_tool.main()
+        self.assertIn("which the builder cannot build yet", str(stop.exception.code))
+
     def test_differs(self):
         code, data = self.check(entries(["1" * 64, "e" * 64, "3" * 64, "4" * 64]))
         self.assertEqual(code, check_tool.DIFFERENT)

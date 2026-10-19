@@ -17,14 +17,15 @@ Fields allowed in project.yaml:
     repo: https://...[#ref]             required   one git repository, https only; #ref is a branch or tag to
                                                    follow, or a full commit id to verify exactly that commit
     primary_contact: a@b.c              required   n/a only for a project we seeded (a warning)
-    language: <language>                required   a value from the table in docs/project-yaml.md#language
+    language: <language>                required   OSS-Fuzz's name, from the table in docs/project-yaml.md#language
     dockerfile: <path in your repo>     required   unless a Dockerfile is next to project.yaml (no default); a
                                                    project we seeded may have neither yet (a warning)
     auto_ccs: [a@b.c, ...]              optional   cannot be combined with pgp
     homepage: https://...               optional
     pgp: <armored public key>           optional   if set, reports are encrypted to this key
     disabled: true | false              optional   true pauses the project
-    sanitizers: [address, undefined]    optional   the sanitizer builds besides plain (this is the default)
+    sanitizers: [address, undefined]    optional   the sanitizer builds besides plain (this is the default; go and
+                                                   jvm take none, and default to [])
     fuzz_targets: [<target>, ...]       optional   default: every fuzz target the build produces
     patch_style: <path in your repo>    optional   or a patch_style.md next to project.yaml
     budgets: {halts: ..., agrees: ...}  optional   memory budgets (docs/what-gets-proven.md)
@@ -32,7 +33,8 @@ Fields allowed in project.yaml:
     publish: eager | after_fixes | never  optional  when the proofs are published (default after_fixes)
 
 Files allowed next to project.yaml: a Dockerfile with its build.sh (unless dockerfile: is set), a patch_style.md
-(unless patch_style: is set), harness sources (*.c *.cc *.cpp *.h *.hh *.hpp), and build-only patches (*.patch)
+(unless patch_style: is set), harness sources (*.c *.cc *.cpp *.h *.hh *.hpp, and those of the project's language),
+and build-only patches (*.patch)
 with the series file that lists them in the order they are applied. With dockerfile: set, the build context is your
 repository, so build.sh, harness sources and patches belong there instead.
 """
@@ -64,7 +66,7 @@ FILE_KEYS = {"Dockerfile": "dockerfile", "patch_style.md": "patch_style"}
 SERIES = "series"
 # The pins of a project's other source trees (commits, sha256s), which lay-out-sources lays out.
 SOURCES = "sources"
-SOURCE_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hh", ".hpp")
+C_SOURCES = (".c", ".cc", ".cpp", ".h", ".hh", ".hpp")
 PATCH_SUFFIX = ".patch"
 MAX_FILE_BYTES = 64 * 1024  # Dockerfile, patch_style.md, series, sources
 MAX_SOURCE_BYTES = 256 * 1024  # build.sh, a harness source or a patch
@@ -87,8 +89,24 @@ PGP_END = "-----END PGP PUBLIC KEY BLOCK-----"
 
 # The contact of a project we seeded, which no maintainer has adopted yet.
 NO_CONTACT = "n/a"
-# The language table in docs/project-yaml.md, the documents' only list of them, gives the same values.
-LANGUAGES = ("c", "c++")
+# The values of language, OSS-Fuzz's names, each with the suffixes of the harness sources it permits beside
+# project.yaml: its own, and C's and C++'s for native code. The language table in docs/project-yaml.md, the documents'
+# only list of them, gives the same values.
+LANGUAGES = {
+    "c": C_SOURCES,
+    "c++": C_SOURCES,
+    "rust": (".rs", *C_SOURCES),
+    "python": (".py", *C_SOURCES),
+    "go": (".go", *C_SOURCES),
+    "jvm": (".java", ".kt", *C_SOURCES),
+    "javascript": (".js", ".mjs", ".cjs", ".ts", *C_SOURCES),
+}
+# Every suffix that some language permits.
+SOURCE_SUFFIXES = tuple(dict.fromkeys(suffix for suffixes in LANGUAGES.values() for suffix in suffixes))
+# The languages with halts statements only, about the plain build: they take no sanitizer builds.
+PLAIN_ONLY = ("go", "jvm")
+# The languages that the builder builds today. The builders of the others are pending.
+BUILT_TODAY = ("c", "c++")
 SANITIZERS = ("address", "undefined")
 PUBLISH = ("eager", "after_fixes", "never")
 # The builds, in the order their statements and manifests list them, each with the SANITIZER that `compile` takes.
@@ -149,7 +167,15 @@ def size_in_bytes(value):
 def sanitizers_of(config):
     """The sanitizers a valid project.yaml asks for."""
     sanitizers = config.get("sanitizers")
-    return list(sanitizers) if isinstance(sanitizers, list) else list(DEFAULT_SANITIZERS)
+    if isinstance(sanitizers, list):
+        return list(sanitizers)
+    return [] if config.get("language") in PLAIN_ONLY else list(DEFAULT_SANITIZERS)
+
+
+def source_suffixes(config):
+    """The suffixes of the harness sources that the project's language permits beside project.yaml."""
+    language = config.get("language") if isinstance(config, dict) else None
+    return LANGUAGES.get(language, C_SOURCES) if isinstance(language, str) else C_SOURCES
 
 
 def builds_of(config):
@@ -237,6 +263,9 @@ def check_builds(config):
                     yield f"sanitizers: {item!r} is not one of {', '.join(SANITIZERS)}"
             if len(set(sanitizers)) != len(sanitizers):
                 yield "sanitizers names a sanitizer twice"
+            if language in PLAIN_ONLY and sanitizers:
+                yield (f"a {language} project has halts statements only, about the plain build: give sanitizers: [] "
+                       "or leave it out")
 
     targets = config.get("fuzz_targets")
     if targets is not None:
@@ -334,15 +363,15 @@ def check_files(config, files):
     patches = sorted(name for name in files if name.endswith(PATCH_SUFFIX))
     copied = copied_by_sources(files)
     for name, text in files.items():
-        is_source = name.endswith(SOURCE_SUFFIXES) or name in copied
+        is_source = name.endswith(source_suffixes(config)) or name in copied
         if not FILE_NAME.fullmatch(name):
             yield f"{name}: a file name may use only A-Z a-z 0-9 . _ - (starting with a letter or digit)"
             continue
         if name not in (*FILE_KEYS, "build.sh", SERIES, SOURCES) and not is_source and name not in patches:
             yield (
                 f"{name}: only project.yaml, Dockerfile, build.sh, sources, patch_style.md, harness sources "
-                f"({' '.join('*' + suffix for suffix in SOURCE_SUFFIXES)}), *.patch, series and the files sources "
-                "copies may sit in a project's directory"
+                f"({' '.join('*' + suffix for suffix in source_suffixes(config))}), *.patch, series and the files "
+                "sources copies may sit in a project's directory"
             )
             continue
         limit = MAX_SOURCE_BYTES if is_source or name in patches or name == "build.sh" else MAX_FILE_BYTES
@@ -385,6 +414,10 @@ def config_warnings(config, files):
         ref = repo.split("#", 1)[1]
         if SHORT_COMMIT.fullmatch(ref) and not FULL_COMMIT.fullmatch(ref):
             warnings.append(f"#{ref} looks like a shortened commit id; give a commit in full, or this names a branch or tag")
+    language = config.get("language")
+    if language in LANGUAGES and language not in BUILT_TODAY:
+        warnings.append(f"language {language}: the builder cannot build it yet (docs/project-yaml.md#language), so "
+                        "tools/check refuses it")
     if "Dockerfile" not in files and config.get("dockerfile") is None:
         warnings.append("no build files yet (a seeded project): it cannot be built until a Dockerfile and build.sh are added")
     if "Dockerfile" in files and "build.sh" not in files:
@@ -423,9 +456,9 @@ def read_text(path, limit):
         return None
 
 
-def limit_for(name):
-    """The largest a file with this name may be, in bytes."""
-    if name.endswith(SOURCE_SUFFIXES) or name.endswith(PATCH_SUFFIX) or name == "build.sh":
+def limit_for(name, suffixes=SOURCE_SUFFIXES):
+    """The largest a file with this name may be, in bytes. `suffixes` are those of the harness sources."""
+    if name.endswith(suffixes) or name.endswith(PATCH_SUFFIX) or name == "build.sh":
         return MAX_SOURCE_BYTES
     return MAX_FILE_BYTES
 
@@ -469,7 +502,7 @@ def check_project(directory):
     except ValueError as error:
         return [str(error)], [], None
 
-    files = {path.name: read_text(path, limit_for(path.name)) for path in beside}
+    files = {path.name: read_text(path, limit_for(path.name, source_suffixes(config))) for path in beside}
     for name in copied_by_sources(files) & set(files):
         files[name] = read_text(directory / name, MAX_SOURCE_BYTES)
     problems = check_config(config, files)

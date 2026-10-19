@@ -54,6 +54,8 @@ Give each file a header that tells what it is and its licence. A file copied fro
 
 ## 4. Port the build
 
+Today the builder builds only `c` and `c++` projects (`docs/project-yaml.md`, "language"). For another language, tell the maintainer that its builder is pending. Then stop.
+
 Copy `templates/Dockerfile` and `templates/build.sh` into `projects/<name>/`. Port the project's build (`docs/build-contract.md`).
 
 - In the `Dockerfile`, start with `FROM ${BASE_BUILDER}`.

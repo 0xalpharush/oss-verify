@@ -79,6 +79,9 @@ def load(project):
         say(f"{directory.name}: warning: {warning}")
 
     config = validate.load(directory)
+    if config["language"] not in validate.BUILT_TODAY:
+        sys.exit(f"tools/check: {directory.name} is in {config['language']}, which the builder cannot build yet "
+                 "(docs/project-yaml.md#language)")
     repo, _, ref = config["repo"].partition("#")
     beside = {path.name for path in directory.iterdir()}
     return Job(

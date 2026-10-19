@@ -52,19 +52,27 @@ A seeded project has `primary_contact: n/a` until a maintainer adopts it ([below
 
 ### language
 
-Give the language of the code that we build: the library and its fuzz targets.
+Give the language of the code that we build: the library and its fuzz targets. Use the name that OSS-Fuzz uses.
 
-Today the builder builds these languages:
+This table is the only list of languages in these documents. It gives the status of each language today.
 
-| `language` | the code |
-|---|---|
-| `c` | C |
-| `c++` | C++, or C and C++ together |
+| `language` | the code | status | more source suffixes |
+|---|---|---|---|
+| `c` | C | statements today | |
+| `c++` | C++, or C and C++ together | statements today | |
+| `rust` | Rust | statements today | `*.rs` |
+| `python` | Python | statements today, but Python binaries are over the current size cap | `*.py` |
+| `go` | Go | halts statements only | `*.go` |
+| `jvm` | Java, Kotlin and the other JVM languages | halts statements only; JVM binaries are not byte-reproducible yet | `*.java` `*.kt` |
+| `javascript` | JavaScript | held | `*.js` `*.mjs` `*.cjs` `*.ts` |
+| | Ruby, Lua | in progress: `tools/validate.py` does not accept them yet | |
+| | Swift | not possible: RISC-V LLVM has no Swift calling convention | |
 
-<!-- PENDING: the other languages that the toolchain supports. Add a row for each one here, and nowhere else. -->
-**Other languages: pending.** We are making sure which other languages the toolchain supports. This table will list them.
+Our builder has only the C and C++ toolchain today. Thus `tools/check` builds only `c` and `c++` projects, and `tools/validate.py` warns about the other languages. The builders for Rust and Python are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
 
-This table is the only list of languages in these documents.
+A `go` or `jvm` project has only the plain build, because it has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`.
+
+A fuzz target source in the project directory has a suffix of C or C++: `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp`. Each other language also permits the suffixes that the table gives.
 
 ### dockerfile
 
@@ -86,7 +94,7 @@ Each build makes a different set of binaries, with its own statements.
 | `asan` | `sanitizers` contains `address` | AddressSanitizer |
 | `asan-ubsan` | `sanitizers` contains both | both |
 
-[build-contract.md](build-contract.md#the-builds) gives the flags of each build.
+[build-contract.md](build-contract.md#the-builds) gives the flags of each build. A `go` or `jvm` project has the plain build only ([above](#language)).
 
 ### fuzz_targets
 
@@ -168,14 +176,18 @@ The build files of a draft branch come from the build recipe of that release (`t
 | `Dockerfile` | if `dockerfile` is not set |
 | `build.sh` | with a `Dockerfile` in the project directory |
 | `patch_style.md` | optional, if `patch_style` is not set |
-| `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp` | optional: your own fuzz targets and their helpers |
+| fuzz target sources | optional: your own fuzz targets and their helpers, with the suffixes of your language ([above](#language)) |
 | `*.patch` and `series` | optional: build patches |
 | `sources` | optional: other source trees and files of the build, each pinned by commit or SHA-256 ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
 | a file that `sources` copies | optional: a file that the build needs, under any name |
 
+### Build patches
+
 `series` lists the build patches, one file name on each line, in the order in which we apply them. We ignore empty lines and lines that start with `#`. List each patch exactly once.
 
 A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the project directory. We send it to you as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).
+
+### Rules for each file
 
 Each file must obey these rules:
 
