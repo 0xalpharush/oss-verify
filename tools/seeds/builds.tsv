@@ -12,7 +12,7 @@ augeas	reproduces	all binaries match the release's
 avahi	reproduces	all binaries match the release's
 bazel-rules-fuzzing-test	reproduces	all binaries match the release's
 behaviortreecpp	reproduces	all binaries match the release's
-bincode	checking	-
+bincode	reproducible	8 binaries; a second build is identical; the release has none to compare
 binutils	reproduces	all binaries match the release's
 bluez	reproduces	all binaries match the release's
 boost-beast	reproduces	all binaries match the release's
@@ -28,7 +28,7 @@ cctz	reproduces	all binaries match the release's
 cfengine	reproduces	all binaries match the release's
 cgif	reproduces	all binaries match the release's
 chardet	reproducible	4 binaries; a second build is identical; the release has none to compare
-chrono	checking	-
+chrono	reproducible	8 binaries; a second build is identical; the release has none to compare
 cjson	reproduces	all binaries match the release's
 clib	reproduces	all binaries match the release's
 cmake	reproduces	all binaries match the release's
@@ -43,7 +43,7 @@ crow	reproduces	all binaries match the release's
 cssselect	reproducible	8 binaries; a second build is identical; the release has none to compare
 curl	reproduces	all binaries match the release's
 cxxopts	reproduces	all binaries match the release's
-data-encoding	checking	-
+data-encoding	reproducible	48 binaries; a second build is identical; the release has none to compare
 dav1d	reproduces	all binaries match the release's
 dbus-broker	reproduces	all binaries match the release's
 dbus-sensors	reproduces	all binaries match the release's
@@ -61,11 +61,11 @@ expat	reproduces	all binaries match the release's
 faad2	reproduces	all binaries match the release's
 fast_float	reproduces	all binaries match the release's
 ffms2	reproduces	all binaries match the release's
-fips203	checking	-
+fips203	reproducible	4 binaries; a second build is identical; the release has none to compare
 firestore	reproduces	all binaries match the release's
 flac	reproduces	all binaries match the release's
 flatbuffers	reproduces	all binaries match the release's
-flate2-rs	checking	-
+flate2-rs	reproducible	4 binaries; a second build is identical; the release has none to compare
 flex	reproduces	all binaries match the release's
 fluent-bit	reproduces	all binaries match the release's
 fmt	reproduces	all binaries match the release's
@@ -82,27 +82,27 @@ glib	reproduces	all binaries match the release's
 glog	reproduces	all binaries match the release's
 gpsd	reproduces	all binaries match the release's
 grpc-httpjson-transcoding	reproduces	all binaries match the release's
-h2	checking	-
+h2	reproducible	12 binaries; a second build is identical; the release has none to compare
 h2o	reproduces	all binaries match the release's
 harfbuzz	reproduces	all binaries match the release's
-harfrust	checking	-
+harfrust	reproducible	4 binaries; a second build is identical; the release has none to compare
 highwayhash	reproduces	all binaries match the release's
 hoextdown	reproduces	all binaries match the release's
 hothd	reproduces	all binaries match the release's
-http	checking	-
-httparse	checking	-
+http	reproducible	4 binaries; a second build is identical; the release has none to compare
+httparse	reproducible	24 binaries; a second build is identical; the release has none to compare
 httrack	reproduces	all binaries match the release's
 hunspell	reproduces	all binaries match the release's
 hwloc	reproduces	all binaries match the release's
 idna	reproduces	all binaries match the release's
 igraph	reproduces	all binaries match the release's
-image-png	checking	-
+image-png	reproducible	12 binaries; a second build is identical; the release has none to compare
 inchi	reproduces	all binaries match the release's
 iniconfig	reproducible	4 binaries; a second build is identical; the release has none to compare
 inih	reproduces	all binaries match the release's
 iperf	reproduces	all binaries match the release's
 isodate	reproducible	4 binaries; a second build is identical; the release has none to compare
-itoa	checking	-
+itoa	reproducible	4 binaries; a second build is identical; the release has none to compare
 janet	reproduces	all binaries match the release's
 jansson	reproduces	all binaries match the release's
 janus-gateway	reproduces	all binaries match the release's
@@ -112,7 +112,7 @@ jpegoptim	reproduces	all binaries match the release's
 jq	reproduces	all binaries match the release's
 json	reproduces	all binaries match the release's
 json-c	reproduces	all binaries match the release's
-json5format	checking	-
+json5format	reproducible	4 binaries; a second build is identical; the release has none to compare
 jsoncons	reproduces	all binaries match the release's
 jsoncpp	reproduces	all binaries match the release's
 kamailio	reproduces	all binaries match the release's
@@ -188,7 +188,7 @@ llhttp	reproduces	all binaries match the release's
 lodepng	reproduces	all binaries match the release's
 lua	reproduces	all binaries match the release's
 lz4	reproduces	all binaries match the release's
-lz4_flex	checking	-
+lz4_flex	reproducible	24 binaries; a second build is identical; the release has none to compare
 magic-enum	reproduces	all binaries match the release's
 mariadb	reproduces	all binaries match the release's
 matio	reproduces	all binaries match the release's
@@ -220,7 +220,7 @@ nghttp2	reproduces	all binaries match the release's
 ninja	reproduces	all binaries match the release's
 njs	reproduces	all binaries match the release's
 nokogiri	reproduces	all binaries match the release's
-nom	checking	-
+nom	reproducible	4 binaries; a second build is identical; the release has none to compare
 nsmd	reproduces	all binaries match the release's
 ntpsec	reproduces	all binaries match the release's
 numactl	reproduces	all binaries match the release's
@@ -282,16 +282,16 @@ radvd	reproduces	all binaries match the release's
 rapidjson	reproduces	all binaries match the release's
 re2	reproduces	all binaries match the release's
 readstat	reproduces	all binaries match the release's
-ron	checking	-
+ron	reproducible	4 binaries; a second build is identical; the release has none to compare
 rtpproxy	reproduces	all binaries match the release's
-rust-regex	checking	-
-rust-semver-parser	checking	-
-rustls	checking	-
-ryu	checking	-
+rust-regex	reproducible	32 binaries; a second build is identical; the release has none to compare
+rust-semver-parser	reproducible	4 binaries; a second build is identical; the release has none to compare
+rustls	reproducible	28 binaries; a second build is identical; the release has none to compare
+ryu	reproducible	4 binaries; a second build is identical; the release has none to compare
 s2opc	reproduces	all binaries match the release's
 samba	reproduces	all binaries match the release's
 selinux	reproduces	all binaries match the release's
-serde_json	checking	-
+serde_json	reproducible	4 binaries; a second build is identical; the release has none to compare
 serenity	reproduces	all binaries match the release's
 simdjson	reproduces	all binaries match the release's
 six	reproducible	4 binaries; a second build is identical; the release has none to compare
@@ -311,29 +311,29 @@ stb	reproduces	all binaries match the release's
 sudoers	reproduces	all binaries match the release's
 systemd	reproduces	all binaries match the release's
 taglib	reproduces	all binaries match the release's
-tar-rs	checking	-
+tar-rs	reproducible	8 binaries; a second build is identical; the release has none to compare
 tcpreplay	reproduces	all binaries match the release's
 thrift-c_glib	reproduces	all binaries match the release's
 thrift-cpp	reproduces	all binaries match the release's
 tidy-html5	reproduces	all binaries match the release's
 tink-cc	reproduces	all binaries match the release's
-tinycss2	reproducible	8 binaries; a second build is identical; the release has none to compare
+tinycss2	checking	-
 tinygltf	reproduces	all binaries match the release's
 tinyobjloader	reproduces	all binaries match the release's
 tinyxml2	reproduces	all binaries match the release's
 tmux	reproduces	all binaries match the release's
-tokio	checking	-
-toml_edit	checking	-
-tomlkit	reproducible	8 binaries; a second build is identical; the release has none to compare
+tokio	reproducible	8 binaries; a second build is identical; the release has none to compare
+toml_edit	reproducible	4 binaries; a second build is identical; the release has none to compare
+tomlkit	checking	-
 toolz	reproducible	4 binaries; a second build is identical; the release has none to compare
 tremor	reproduces	all binaries match the release's
-trust-dns	checking	-
-tungstenite-rs	checking	-
+trust-dns	reproducible	4 binaries; a second build is identical; the release has none to compare
+tungstenite-rs	reproducible	12 binaries; a second build is identical; the release has none to compare
 typing_extensions	reproducible	4 binaries; a second build is identical; the release has none to compare
-unicode-normalization	checking	-
-unicode-segmentation	checking	-
+unicode-normalization	reproducible	12 binaries; a second build is identical; the release has none to compare
+unicode-segmentation	reproducible	4 binaries; a second build is identical; the release has none to compare
 unit	reproduces	all binaries match the release's
-unsafe-libyaml	checking	-
+unsafe-libyaml	reproducible	12 binaries; a second build is identical; the release has none to compare
 uriparser	reproduces	all binaries match the release's
 uritemplate	reproducible	4 binaries; a second build is identical; the release has none to compare
 usrsctp	reproduces	all binaries match the release's

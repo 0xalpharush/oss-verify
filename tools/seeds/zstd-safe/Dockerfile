@@ -6,7 +6,7 @@ ARG BASE_BUILDER=oss-verify-base-builder
 FROM ${BASE_BUILDER}
 ARG REPO
 ARG COMMIT
-RUN fetch-commit $SRC/upstream/zstd-rs
+RUN fetch-commit --submodules $SRC/upstream/zstd-rs
 COPY . $SRC/project/
 RUN lay-out-sources $SRC/project/sources $WORK && cp $SRC/project/build.sh $SRC/build.sh
 WORKDIR $SRC

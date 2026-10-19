@@ -334,6 +334,46 @@ class LayOutSources(unittest.TestCase):
                 self.assertIn(error, done.stderr, text)
 
 
+class SeedCorporaAndCrates(unittest.TestCase):
+    """lay-out-sources' corpus line (a seed corpus's inputs) and the checks of its crates line, which need no network."""
+
+    def run_sources(self, scratch, text, files=None):
+        (scratch / "project").mkdir(exist_ok=True)
+        for name, data in (files or {}).items():
+            (scratch / "project" / name).write_bytes(data)
+        (scratch / "project" / "sources").write_text(text)
+        return subprocess.run([sys.executable, str(BUILDER / "lay-out-sources"), str(scratch / "project" / "sources"),
+                               str(scratch / "root")], env={**os.environ, "SRC": str(scratch)}, capture_output=True,
+                              text=True)
+
+    def test_corpus(self):
+        good, nested = io.BytesIO(), io.BytesIO()
+        with zipfile.ZipFile(good, "w") as archive:
+            archive.writestr("empty", "")
+            archive.writestr("one", "1")
+        with zipfile.ZipFile(nested, "w") as archive:
+            archive.writestr("dir/one", "1")
+        with tempfile.TemporaryDirectory() as scratch:
+            scratch = pathlib.Path(scratch)
+            done = self.run_sources(scratch, "corpus\ttargets/t/seeds\tt_seed_corpus.zip\n",
+                                    {"t_seed_corpus.zip": good.getvalue()})
+            self.assertEqual(done.returncode, 0, done.stderr)
+            seeds = scratch / "root" / "targets" / "t" / "seeds"
+            self.assertEqual(sorted(path.name for path in seeds.iterdir()), ["empty", "one"])
+            self.assertEqual((seeds / "one").read_text(), "1")
+        with tempfile.TemporaryDirectory() as scratch:
+            done = self.run_sources(pathlib.Path(scratch), "corpus\ttargets/t/seeds\tt_seed_corpus.zip\n",
+                                    {"t_seed_corpus.zip": nested.getvalue()})
+            self.assertNotEqual(done.returncode, 0)
+            self.assertIn("not a file at the top level", done.stderr)
+
+    def test_crates_needs_its_lock_and_tree_first(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            done = self.run_sources(pathlib.Path(scratch), "crates\text/t/vendor\ttargets/t/Cargo.lock\text/t/src\tfuzz\tf\n")
+            self.assertNotEqual(done.returncode, 0)
+            self.assertIn("lay out the lock", done.stderr)
+
+
 def lay_out_sources():
     """infra/base-builder/lay-out-sources, loaded as a module (writing no bytecode beside it, in the builder's
     directory)."""
