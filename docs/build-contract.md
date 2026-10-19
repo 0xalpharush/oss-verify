@@ -242,6 +242,15 @@ A fuzz target is an executable in the `$OUT` of a build whose ELF symbol table d
 
 `fuzz_targets` in `project.yaml` names the fuzz targets to verify. Without it, we verify each fuzz target that we find. `tools/check` copies the published binary of each fuzz target to `out/<target>/<target>.<build>`. It ignores each other file in `$OUT`.
 
+A proof is only as strong as its fuzz target. Thus each fuzz target must obey the rules in step 3 of [the add-project skill](../.claude/skills/add-project/SKILL.md):
+
+* Each property is a check that calls `abort()`, not an `assert()`, which `NDEBUG` removes.
+* A seed corpus runs each API call and each property check at least once ([project-yaml.md](project-yaml.md#seed-corpora)).
+* For each property, a one-line change to the code makes the fuzz target abort on a recorded input.
+* Each count, size and loop that comes from the input has a bound.
+* A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
+* `LLVMFuzzerTestOneInput` returns 0, or -1 to reject an input. It never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+
 ## Run a binary
 
 Each binary is a static Linux program for riscv64. Run it on a riscv64 machine, or with `qemu-riscv64` on another Linux machine:

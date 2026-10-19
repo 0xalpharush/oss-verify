@@ -350,6 +350,8 @@ def accepted_limit(name: str, copied: frozenset[str] = frozenset()) -> int | Non
     may have any name. A harness source of any language counts: validate.py then judges it by the project's."""
     if name == "project.yaml":
         return validate.MAX_CONFIG_BYTES
+    if validate.SEED_CORPUS.fullmatch(name):
+        return validate.MAX_CORPUS_BYTES
     if name in copied or name == "build.sh":
         return validate.MAX_SOURCE_BYTES
     if name in validate.FILE_KEYS or name in (validate.SERIES, validate.SOURCES):

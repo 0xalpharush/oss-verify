@@ -77,7 +77,7 @@ The halts statement does not ask a program to survive a refused allocation. A pr
 A statement covers what the fuzz target checks. Thus the fuzz target is the place to say what "correct" means.
 
 * A fuzz target that only gives its input to the library shows only that the library does not crash, hang or fail a sanitizer check.
-* A fuzz target that asserts a property makes the halts proof a proof of that property for each input. An example is `assert(decompress(compress(x)) == x)`.
+* A fuzz target that checks a property, and aborts when it is false, makes the halts proof a proof of that property for each input. An example is `if (decompress(compress(x)) != x) abort();`. Do not use `assert()`: a build that defines `NDEBUG` removes it.
 
 Put each property that a fuzz target can express into the fuzz target. The Rocq statements keep only what a fuzz target cannot express.
 

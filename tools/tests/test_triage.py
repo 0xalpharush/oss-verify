@@ -71,8 +71,9 @@ class Text(unittest.TestCase):
             self.assertEqual(triage.accepted_limit(name), validate.MAX_FILE_BYTES, name)
         for name in ("build.sh", "driver.c", "x.cc", "y.hpp", "fuzz_parse.rs", "fuzz.py", "0001-static.patch"):
             self.assertEqual(triage.accepted_limit(name), validate.MAX_SOURCE_BYTES, name)
-        for name in ("threat_model.md", "notes.txt", "CMakeLists.txt"):
+        for name in ("threat_model.md", "notes.txt", "CMakeLists.txt", "inputs.zip"):
             self.assertIsNone(triage.accepted_limit(name), name)
+        self.assertEqual(triage.accepted_limit("x_fuzzer_seed_corpus.zip"), validate.MAX_CORPUS_BYTES)
         self.assertEqual(triage.accepted_limit("CMakeLists.txt", frozenset({"CMakeLists.txt"})),
                          validate.MAX_SOURCE_BYTES)
 

@@ -80,7 +80,7 @@ A fuzz target source in the project directory has a suffix of C or C++: `*.c` `*
 Use `dockerfile` only if the `Dockerfile` is in your repository. We recommend the path `.oss-verifier/Dockerfile`.
 
 * If the `Dockerfile` and `build.sh` are in the project directory, do not set `dockerfile`. The build context is then the project directory.
-* If you set `dockerfile`, the build context is your repository at the commit that we build. Put `build.sh` next to the `Dockerfile`, unless the `Dockerfile` makes `$SRC/build.sh`. Then put your fuzz target sources, build patches and `sources` file in your repository too. Only `project.yaml` and `patch_style.md` can then be in the project directory.
+* If you set `dockerfile`, the build context is your repository at the commit that we build. Put `build.sh` next to the `Dockerfile`, unless the `Dockerfile` makes `$SRC/build.sh`. Then put your fuzz target sources, build patches and `sources` file in your repository too. Only `project.yaml`, `patch_style.md` and seed corpora can then be in the project directory.
 
 A seeded project can have no build files yet. `tools/validate.py` warns about it, and `tools/check` cannot build it.
 
@@ -181,6 +181,18 @@ The build files of a draft branch come from the build recipe of that release (`t
 | `*.patch` and `series` | optional: build patches |
 | `sources` | optional: other source trees and files of the build, each pinned by commit or SHA-256 ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
 | a file that `sources` copies | optional: a file that the build needs, under any name |
+| `<target>_seed_corpus.zip` | optional: example inputs of the fuzz target `<target>` ([below](#seed-corpora)) |
+
+### Seed corpora
+
+A seed corpus is a zip file of example inputs of one fuzz target. Together, its inputs run each API call and each property check of the fuzz target at least once ([.claude/skills/add-project/SKILL.md](../.claude/skills/add-project/SKILL.md), step 3.3). OSS-Fuzz uses the same name. A seed corpus must obey these rules:
+
+* Its name is `<target>_seed_corpus.zip`. If you give `fuzz_targets`, it lists `<target>`.
+* Each input is a file at the top level of the zip file.
+* It holds at most 1,024 inputs.
+* Its size is at most 1 MiB, and at most 16 MiB when uncompressed.
+
+`tools/check` does not use a seed corpus.
 
 ### Build patches
 
@@ -194,7 +206,7 @@ Each file must obey these rules:
 
 * It is a regular file. Symbolic links and subdirectories are not permitted.
 * Its name uses only `A-Z a-z 0-9 . _ -` and starts with a letter or digit.
-* It is UTF-8 text.
+* It is UTF-8 text. A seed corpus is the only exception.
 * Its size is at most 128 KiB for `project.yaml`.
 * Its size is at most 256 KiB for `build.sh`, a fuzz target source or a build patch.
 * Its size is at most 64 KiB for each other file.

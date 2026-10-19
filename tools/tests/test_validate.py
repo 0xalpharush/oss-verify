@@ -8,6 +8,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -159,6 +160,46 @@ class Languages(unittest.TestCase):
                          validate.MAX_SOURCE_BYTES)
         self.assertEqual(validate.limit_for("fuzz.py", validate.source_suffixes({"language": "c"})),
                          validate.MAX_FILE_BYTES)
+
+
+def corpus(inputs):
+    """A seed corpus: a zip file of these {name: bytes} inputs."""
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in inputs.items():
+            archive.writestr(name, content)
+    return data.getvalue()
+
+
+class SeedCorpora(unittest.TestCase):
+    BUILD = {"Dockerfile": "FROM x\n", "build.sh": "#!/bin/bash\n"}
+
+    def problems(self, data, text=MINIMAL, name="a_fuzzer_seed_corpus.zip", files=None):
+        return check(text, {**(self.BUILD if files is None else files), name: data})[0]
+
+    def test_a_seed_corpus(self):
+        self.assertEqual(self.problems(corpus({"empty": b"", "one": b"\x01\x02"})), [])
+        self.assertEqual(self.problems(corpus({"x": b"1"}), MINIMAL + "fuzz_targets: [a_fuzzer]\n"), [])
+        # It may stay beside project.yaml when the repository holds the build files.
+        in_repo = MINIMAL + "dockerfile: .oss-verifier/Dockerfile\n"
+        self.assertEqual(self.problems(corpus({"x": b"1"}), in_repo, files={}), [])
+
+    def test_bad_seed_corpora(self):
+        def has(fragment, problems):
+            self.assertTrue(any(fragment in problem for problem in problems), f"{fragment!r} not in {problems}")
+        has("is not a zip file", self.problems(b"not a zip"))
+        has("holds no input", self.problems(corpus({})))
+        has("is not a file at the top level", self.problems(corpus({"dir/x": b"1"})))
+        has("is not a file at the top level", self.problems(corpus({"../x": b"1"})))
+        has("which fuzz_targets does not list", self.problems(corpus({"x": b"1"}), MINIMAL + "fuzz_targets: [b]\n"))
+        with mock.patch.object(validate, "MAX_CORPUS_INPUTS", 2):
+            has("more than 2 inputs", self.problems(corpus({"x": b"1", "y": b"2", "z": b"3"})))
+        with mock.patch.object(validate, "MAX_CORPUS_EXPANDED", 1 << 20):
+            has("expands to more than 1 MiB", self.problems(corpus({"zeros": bytes(2 << 20)})))
+        with mock.patch.object(validate, "MAX_CORPUS_BYTES", 10):
+            has("is larger than 0 KiB", self.problems(corpus({"x": b"1"})))
+        # Any other zip file name is refused.
+        has("only project.yaml", self.problems(corpus({"x": b"1"}), name="inputs.zip"))
 
 
 class Problems(unittest.TestCase):

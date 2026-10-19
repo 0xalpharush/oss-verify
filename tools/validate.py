@@ -34,15 +34,17 @@ Fields allowed in project.yaml:
 
 Files allowed next to project.yaml: a Dockerfile with its build.sh (unless dockerfile: is set), a patch_style.md
 (unless patch_style: is set), harness sources (*.c *.cc *.cpp *.h *.hh *.hpp, and those of the project's language),
-and build-only patches (*.patch)
-with the series file that lists them in the order they are applied. With dockerfile: set, the build context is your
-repository, so build.sh, harness sources and patches belong there instead.
+build-only patches (*.patch) with the series file that lists them in the order they are applied, and seed corpora
+(<target>_seed_corpus.zip, as OSS-Fuzz names them). With dockerfile: set, the build context is your repository, so
+build.sh, harness sources and patches belong there instead; a seed corpus may stay here.
 """
 import argparse
+import io
 import pathlib
 import re
 import stat
 import sys
+import zipfile
 from urllib.parse import urlparse
 
 try:
@@ -71,6 +73,12 @@ PATCH_SUFFIX = ".patch"
 MAX_FILE_BYTES = 64 * 1024  # Dockerfile, patch_style.md, series, sources
 MAX_SOURCE_BYTES = 256 * 1024  # build.sh, a harness source or a patch
 MAX_CONFIG_BYTES = 128 * 1024
+# A seed corpus, as OSS-Fuzz names it: a zip file of example inputs of one fuzz target, which together run each of
+# its API calls and property checks at least once. Its inputs are files at the top level of the zip file.
+SEED_CORPUS = re.compile(r"(?P<target>[A-Za-z0-9][A-Za-z0-9._-]{0,83})_seed_corpus\.zip")
+MAX_CORPUS_BYTES = 1024 * 1024  # the zip file
+MAX_CORPUS_INPUTS = 1024
+MAX_CORPUS_EXPANDED = 16 * 1024 * 1024  # all its inputs, uncompressed
 MAX_FILES = 64
 
 NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,62}")
@@ -364,14 +372,18 @@ def check_files(config, files):
     copied = copied_by_sources(files)
     for name, text in files.items():
         is_source = name.endswith(source_suffixes(config)) or name in copied
+        corpus = SEED_CORPUS.fullmatch(name)
         if not FILE_NAME.fullmatch(name):
             yield f"{name}: a file name may use only A-Z a-z 0-9 . _ - (starting with a letter or digit)"
+            continue
+        if corpus:
+            yield from check_corpus(config, name, corpus["target"], text)
             continue
         if name not in (*FILE_KEYS, "build.sh", SERIES, SOURCES) and not is_source and name not in patches:
             yield (
                 f"{name}: only project.yaml, Dockerfile, build.sh, sources, patch_style.md, harness sources "
-                f"({' '.join('*' + suffix for suffix in source_suffixes(config))}), *.patch, series and the files "
-                "sources copies may sit in a project's directory"
+                f"({' '.join('*' + suffix for suffix in source_suffixes(config))}), *.patch, series, seed corpora "
+                "(<target>_seed_corpus.zip) and the files sources copies may sit in a project's directory"
             )
             continue
         limit = MAX_SOURCE_BYTES if is_source or name in patches or name == "build.sh" else MAX_FILE_BYTES
@@ -446,6 +458,50 @@ def check_config(config, files):
     ]
 
 
+def check_corpus(config, name, target, data):
+    """Yield problems with a seed corpus: `data` is its bytes, or None if it is larger than MAX_CORPUS_BYTES. It is
+    read as untrusted input: its inputs are decompressed, but only up to MAX_CORPUS_EXPANDED bytes in all."""
+    targets = config.get("fuzz_targets")
+    if isinstance(targets, list) and target not in targets:
+        yield f"{name} is the seed corpus of {target}, which fuzz_targets does not list"
+    if data is None:
+        yield f"{name} is larger than {MAX_CORPUS_BYTES // 1024} KiB"
+        return
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries = archive.infolist()
+            if not entries:
+                yield f"{name} holds no input"
+            if len(entries) > MAX_CORPUS_INPUTS:
+                yield f"{name} holds more than {MAX_CORPUS_INPUTS} inputs"
+                return
+            expanded = 0
+            for entry in entries:
+                plain = entry.filename not in ("", ".", "..") and not any(c in entry.filename for c in "/\\:")
+                if entry.is_dir() or not plain:
+                    yield printable(f"{name}: {entry.filename!r} is not a file at the top level of the zip file")
+                    continue
+                with archive.open(entry) as stream:
+                    while chunk := stream.read(1 << 16):
+                        expanded += len(chunk)
+                        if expanded > MAX_CORPUS_EXPANDED:
+                            yield f"{name} expands to more than {MAX_CORPUS_EXPANDED // (1 << 20)} MiB"
+                            return
+    # A damaged or hostile zip file can fail in many ways: each one means that it is not a seed corpus we can use.
+    except Exception:  # noqa: BLE001
+        yield f"{name} is not a zip file that Python's zipfile module can read"
+
+
+def read_bytes(path, limit):
+    """Return the file's bytes, or None if it is larger than `limit` or unreadable."""
+    try:
+        if path.lstat().st_size > limit:
+            return None
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 def read_text(path, limit):
     """Return the file's text, or None if it is larger than `limit`, unreadable, or not UTF-8."""
     try:
@@ -502,7 +558,8 @@ def check_project(directory):
     except ValueError as error:
         return [str(error)], [], None
 
-    files = {path.name: read_text(path, limit_for(path.name, source_suffixes(config))) for path in beside}
+    files = {path.name: read_bytes(path, MAX_CORPUS_BYTES) if SEED_CORPUS.fullmatch(path.name)
+             else read_text(path, limit_for(path.name, source_suffixes(config))) for path in beside}
     for name in copied_by_sources(files) & set(files):
         files[name] = read_text(directory / name, MAX_SOURCE_BYTES)
     problems = check_config(config, files)
