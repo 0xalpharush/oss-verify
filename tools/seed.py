@@ -39,8 +39,9 @@ The commit message says how the project builds, from tools/seeds/builds.tsv (wha
 ported the release's build and checked it). It uses git plumbing and leaves the working tree and the index alone;
 running it again replaces the branch. --trailer adds a line to the end of the commit message.
 
-The tag that names a pinned commit comes from git ls-remote, asked of TAG_JOBS repositories at once with a timeout
-each, and is kept in tools/seeds/tags.tsv: a pinned commit's tag does not change, so a reseed asks only about new pins.
+The tag that names a pinned commit comes from git ls-remote, and is kept in tools/seeds/tags.tsv: a pinned commit's tag
+does not change, so a reseed asks only about new pins. Those calls all run at once, at most HOST_JOBS or
+OTHER_HOST_JOBS on one host, each with a TAG_TIMEOUT; a failed call is reported, and the run goes on.
 
 --rebase moves each draft onto the current main as it is: its projects/<name>/ and its commit message, checked with
 tools/validate.py, and nothing looked up. It refuses a draft that a reseed would now make otherwise from main: other
@@ -64,6 +65,8 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
+import urllib.parse
 
 import yaml
 
@@ -76,8 +79,10 @@ SEEDS = ROOT / "tools" / "seeds"
 BUILDS = SEEDS / "builds.tsv"
 # The tag that names each pinned commit, as git ls-remote found it: a pinned commit's tag does not change.
 TAGS = SEEDS / "tags.tsv"
-TAG_JOBS = 8  # repositories asked at once
-TAG_TIMEOUT = 60  # seconds for one git ls-remote
+# How many git ls-remote calls run at once on one host. All the calls start together; each waits for its host.
+HOST_JOBS = {"github.com": 16}
+OTHER_HOST_JOBS = 2
+TAG_TIMEOUT = 20  # seconds for one git ls-remote
 BRANCH = "draft-generic-oss-fuzz-{name}"
 REMOTE = "origin"  # where drafts are pushed
 HEADER = (
@@ -450,16 +455,26 @@ def write_tags(tags, path=TAGS):
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
-def look_up_tags(seeds, tags, jobs=TAG_JOBS):
-    """Fill in `tags` for each seed whose pin it does not know, asking `jobs` repositories at once. Return the errors;
-    a pin that could not be looked up stays unknown."""
+def look_up_tags(seeds, tags):
+    """Fill in `tags` for each seed whose pin it does not know. All the lookups run at once, but at most HOST_JOBS (or
+    OTHER_HOST_JOBS) on one host. Return the errors; a pin that could not be looked up stays unknown."""
     todo = {}
     for seed in seeds:
         if tag_names(seed) and (seed.repo, seed.commit) not in tags:
             todo.setdefault((seed.repo, seed.commit), seed)
+    hosts = {}
+    for seed in todo.values():
+        host = (urllib.parse.urlparse(seed.repo).hostname or "").lower()
+        if host not in hosts:
+            hosts[host] = threading.BoundedSemaphore(HOST_JOBS.get(host, OTHER_HOST_JOBS))
+
+    def look(seed):
+        with hosts[(urllib.parse.urlparse(seed.repo).hostname or "").lower()]:
+            return look_up_tag(seed)
+
     errors = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        futures = {pool.submit(look_up_tag, seed): key for key, seed in todo.items()}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(todo))) as pool:
+        futures = {pool.submit(look, seed): key for key, seed in todo.items()}
         for future in concurrent.futures.as_completed(futures):
             try:
                 tags[futures[future]] = future.result()

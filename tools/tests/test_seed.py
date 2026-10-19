@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -214,13 +216,40 @@ class Tags(unittest.TestCase):
 
         tags = {(pins[1].repo, pins[1].commit): "v9"}
         with mock.patch.object(seed, "look_up_tag", side_effect=look):
-            errors = seed.look_up_tags(pins, tags, jobs=4)
+            errors = seed.look_up_tags(pins, tags)
         self.assertEqual(errors, ["p3: cannot list the tags"])
         self.assertEqual(sorted(asked), sorted(f"p{i}" for i in range(20) if i != 1))
         self.assertEqual(len(tags), 19)
         self.assertEqual(tags[(pins[5].repo, pins[5].commit)], "v1")
         self.assertEqual(tags[(pins[1].repo, pins[1].commit)], "v9")
         self.assertNotIn((pins[3].repo, pins[3].commit), tags)
+
+    def test_lookups_run_together_but_few_on_one_host(self):
+        github = [seed.Seed(name=f"g{i}", repo=f"https://github.com/o/g{i}", commit=f"{i:040x}", version="1")
+                  for i in range(9)]
+        other = [seed.Seed(name=f"x{i}", repo=f"https://git.example.org/x{i}", commit=f"{i + 100:040x}", version="1")
+                 for i in range(4)]
+        lock, running, most = threading.Lock(), {}, {}
+        both = threading.Event()
+
+        def look(pin):
+            host = pin.repo.split("/")[2]
+            with lock:
+                running[host] = running.get(host, 0) + 1
+                most[host] = max(most.get(host, 0), running[host])
+                if len(running) == 2 and all(running.values()):
+                    both.set()
+            time.sleep(0.05)
+            with lock:
+                running[host] -= 1
+            return ""
+
+        with mock.patch.object(seed, "look_up_tag", side_effect=look), \
+                mock.patch.object(seed, "HOST_JOBS", {"github.com": 3}), mock.patch.object(seed, "OTHER_HOST_JOBS", 1):
+            self.assertEqual(seed.look_up_tags(github + other, {}), [])
+        self.assertLessEqual(most["github.com"], 3)
+        self.assertEqual(most["git.example.org"], 1)
+        self.assertTrue(both.is_set(), "the two hosts were never asked at the same time")
 
     def test_a_slow_server_times_out(self):
         with mock.patch.object(seed.subprocess, "run", side_effect=subprocess.TimeoutExpired("git", 60)):
