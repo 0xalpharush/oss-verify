@@ -299,11 +299,13 @@ class PythonBuilder(unittest.TestCase):
 RUST_FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "rust-example"
 RUST_TAG = "oss-verify-test/rust-example:latest"
 # Payload first byte -> exit status in each build (plain, ubsan, asan, asan-ubsan) of the Rust fixture
-# (fixtures/rust-example/crate/src/lib.rs): a panic and a UB check exit 79, an allocation failure 2.
+# (fixtures/rust-example/crate/src/lib.rs): a panic, a capacity overflow and a UB check exit 79; handle_alloc_error
+# exits 2, also when the fixture calls it itself, with no allocation refused.
 RUST_EXPECTED = {
     "": (0, 0, 0, 0),
     "r": (0, 0, 0, 0),  # Corpus::Reject: the fuzz target returns -1
     "p": (79, 79, 79, 79),
+    "c": (79, 79, 79, 79),
     "o": (2, 2, 2, 2),
     "x": (77, 77, 77, 77),
     "h": (0, 0, 134, 134),

@@ -10,6 +10,11 @@ pub fn run(data: &[u8]) -> bool {
     match data.first() {
         Some(b'p') => panic!("a failed property"),
         Some(b'o') => handle_alloc_error(Layout::new::<u64>()),
+        Some(b'c') => {
+            // More than isize::MAX bytes: a capacity overflow, which panics.
+            let v: Vec<u8> = Vec::with_capacity(std::hint::black_box(usize::MAX));
+            v.capacity() == 0
+        }
         Some(b'x') => std::process::exit(3),
         Some(b'h') => {
             let v = vec![0u8; 8];
