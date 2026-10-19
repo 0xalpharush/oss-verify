@@ -21,7 +21,7 @@ Usually we do not accept a fork, a new project, or a project that nobody maintai
 
 **Seeding.** We seeded the projects of OSS-Fuzz, at its commit `bd2ce21991a94a362b92fb1bf25f86d5a1a60842`, that our builder can build and that we can describe honestly. A seeded `project.yaml` gives only what the recorded build data tells, and no guess. [seeded-projects.tsv](seeded-projects.tsv) lists each of the 1,381 projects of OSS-Fuzz at that commit. For a project that we did not seed, it gives the reason. We publish a seeded project only while it has no findings. A core maintainer can adopt a seeded project ([project-yaml.md](project-yaml.md#seeded-projects)).
 
-**Order of work.** We work first on libraries that many programs depend on, and on the components from which secure sandboxes are built.
+**Order of work.** We work first on the critical infrastructure that many other projects depend on. We are likely to verify a smaller project sooner. We measure its size in kilobytes of `.text` in its binaries.
 
 ## How do I enroll a project?
 
@@ -45,13 +45,25 @@ Yes. The [README](../README.md#pause-or-leave) tells how.
 
 ## How do I send feedback?
 
-<!-- to be confirmed: the channel for feedback about a finding or a patch, and for questions from people who have not enrolled. -->
-**To be confirmed.** To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).
+To send feedback about a finding or a patch, reply to its report, or write to [oss-verifier@theorem.dev](mailto:oss-verifier@theorem.dev). If you have not enrolled a project, send your questions to the same address. To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).
 
 ## How does attribution work?
 
-<!-- to be confirmed: whether we ask a project to credit a finding or a patch, for example with a report id in the commit message. -->
-**To be confirmed.**
+<!-- theorem.dev/oss-verifier gives the same answer. Remove this answer when that page is live (one home for each fact). -->
+We do not require credit. If you fix a bug that OSS Verifier found, we ask for one line about it. Put the line in the commit message, or in the place where you give credits. Give the id from our report in it, for example:
+
+    Found by Theorem's OSS Verifier, as finding THM-2026-7K3QF9XA.
+
+The id helps us find which findings were real and which got fixed.
+
+A finding id has these parts, in this order:
+
+1. `THM-`;
+2. the year in which we first report the finding, for example `2026`;
+3. a hyphen, `-`;
+4. 8 random characters from Crockford's base32 alphabet, in capitals. This alphabet has the digits 0 to 9, and the letters A to Z but not I, L, O and U.
+
+As a regular expression, an id is `THM-[0-9]{4}-[0-9A-HJKMNP-TV-Z]{8}`. Each finding gets one id, when we first report it. We never use an id again. A duplicate of a finding keeps the id of that finding.
 
 ## How do you send reports only to the right people, and only about your code?
 
