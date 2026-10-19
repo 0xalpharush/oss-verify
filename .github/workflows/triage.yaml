@@ -1,9 +1,9 @@
 # Adapted from OSS Scanner's .github/workflows/triage.yaml (https://github.com/anthropics/oss-scanner), Copyright 2026
-# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: OSS Verifier's comment (its marker and checks).
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: OSS Verify's comment (its marker and checks).
 name: "Triage"
 # Comments on an enrollment pull request with what a reviewer would otherwise look up by hand: the project's stars,
 # forks, license and criticality score, whether whoever opened it looks like an active maintainer, whether its
-# SECURITY.md and its OSS-Fuzz project (if it has one) name the contact address, whether it has set up .oss-verifier/
+# SECURITY.md and its OSS-Fuzz project (if it has one) name the contact address, whether it has set up .oss-verify/
 # in its repository, its status in the proofs index, and whether projects/<name>/ follows the rules. The comment
 # informs the review and decides nothing. A pull request that touches nothing under projects/ gets no comment.
 #
@@ -88,7 +88,7 @@ jobs:
         run: |
           # Other workflows may comment as github-actions[bot] too; ours is the one that starts with the marker.
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- oss-verifier-triage -->"))) | .id')
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- oss-verify-triage -->"))) | .id')
           existing=${existing%%$'\n'*}
           if [ -n "$existing" ]; then
             jq -n --arg body "$COMMENT" '{body: $body}' | gh api --method PATCH "repos/$REPO/issues/comments/$existing" --input - > /dev/null

@@ -24,7 +24,7 @@ import manifest  # noqa: E402
 import validate  # noqa: E402
 
 FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "example"
-TAG = "oss-verifier-test/example:latest"
+TAG = "oss-verify-test/example:latest"
 QEMU = shutil.which("qemu-riscv64-static") or shutil.which("qemu-riscv64")
 BUILDS = list(validate.BUILDS)
 
@@ -192,7 +192,7 @@ class UbsanChecks(unittest.TestCase):
 
     @unittest.skipUnless(QEMU, "no qemu-riscv64 on this machine")
     def test_only_the_given_checks_trap(self):
-        tag = "oss-verifier-test/example-ubsan:latest"
+        tag = "oss-verify-test/example-ubsan:latest"
         with tempfile.TemporaryDirectory(prefix="ov-test-ubsan.") as scratch:
             work = pathlib.Path(scratch)
             job = check_build.Job(name="example", directory=FIXTURE, repo="https://example.invalid/example", ref="",
@@ -220,7 +220,7 @@ class UbsanChecks(unittest.TestCase):
 
 
 CJSON = pathlib.Path(__file__).resolve().parent / "fixtures" / "cjson"
-CJSON_TAG = "oss-verifier-test/cjson:latest"
+CJSON_TAG = "oss-verify-test/cjson:latest"
 # cJSON 1.7.18, as the oss-fuzz-theorems 2026.10 release built it.
 CJSON_COMMIT = "acc76239bee01d8e9c858ae2cab296704e52d916"
 # That release's cjson_read_fuzzer binaries (its projects/cjson/cjson_read_fuzzer/harness.yaml).

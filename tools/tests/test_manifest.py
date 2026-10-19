@@ -140,7 +140,7 @@ class Locks(Scratch):
 
     def test_manifest_round_trip(self):
         data = manifest.manifest(
-            project="p", repo="https://x/y", ref="v1", commit="c" * 40, oss_verifier=None,
+            project="p", repo="https://x/y", ref="v1", commit="c" * 40, oss_verify=None,
             builder={"toolchain": "example.org/toolchain@sha256:" + "1" * 64},
             sources={}, builds=["plain", "asan"], targets=["fuzzer"], entries=self.ENTRIES,
         )

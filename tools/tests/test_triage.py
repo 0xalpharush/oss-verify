@@ -15,7 +15,7 @@ SPEC = importlib.util.spec_from_file_location("triage", ROOT / ".github" / "scri
 triage = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(triage)
 
-REPO = "theorem-labs/oss-verifier"
+REPO = "theorem-labs/oss-verify"
 INDEX = f"repos/{triage.PROOFS_REPO}/contents/{triage.PROOFS_INDEX}"
 SEEDED = "repo: https://example.invalid/example\nprimary_contact: n/a\nlanguage: c\n"
 ENROLLED = "repo: https://example.invalid/example\nprimary_contact: security@example.org\nlanguage: c\n"
@@ -152,14 +152,14 @@ class Rows(unittest.TestCase):
         alone = triage.verifier_files_row(FakeGitHub(), slug, ref, {}, {"project.yaml", "Dockerfile"})
         self.assertEqual(alone[0], triage.WARN)
         found = {
-            f"repos/{slug}/contents/.oss-verifier": [{"name": "Dockerfile"}, {"name": "build.sh"}],
-            f"repos/{slug}/contents/.oss-verifier/Dockerfile": {}, f"repos/{slug}/contents/.oss-verifier/build.sh": {},
+            f"repos/{slug}/contents/.oss-verify": [{"name": "Dockerfile"}, {"name": "build.sh"}],
+            f"repos/{slug}/contents/.oss-verify/Dockerfile": {}, f"repos/{slug}/contents/.oss-verify/build.sh": {},
         }
-        config = {"dockerfile": ".oss-verifier/Dockerfile"}
+        config = {"dockerfile": ".oss-verify/Dockerfile"}
         mark, text = triage.verifier_files_row(FakeGitHub(found), slug, ref, config, {"project.yaml"})
         self.assertEqual(mark, triage.OK)
         self.assertIn("with build.sh beside it", text)
-        del found[f"repos/{slug}/contents/.oss-verifier/build.sh"]
+        del found[f"repos/{slug}/contents/.oss-verify/build.sh"]
         self.assertEqual(triage.verifier_files_row(FakeGitHub(found), slug, ref, config, {"project.yaml"})[0], triage.WARN)
         self.assertEqual(triage.verifier_files_row(FakeGitHub(), slug, ref, config, {"project.yaml"})[0], triage.FAIL)
         seeded = triage.verifier_files_row(FakeGitHub(), slug, ref, {"primary_contact": "n/a"}, {"project.yaml"})

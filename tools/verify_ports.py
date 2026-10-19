@@ -80,7 +80,7 @@ def locks_for(checkout, name, targets):
 
 def images(name):
     """The images tools/check made for this project."""
-    return subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", f"oss-verifier-check/{name}"],
+    return subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", f"oss-verify-check/{name}"],
                           capture_output=True, text=True).stdout.split()
 
 

@@ -1,14 +1,14 @@
 # Adapted from OSS Scanner's templates/Dockerfile (https://github.com/anthropics/oss-scanner), Copyright 2026
-# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: built FROM the OSS Verifier builder, OSS-Fuzz style.
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: built FROM the OSS Verify builder, OSS-Fuzz style.
 #
 # Copy this template to projects/<name>/Dockerfile, next to your project.yaml, or into your repository at the path
-# dockerfile: names (we suggest .oss-verifier/Dockerfile).
+# dockerfile: names (we suggest .oss-verify/Dockerfile).
 # This file sets up the build: it fetches your source and any dependencies, and copies build.sh into $SRC. Network
 # access is available while this file is built and removed after it: build.sh runs once per build with no network,
 # so everything it needs must be fetched here. docs/build-contract.md describes the builder.
 
 # The builder image. tools/check builds it from infra/base-builder and passes it here.
-ARG BASE_BUILDER=oss-verifier-base-builder
+ARG BASE_BUILDER=oss-verify-base-builder
 FROM ${BASE_BUILDER}
 
 # tools/check passes both: REPO is project.yaml's repo without its #ref, and COMMIT is the full commit id the ref

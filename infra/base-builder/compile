@@ -26,7 +26,7 @@
 # Set OV_OWNER=<uid>:<gid> to have $OUT handed to that owner at the end.
 set -euo pipefail
 
-LIB=/usr/local/lib/oss-verifier
+LIB=/usr/local/lib/oss-verify
 
 case "${SANITIZER:=none}" in
   none) FLAV=plain BUILD=plain ;;

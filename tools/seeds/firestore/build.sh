@@ -4,7 +4,7 @@
 # Builds the fuzz targets of firestore into $OUT, each from the pin of the release's target for it.
 # compile runs build.sh with bash; the release ran each target's build with sh -e, and so does this.
 [ -z "${BASH_VERSION:-}" ] || exec sh -e "$0"
-. /usr/local/lib/oss-verifier/release-target.sh
+. /usr/local/lib/oss-verify/release-target.sh
 
 # firestore_fieldpath_fuzzer: the release's target firestore-fieldpath_fuzzer
 (

@@ -5,7 +5,7 @@
 # compile runs. A ported build.sh runs with sh -e (busybox), as the release ran its build body, sources this file, and
 # builds each fuzz target in a subshell of its own:
 #
-#     . /usr/local/lib/oss-verifier/release-target.sh
+#     . /usr/local/lib/oss-verify/release-target.sh
 #     (
 #     ov_target_begin <target> [<dependency> ...]   # the layout, compilers and variables the release gives a target
 #     ov_target_dependency <dependency> <<'PIN'     # once per DEPENDS entry, in order: the dependency's pin
@@ -34,7 +34,7 @@
 # link-fuzz-target makes it in the release's order, with the seals build_lib added.
 
 # shellcheck source=recipes.sh
-. /usr/local/lib/oss-verifier/recipes.sh
+. /usr/local/lib/oss-verify/recipes.sh
 
 OFT_RELEASE=1
 export OFT_RELEASE

@@ -1,6 +1,6 @@
 # Adapted from OSS Scanner's .github/workflows/build.yaml (https://github.com/anthropics/oss-scanner), Copyright 2026
-# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: builds twice with OSS Verifier's tools/check, maps its
-# exit codes, and accepts OSS Verifier's file names.
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: builds twice with OSS Verify's tools/check, maps its
+# exit codes, and accepts OSS Verify's file names.
 name: "Build"
 # Builds the project an enrollment pull request adds or changes with tools/check --twice: everything is built a second
 # time from scratch, and the two builds must have the same bytes, as they must before we pin a binary. The output is in

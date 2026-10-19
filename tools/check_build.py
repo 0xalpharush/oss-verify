@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
-# Modified 2026 by Theorem Labs, PBC: the steps of an OSS Verifier build (resolve the ref, build the builder and the
+# Modified 2026 by Theorem Labs, PBC: the steps of an OSS Verify build (resolve the ref, build the builder and the
 # project image, compile each build with no network, list the image's git checkouts) in place of the scanner's. The
 # virtual machine backend is not ported.
 """The build steps of tools/check: resolve the commit, build the images, compile each build with no network.
@@ -22,7 +22,7 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUILDER_DIR = ROOT / "infra" / "base-builder"
-CACHE = pathlib.Path(os.environ.get("XDG_CACHE_HOME") or "~/.cache").expanduser() / "oss-verifier-check"
+CACHE = pathlib.Path(os.environ.get("XDG_CACHE_HOME") or "~/.cache").expanduser() / "oss-verify-check"
 FULL_COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 TOOLCHAIN_ARG = re.compile(r"^ARG TOOLCHAIN=(\S+)$", re.M)
 TOOLCHAINS = ROOT / "infra" / "toolchains.tsv"
@@ -203,7 +203,7 @@ def build_builder(image=None, suffix="", no_cache=False):
     """Build the builder image from infra/base-builder, FROM the toolchain `image` (the newest if None). Return its
     tag."""
     image = image or newest_toolchain()
-    tag = f"oss-verifier-base-builder:{tree_hash(BUILDER_DIR)[:16]}-{toolchain_id(image)}{suffix}"
+    tag = f"oss-verify-base-builder:{tree_hash(BUILDER_DIR)[:16]}-{toolchain_id(image)}{suffix}"
     step(f"docker build: the builder ({tag}), FROM {image}")
     cache = ["--no-cache"] if no_cache else []
     if run("docker", "build", "--progress=plain", *cache, "--build-arg", f"TOOLCHAIN={image}", "-t", tag,
@@ -279,7 +279,7 @@ def compile_build(tag, build, sanitizer, out, ubsan=None):
         raise Failed(f"compile exited {code} in the {build} build")
 
 
-def oss_verifier_state(job):
+def oss_verify_state(job):
     """This repository's commit, and whether what decides the bytes (tools/, infra/, the project's directory) differs
     from it. None outside a git checkout."""
     inside = job.directory.is_relative_to(ROOT)

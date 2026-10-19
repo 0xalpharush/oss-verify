@@ -2,7 +2,7 @@
 
 This page tells what our statements say and what a proof covers. It also tells what we do with a finding, and what we publish. It is for maintainers and for reviewers of our claims.
 
-This repository tells how to build the fuzz targets of a project. The statements and their proofs are in [oss-verifier-proofs](https://github.com/theorem-labs/oss-verifier-proofs): one branch for each project, with its statements, its proofs and its lock. This page gives a summary. The Rocq definitions in the proofs repository are the authority.
+This repository tells how to build the fuzz targets of a project. The statements and their proofs are in [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs): one branch for each project, with its statements, its proofs and its lock. This page gives a summary. The Rocq definitions in the proofs repository are the authority.
 
 ## The statements
 

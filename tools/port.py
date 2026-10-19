@@ -372,9 +372,9 @@ def tree_id_dir(release, tree_id):
 def dockerfile(name):
     return f"""# {GENERATED}
 #
-# {name} on the OSS Verifier builder, laid out as the release built it (lay-out-sources reads the sources file).
+# {name} on the OSS Verify builder, laid out as the release built it (lay-out-sources reads the sources file).
 # tools/check passes REPO, COMMIT and BASE_BUILDER.
-ARG BASE_BUILDER=oss-verifier-base-builder
+ARG BASE_BUILDER=oss-verify-base-builder
 FROM ${{BASE_BUILDER}}
 ARG REPO
 ARG COMMIT
@@ -412,7 +412,7 @@ def build_script(name, mapped, dependencies, release, regenerated=None):
         f"# Builds the fuzz targets of {name} into $OUT, each from the pin of the release's target for it.\n"
         "# compile runs build.sh with bash; the release ran each target's build with sh -e, and so does this.\n"
         '[ -z "${BASH_VERSION:-}" ] || exec sh -e "$0"\n'
-        ". /usr/local/lib/oss-verifier/release-target.sh\n\n" + "\n\n".join(blocks) + "\n"
+        ". /usr/local/lib/oss-verify/release-target.sh\n\n" + "\n\n".join(blocks) + "\n"
     )
 
 

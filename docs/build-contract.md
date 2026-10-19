@@ -1,6 +1,6 @@
 # The build contract
 
-This page tells what the builder gives a build, what a project's `Dockerfile` and `build.sh` must do, and how the driver runs a fuzz target. It is for the person who ports a project's build to OSS Verifier, and for people who run our binaries.
+This page tells what the builder gives a build, what a project's `Dockerfile` and `build.sh` must do, and how the driver runs a fuzz target. It is for the person who ports a project's build to OSS Verify, and for people who run our binaries.
 
 The `Dockerfile` and `build.sh` follow the conventions of OSS-Fuzz, on our builder in place of OSS-Fuzz's base image. `tools/check` builds a project exactly as we do.
 
@@ -107,7 +107,7 @@ The driver is compiled with no sanitizer flags in each build. The library and th
 
 Start from [templates/Dockerfile](../templates/Dockerfile). Obey these rules:
 
-1. Start with `FROM ${BASE_BUILDER}`, after `ARG BASE_BUILDER=oss-verifier-base-builder`. `tools/check` gives the builder that it made.
+1. Start with `FROM ${BASE_BUILDER}`, after `ARG BASE_BUILDER=oss-verify-base-builder`. `tools/check` gives the builder that it made.
 2. Declare `ARG REPO` and `ARG COMMIT`.
 3. Get the source at exactly that commit: `RUN fetch-commit $SRC/<name>`. Add `--submodules` if the repository has submodules.
 4. Do not write a commit id in the `Dockerfile`. `tools/check` gives the commit, and the lock records it.

@@ -1,8 +1,8 @@
 # Frequently asked questions
 
-This page answers the questions that [theorem.dev/oss-verifier](https://theorem.dev/oss-verifier/) does not answer yet. It is for maintainers and for other readers.
+This page answers the questions that [theorem.dev/oss-verify](https://theorem.dev/oss-verify/) does not answer yet. It is for maintainers and for other readers.
 
-<!-- One home for each fact: when theorem.dev/oss-verifier answers a question, remove that question here. -->
+<!-- One home for each fact: when theorem.dev/oss-verify answers a question, remove that question here. -->
 
 ## How do you choose projects?
 
@@ -45,14 +45,14 @@ Yes. The [README](../README.md#pause-or-leave) tells how.
 
 ## How do I send feedback?
 
-To send feedback about a finding or a patch, reply to its report, or write to [oss-verifier@theorem.dev](mailto:oss-verifier@theorem.dev). If you have not enrolled a project, send your questions to the same address. To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).
+To send feedback about a finding or a patch, reply to its report, or write to [oss-verify@theorem.dev](mailto:oss-verify@theorem.dev). If you have not enrolled a project, send your questions to the same address. To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).
 
 ## How does attribution work?
 
-<!-- theorem.dev/oss-verifier gives the same answer. Remove this answer when that page is live (one home for each fact). -->
-We do not require credit. If you fix a bug that OSS Verifier found, we ask for one line about it. Put the line in the commit message, or in the place where you give credits. Give the id from our report in it, for example:
+<!-- theorem.dev/oss-verify gives the same answer. Remove this answer when that page is live (one home for each fact). -->
+We do not require credit. If you fix a bug that OSS Verify found, we ask for one line about it. Put the line in the commit message, or in the place where you give credits. Give the id from our report in it, for example:
 
-    Found by Theorem's OSS Verifier, as finding THM-2026-7K3QF9XA.
+    Found by Theorem's OSS Verify, as finding THM-2026-7K3QF9XA.
 
 The id helps us find which findings were real and which got fixed.
 

@@ -1,9 +1,9 @@
 ---
 name: add-project
-description: Enroll an open-source project in OSS Verifier with its maintainer. Use when a maintainer asks to add, enroll or sign up a project for formal verification. Also use it to write fuzz targets that say what "correct" means for a library, including DSL fuzz targets (docs/dsl.md). Also use it to write a patch_style.md about findings, reports and patches. Also use it to port an OSS-Fuzz build to the OSS Verifier builder. Makes projects/<name>/ (project.yaml, Dockerfile, build.sh, fuzz targets, patch_style.md) and a pull request that the maintainer opens.
+description: Enroll an open-source project in OSS Verify with its maintainer. Use when a maintainer asks to add, enroll or sign up a project for formal verification. Also use it to write fuzz targets that say what "correct" means for a library, including DSL fuzz targets (docs/dsl.md). Also use it to write a patch_style.md about findings, reports and patches. Also use it to port an OSS-Fuzz build to the OSS Verify builder. Makes projects/<name>/ (project.yaml, Dockerfile, build.sh, fuzz targets, patch_style.md) and a pull request that the maintainer opens.
 ---
 
-# Enroll a project in OSS Verifier
+# Enroll a project in OSS Verify
 
 This skill is for a coding agent that helps a maintainer enroll a project. It gives the steps, the questions to ask and the checks to run.
 
@@ -175,6 +175,6 @@ For `ubsan_checks`, suggest the default: it is the list of OSS-Fuzz, and it is l
 2. Write the pull request description from `.github/PULL_REQUEST_TEMPLATE.md`.
 3. In the context note, give a summary of what each fuzz target checks, in a few lines.
 4. Show the branch and the description to the maintainer.
-5. Let the maintainer open the pull request. Only the maintainer can confirm "I am a core maintainer" and "I accept the OSS Verifier terms".
+5. Let the maintainer open the pull request. Only the maintainer can confirm "I am a core maintainer" and "I accept the OSS Verify terms".
 
 When you finish, each file that you made is in `projects/<name>/`.

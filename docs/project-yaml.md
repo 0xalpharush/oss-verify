@@ -78,7 +78,7 @@ A fuzz target source in the project directory has a suffix of C or C++: `*.c` `*
 
 ### dockerfile
 
-Use `dockerfile` only if the `Dockerfile` is in your repository. We recommend the path `.oss-verifier/Dockerfile`.
+Use `dockerfile` only if the `Dockerfile` is in your repository. We recommend the path `.oss-verify/Dockerfile`.
 
 * If the `Dockerfile` and `build.sh` are in the project directory, do not set `dockerfile`. The build context is then the project directory.
 * If you set `dockerfile`, the build context is your repository at the commit that we build. Put `build.sh` next to the `Dockerfile`, unless the `Dockerfile` makes `$SRC/build.sh`. Then put your fuzz target sources, build patches and `sources` file in your repository too. Only `project.yaml`, `patch_style.md` and seed corpora can then be in the project directory.
@@ -175,11 +175,11 @@ Give a size as a positive number of bytes, or as a number followed by `KiB`, `Mi
 
 ### proofs
 
-Give the place where we publish the proofs: `repo`, an `https://` URL with `#<branch>`, and `path`, a directory in that repository. Most projects do not use this field. By default, we publish to the branch with the project's name in [oss-verifier-proofs](https://github.com/theorem-labs/oss-verifier-proofs), in the directory `projects/<name>`:
+Give the place where we publish the proofs: `repo`, an `https://` URL with `#<branch>`, and `path`, a directory in that repository. Most projects do not use this field. By default, we publish to the branch with the project's name in [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs), in the directory `projects/<name>`:
 
 ```yaml
 proofs:
-  repo: https://github.com/theorem-labs/oss-verifier-proofs#<name>
+  repo: https://github.com/theorem-labs/oss-verify-proofs#<name>
   path: projects/<name>
 ```
 

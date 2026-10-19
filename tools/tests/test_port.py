@@ -390,7 +390,7 @@ class VendoredRecipes(unittest.TestCase):
         text = (BUILDER / "recipes.sh").read_text(encoding="utf-8")
         marker = "# Its comments were blanked by the release, which is why many lines hold only spaces.\n"
         body = text[text.index(marker) + len(marker):]
-        original = body.replace(" /usr/local/lib/oss-verifier/driver/wrap_", " /work/src/wrap_")
+        original = body.replace(" /usr/local/lib/oss-verify/driver/wrap_", " /work/src/wrap_")
         self.assertEqual(hashlib.sha256(original.encode()).hexdigest(),
                          "b5ab933ca8a32fc3604a5ba9f0b655058d5dec93a0f46e382d172effd3d16399")
 

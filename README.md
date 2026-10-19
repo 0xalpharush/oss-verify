@@ -1,7 +1,7 @@
-<!-- Adapted from OSS Scanner (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, under the Apache License 2.0. Modified 2026 by Theorem Labs, PBC: rewritten for OSS Verifier, which proves theorems about fuzz targets instead of scanning. -->
-# OSS Verifier
+<!-- Adapted from OSS Scanner (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, under the Apache License 2.0. Modified 2026 by Theorem Labs, PBC: rewritten for OSS Verify, which proves theorems about fuzz targets instead of scanning. -->
+# OSS Verify
 
-OSS Verifier is a Theorem program that verifies open-source software. We prove theorems about the compiled fuzz targets of a project. For example, we prove that no input makes a fuzz target crash, hang or fail a sanitizer check. This page tells a maintainer how to enroll a project. A coding agent starts at [AGENTS.md](AGENTS.md).
+OSS Verify is a Theorem program that verifies open-source software. We prove theorems about the compiled fuzz targets of a project. For example, we prove that no input makes a fuzz target crash, hang or fail a sanitizer check. This page tells a maintainer how to enroll a project. A coding agent starts at [AGENTS.md](AGENTS.md).
 
 ## Who can enroll
 
@@ -12,8 +12,8 @@ A core maintainer of an established open-source project can enroll it. The proje
 Copy and paste this prompt into your coding agent (Claude Code, Codex, Cursor, etc.). Start the agent in a checkout of your project.
 
 ```
-Enroll this project in OSS Verifier by following the instructions here:
-https://raw.githubusercontent.com/theorem-labs/oss-verifier/refs/heads/main/AGENTS.md
+Enroll this project in OSS Verify by following the instructions here:
+https://raw.githubusercontent.com/theorem-labs/oss-verify/refs/heads/main/AGENTS.md
 ```
 
 The agent asks you what "correct" means for your code, and which findings and patches you want. Then it makes `projects/<name>/` and runs the checks. You push its branch to your fork of this repository, and you open the pull request.
@@ -25,7 +25,7 @@ The agent asks you what "correct" means for your code, and which findings and pa
 Get the instructions and follow them:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/theorem-labs/oss-verifier/refs/heads/main/AGENTS.md
+curl -fsSL https://raw.githubusercontent.com/theorem-labs/oss-verify/refs/heads/main/AGENTS.md
 ```
 
 ## Enroll a project
@@ -54,4 +54,4 @@ To pause the project, set `disabled: true` in `project.yaml`. To leave, remove `
 
 ## Learn more
 
-Visit [theorem.dev/oss-verifier](https://theorem.dev/oss-verifier/) for answers to common questions, and [docs/faq.md](docs/faq.md) for the questions that it does not answer. [SECURITY.md](SECURITY.md) tells how to report a vulnerability in this repository. Use of OSS Verifier is subject to the [OSS Verifier terms](https://theorem.dev/oss-verifier/terms/). We accept only enrollment pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)).
+Visit [theorem.dev/oss-verify](https://theorem.dev/oss-verify/) for answers to common questions, and [docs/faq.md](docs/faq.md) for the questions that it does not answer. [SECURITY.md](SECURITY.md) tells how to report a vulnerability in this repository. Use of OSS Verify is subject to the [OSS Verify terms](https://theorem.dev/oss-verify/terms/). We accept only enrollment pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)).

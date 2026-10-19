@@ -76,9 +76,9 @@ class ValidProjects(unittest.TestCase):
         self.assertIn("fuzz targets: a_fuzzer, b-fuzzer.x", summary)
 
     def test_dockerfile_in_repository(self):
-        problems, _, summary = check(MINIMAL + "dockerfile: .oss-verifier/Dockerfile\n", {"patch_style.md": "x"})
+        problems, _, summary = check(MINIMAL + "dockerfile: .oss-verify/Dockerfile\n", {"patch_style.md": "x"})
         self.assertEqual(problems, [])
-        self.assertIn("in the repository at .oss-verifier/Dockerfile", summary)
+        self.assertIn("in the repository at .oss-verify/Dockerfile", summary)
 
     def test_seeded_project_warns(self):
         problems, warnings, _ = check(MINIMAL.replace("security@example.org", "n/a"))
@@ -181,7 +181,7 @@ class SeedCorpora(unittest.TestCase):
         self.assertEqual(self.problems(corpus({"empty": b"", "one": b"\x01\x02"})), [])
         self.assertEqual(self.problems(corpus({"x": b"1"}), MINIMAL + "fuzz_targets: [a_fuzzer]\n"), [])
         # It may stay beside project.yaml when the repository holds the build files.
-        in_repo = MINIMAL + "dockerfile: .oss-verifier/Dockerfile\n"
+        in_repo = MINIMAL + "dockerfile: .oss-verify/Dockerfile\n"
         self.assertEqual(self.problems(corpus({"x": b"1"}), in_repo, files={}), [])
 
     def test_bad_seed_corpora(self):
@@ -322,7 +322,7 @@ class Problems(unittest.TestCase):
         self.assertProblem(MINIMAL, "a Dockerfile is required", {})
         self.assertProblem(MINIMAL + "dockerfile: Dockerfile\n", "one place only")
         self.assertProblem(MINIMAL + "dockerfile: /abs/Dockerfile\n", "relative path inside your repository", {})
-        self.assertProblem(MINIMAL + "dockerfile: .oss-verifier/Dockerfile\n", "build.sh belongs there", {"build.sh": "x"})
+        self.assertProblem(MINIMAL + "dockerfile: .oss-verify/Dockerfile\n", "build.sh belongs there", {"build.sh": "x"})
         self.assertProblem(MINIMAL + "dockerfile: d/Dockerfile\n", "x.c belongs there", {"x.c": "int x;"})
         self.assertProblem(MINIMAL + "patch_style: style.md\n", "one place only",
                            {"Dockerfile": "FROM x", "build.sh": "x", "patch_style.md": "x"})

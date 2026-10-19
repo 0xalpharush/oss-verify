@@ -19,6 +19,7 @@ import struct
 
 import yaml
 
+# The schema tag and the field "oss_verifier" keep the project's old name: the tools that read manifests use them.
 MANIFEST_SCHEMA = "oss-verifier/build-manifest/1"
 HARNESS_SCHEMA = "oss-fuzz-theorems/harness/1"
 ENTRY = b"LLVMFuzzerTestOneInput"
@@ -199,7 +200,7 @@ def collect(raw, targets, out):
     return entries, problems
 
 
-def manifest(*, project, repo, ref, commit, oss_verifier, builder, sources, builds, targets, entries):
+def manifest(*, project, repo, ref, commit, oss_verify, builder, sources, builds, targets, entries):
     """The build manifest of one check, as a mapping ready for YAML."""
     return {
         "schema": MANIFEST_SCHEMA,
@@ -207,7 +208,7 @@ def manifest(*, project, repo, ref, commit, oss_verifier, builder, sources, buil
         "repo": repo,
         "ref": ref,
         "commit": commit,
-        "oss_verifier": oss_verifier,
+        "oss_verifier": oss_verify,
         "builder": builder,
         "sources": sources,
         "builds": builds,

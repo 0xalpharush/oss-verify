@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
-# Modified 2026 by Theorem Labs, PBC: OSS Verifier's fields (language, sanitizers, fuzz_targets, patch_style, budgets,
+# Modified 2026 by Theorem Labs, PBC: OSS Verify's fields (language, sanitizers, fuzz_targets, patch_style, budgets,
 # proofs, publish) and files (build.sh, patch_style.md, harness sources, build-only patches and their series), the
 # n/a contact of a seeded project, warnings, and checking named directories.
 """Check projects/<name>/ directories against the enrollment rules in docs/project-yaml.md.
@@ -155,7 +155,7 @@ DEFAULT_PUBLISH = "after_fixes"
 # Today's values (docs/what-gets-proven.md, Memory budgets): the halts budget for each build run alone; for each
 # sanitizer, the agrees budgets of the plain side and the sanitizer side. asan-ubsan uses the address pair.
 DEFAULT_BUDGETS = {"halts": "16GiB", "agrees": {"address": ["2GiB", "512GiB"], "undefined": ["16GiB", "512GiB"]}}
-PROOFS_REPO = "https://github.com/theorem-labs/oss-verifier-proofs"
+PROOFS_REPO = "https://github.com/theorem-labs/oss-verify-proofs"
 
 
 def default_proofs(name):

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
-# Modified 2026 by Theorem Labs, PBC: OSS Verifier's enrollment files (build.sh, patch_style, harness sources and
-# patches beside project.yaml; .oss-verifier/ in the project's repository), validation warnings, two new rows (the
+# Modified 2026 by Theorem Labs, PBC: OSS Verify's enrollment files (build.sh, patch_style, harness sources and
+# patches beside project.yaml; .oss-verify/ in the project's repository), validation warnings, two new rows (the
 # n/a contact of a seeded project on an outside pull request; the project's status in the proofs index), and no
 # package-rank row.
 """Write the triage comment for an enrollment pull request, as Markdown on standard output.
 
-    GITHUB_TOKEN=... .github/scripts/triage.py --repo theorem-labs/oss-verifier --pr 123
+    GITHUB_TOKEN=... .github/scripts/triage.py --repo theorem-labs/oss-verify --pr 123
 
 Run by .github/workflows/triage.yaml, or by hand to see what it would say. Prints nothing when the pull request
 does not touch projects/.
@@ -51,7 +51,7 @@ MAX_RATE_LIMIT_WAIT = 65  # seconds
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_TEXT_BYTES = 256 * 1024
 # The workflow finds the comment to update by this first line.
-MARKER = "<!-- oss-verifier-triage -->"
+MARKER = "<!-- oss-verify-triage -->"
 
 OK, WARN, FAIL, INFO = "✅", "⚠️", "❌", "ℹ️"
 NOW = datetime.now(timezone.utc)
@@ -83,8 +83,8 @@ OSS_FUZZ_CANDIDATES = 5
 MAIN_REPO = re.compile(r"(?:\w+://|git@)?(?:www\.)?github\.com[/:]([^/\s]+/[^/\s#]+?)(?:\.git)?/?")
 # Where GitHub looks for a repository's security policy.
 SECURITY_POLICY_PATHS = ("SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md")
-# Where a project keeps its OSS Verifier files in its own repository, as the README suggests.
-IN_REPO_DIRECTORY = ".oss-verifier"
+# Where a project keeps its OSS Verify files in its own repository, as the README suggests.
+IN_REPO_DIRECTORY = ".oss-verify"
 
 # The proofs repository's index of projects. That repository does not exist yet: this assumes it keeps the layout of
 # oss-fuzz-theorems' index, a tab-separated index/projects.tsv whose header row names a `project` and a `status` column
@@ -193,7 +193,7 @@ class Api:
 
     def __init__(self, name: str, base: str, headers: dict[str, str] | None = None):
         self.name, self.base = name, base
-        self.headers = {"User-Agent": "oss-verifier-triage", **(headers or {})}
+        self.headers = {"User-Agent": "oss-verify-triage", **(headers or {})}
         self.opener = urllib.request.build_opener(StayOnApi(base))
 
     def fetch(
@@ -704,7 +704,7 @@ def oss_fuzz_row(gh: GitHub, slug: str, config: dict) -> tuple[str, str]:
 
 
 def verifier_files_row(gh: GitHub, slug: str, ref: str | None, config: dict, beside: set[str]) -> tuple[str, str]:
-    """Has the project set up .oss-verifier/ in its own repository, and are the files project.yaml names there?"""
+    """Has the project set up .oss-verify/ in its own repository, and are the files project.yaml names there?"""
 
     def in_repo(path: object) -> bool:
         if not (isinstance(path, str) and validate.REPO_PATH.fullmatch(path)):

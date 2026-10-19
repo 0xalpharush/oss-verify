@@ -9,7 +9,7 @@
 #
 # Below this header the file is the release's, byte for byte, but for one substitution, which compiles the seals from
 # this image's copy of the driver:
-#   sed -e 's| /work/src/wrap_| /usr/local/lib/oss-verifier/driver/wrap_|'
+#   sed -e 's| /work/src/wrap_| /usr/local/lib/oss-verify/driver/wrap_|'
 # Its comments were blanked by the release, which is why many lines hold only spaces.
 
 
@@ -2275,7 +2275,7 @@ oft_seal_getenv() {
   fi
   local obj="$BUILDDIR/wrap_getenv.o"
 
-  "${DRVCC:?build.sh must export DRVCC}" ${BASE_CFLAGS} -c /usr/local/lib/oss-verifier/driver/wrap_getenv.c -o "$obj" || return 1
+  "${DRVCC:?build.sh must export DRVCC}" ${BASE_CFLAGS} -c /usr/local/lib/oss-verify/driver/wrap_getenv.c -o "$obj" || return 1
   "$CHOST-nm" "$obj" | grep -q ' T __wrap_getenv$' || {
     echo "oft: wrap_getenv.o defines no __wrap_getenv" >&2
     return 1
@@ -2313,7 +2313,7 @@ oft_seal_getenv() {
 oft_seal_getpid() {
   local obj="$BUILDDIR/wrap_getpid.o"
 
-  "${DRVCC:?build.sh must export DRVCC}" ${BASE_CFLAGS} -c /usr/local/lib/oss-verifier/driver/wrap_getpid.c -o "$obj" || return 1
+  "${DRVCC:?build.sh must export DRVCC}" ${BASE_CFLAGS} -c /usr/local/lib/oss-verify/driver/wrap_getpid.c -o "$obj" || return 1
   "$CHOST-nm" "$obj" | grep -q ' T __wrap_getpid$' || {
     echo "oft: wrap_getpid.o defines no __wrap_getpid" >&2
     return 1
@@ -2324,7 +2324,7 @@ oft_seal_getpid() {
 oft_seal_mkstemp() {
   local obj="$BUILDDIR/wrap_mkstemp.o"
 
-  "${DRVCC:?build.sh must export DRVCC}" ${BASE_CFLAGS} -c /usr/local/lib/oss-verifier/driver/wrap_mkstemp.c -o "$obj" || return 1
+  "${DRVCC:?build.sh must export DRVCC}" ${BASE_CFLAGS} -c /usr/local/lib/oss-verify/driver/wrap_mkstemp.c -o "$obj" || return 1
   "$CHOST-nm" "$obj" | grep -q ' T __wrap_mkstemp$' || {
     echo "oft: wrap_mkstemp.o defines no __wrap_mkstemp" >&2
     return 1

@@ -1,10 +1,10 @@
-<!-- Adapted from OSS Scanner's .github/PULL_REQUEST_TEMPLATE.md (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, under the Apache License 2.0. Modified 2026 by Theorem Labs, PBC: OSS Verifier's checklist (terms, tools/check --twice, build files, patch style). -->
+<!-- Adapted from OSS Scanner's .github/PULL_REQUEST_TEMPLATE.md (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic PBC, under the Apache License 2.0. Modified 2026 by Theorem Labs, PBC: OSS Verify's checklist (terms, tools/check --twice, build files, patch style). -->
 ## Enroll `projects/<name>`
 
 Before I opened this pull request, I made sure of each point:
 
 - [ ] I am a core maintainer of this project.
-- [ ] I accept the [OSS Verifier terms](https://theorem.dev/oss-verifier/terms/).
+- [ ] I accept the [OSS Verify terms](https://theorem.dev/oss-verify/terms/).
 - [ ] This pull request changes only `projects/<name>/`, for one project, and `tools/validate.py` finds no problem in it.
 - [ ] `tools/check --twice <name>` builds each fuzz target that I want verified, and the second build has the same bytes.
 - [ ] `primary_contact` is the email address of the project's security contact.

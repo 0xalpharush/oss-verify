@@ -4,7 +4,7 @@
 # Builds the fuzz targets of zlib into $OUT, each from the pin of the release's target for it.
 # compile runs build.sh with bash; the release ran each target's build with sh -e, and so does this.
 [ -z "${BASH_VERSION:-}" ] || exec sh -e "$0"
-. /usr/local/lib/oss-verifier/release-target.sh
+. /usr/local/lib/oss-verify/release-target.sh
 
 # checksum_fuzzer: the release's target zlib-checksum_fuzzer
 (

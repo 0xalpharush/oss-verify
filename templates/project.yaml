@@ -1,5 +1,5 @@
 # Adapted from OSS Scanner's templates/project.yaml (https://github.com/anthropics/oss-scanner), Copyright 2026
-# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: OSS Verifier's fields and files.
+# Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: OSS Verify's fields and files.
 #
 # Copy this file to projects/<name>/project.yaml and fill in the fields below. docs/project-yaml.md describes each.
 
@@ -51,14 +51,14 @@ fuzz_targets:
 #   - in this repository, next to this file, as projects/<name>/Dockerfile and projects/<name>/build.sh, in which
 #     case you should delete the line below; or
 #   - in your repository, in which case you should give the Dockerfile's path below and keep build.sh beside it.
-dockerfile: .oss-verifier/Dockerfile
+dockerfile: .oss-verify/Dockerfile
 
 # Optional: a patch_style.md (start from templates/patch_style.md) is free text for our AI: the findings, reports and
 # patches you want, and how they must look. It goes in one of two places:
 #   - in your repository, in which case you should give its path below; or
 #   - in this repository, next to this file, as projects/<name>/patch_style.md, in which case you should delete the
 #     line below.
-patch_style: .oss-verifier/patch_style.md
+patch_style: .oss-verify/patch_style.md
 
 # Optional. When we publish the proofs about your project (docs/project-yaml.md):
 #   after_fixes  (the default) once every patch we sent you is public or upstreamed
@@ -74,5 +74,5 @@ patch_style: .oss-verifier/patch_style.md
 #     address: [2GiB, 512GiB]
 #     undefined: [16GiB, 512GiB]
 # proofs:
-#   repo: https://github.com/theorem-labs/oss-verifier-proofs#<name>
+#   repo: https://github.com/theorem-labs/oss-verify-proofs#<name>
 #   path: projects/<name>

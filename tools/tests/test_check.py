@@ -107,7 +107,7 @@ class Twice(unittest.TestCase):
             stack.enter_context(mock.patch.object(check_build, "resolve", lambda repo, ref: COMMIT))
             stack.enter_context(mock.patch.object(check_build, "image_id", lambda tag: f"sha256:{tag}"))
             stack.enter_context(mock.patch.object(check_build, "sources", lambda tag: {}))
-            stack.enter_context(mock.patch.object(check_build, "oss_verifier_state", lambda job: None))
+            stack.enter_context(mock.patch.object(check_build, "oss_verify_state", lambda job: None))
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             code = check_tool.main()
         # While the second build ran, the manifest had no rebuild block yet.
