@@ -153,9 +153,10 @@ class Twice(unittest.TestCase):
 class UbsanSettings(unittest.TestCase):
     """The UBSan checks that tools/check gives compile, by the toolchain's row in infra/toolchains.tsv."""
 
-    def job(self, checks=None):
+    def job(self, checks=None, language="c"):
         return check_build.Job(name="demo", directory=pathlib.Path("/nowhere"), repo="https://example.org/demo",
-                               ref="", dockerfile="", builds=BUILDS, fuzz_targets=None, ubsan_checks=checks)
+                               ref="", dockerfile="", builds=BUILDS, fuzz_targets=None, ubsan_checks=checks,
+                               language=language)
 
     def test_a_fixed_toolchain_keeps_its_flags(self):
         with mock.patch.object(check_build, "ubsan_mode", return_value="fixed"):
@@ -167,9 +168,13 @@ class UbsanSettings(unittest.TestCase):
 
     def test_a_toolchain_that_applies_the_checks(self):
         with mock.patch.object(check_build, "ubsan_mode", return_value="checks"):
-            checks, left_out = check_tool.ubsan_settings(self.job(), TOOLCHAIN)
-            self.assertEqual(checks, [check for check in validate.DEFAULT_UBSAN_CHECKS if check not in ("function", "vptr")])
-            self.assertEqual(left_out, ["function", "vptr"])
+            # C's default has no function; C++'s has it, but its C compiles leave it out, as OSS-Fuzz's do.
+            self.assertEqual(check_tool.ubsan_settings(self.job(), TOOLCHAIN), (validate.DEFAULT_UBSAN_CHECKS["c"],
+                                                                                ["vptr"], []))
+            self.assertEqual(check_tool.ubsan_settings(self.job(language="c++"), TOOLCHAIN),
+                             (validate.DEFAULT_UBSAN_CHECKS["c++"], ["vptr"], ["function"]))
+            self.assertEqual(check_tool.ubsan_settings(self.job(language="python"), TOOLCHAIN)[0],
+                             validate.DEFAULT_UBSAN_CHECKS["c"])
             # A project's checks in effect (the default, changed): less those that trap mode leaves out.
             self.assertEqual(check_tool.ubsan_settings(self.job(["null", "alignment", "vptr"]), TOOLCHAIN)[0],
                              ["null", "alignment"])

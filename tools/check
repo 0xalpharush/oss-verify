@@ -99,8 +99,8 @@ def load(project):
 
 
 def ubsan_settings(job, toolchain):
-    """(checks, left out) for the UBSan builds on this toolchain, or None for its fixed flags. Exit with code 2 if the
-    project sets ubsan_checks and the toolchain keeps the release's fixed flags."""
+    """(checks, left out, left out of C compiles) for the UBSan builds on this toolchain, or None for its fixed flags.
+    Exit with code 2 if the project sets ubsan_checks and the toolchain keeps the release's fixed flags."""
     if check_build.ubsan_mode(toolchain) == "fixed":
         if job.ubsan_checks is not None:
             print(f"{job.name}: project.yaml sets ubsan_checks, but the toolchain {toolchain} keeps the release's "
@@ -109,8 +109,11 @@ def ubsan_settings(job, toolchain):
                   file=sys.stderr)
             sys.exit(2)
         return None
-    checks = job.ubsan_checks or validate.DEFAULT_UBSAN_CHECKS
-    return [check for check in checks if check not in validate.TRAP_EXCEPTIONS], sorted(validate.TRAP_EXCEPTIONS)
+    checks = job.ubsan_checks or validate.default_ubsan_checks(job.language)
+    # As OSS-Fuzz does, a c++ project's C compiles leave out function (those of a c or python project do not have it).
+    c_left_out = [check for check in validate.C_COMPILE_EXCLUDED if check in checks] if job.language == "c++" else []
+    return ([check for check in checks if check not in validate.TRAP_EXCEPTIONS], sorted(validate.TRAP_EXCEPTIONS),
+            c_left_out)
 
 
 def build_all(job, commit, work, toolchain, suffix="", no_cache=False):

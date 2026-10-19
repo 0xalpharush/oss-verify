@@ -226,12 +226,28 @@ class UbsanChecks(unittest.TestCase):
         problems, warnings, _ = check(MINIMAL + added)
         self.assertEqual(problems, [])
         self.has("has no effect yet", warnings)
+        cxx = MINIMAL.replace("language: c", "language: c++")
         removed = "ubsan_checks: {remove: [function], reason: callbacks are called through a void pointer type}\n"
-        self.assertEqual(check(MINIMAL + removed)[0], [])
-        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL + added)), [*validate.DEFAULT_UBSAN_CHECKS, "alignment"])
-        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL + removed)),
-                         [check for check in validate.DEFAULT_UBSAN_CHECKS if check != "function"])
-        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL)), validate.DEFAULT_UBSAN_CHECKS)
+        self.assertEqual(check(cxx + removed)[0], [])
+        default = validate.DEFAULT_UBSAN_CHECKS
+        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL + added)), [*default["c"], "alignment"])
+        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(cxx + removed)),
+                         [check for check in default["c++"] if check != "function"])
+        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL)), default["c"])
+        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(cxx)), default["c++"])
+        # A c project's default has no function to remove.
+        self.has("function is not in the default", check(MINIMAL + removed)[1])
+
+    def test_the_defaults(self):
+        """OSS-Fuzz's -fno-sanitize-recover list, less vptr (trap mode cannot make it); C and Python drop function,
+        as OSS-Fuzz drops it from C compiles and from a Python project's native code."""
+        default = validate.DEFAULT_UBSAN_CHECKS
+        self.assertEqual(len(default["c++"]), 14)
+        self.assertEqual(default["c"], [check for check in default["c++"] if check != "function"])
+        self.assertEqual(default["python"], default["c"])
+        self.assertEqual(set(validate.TRAP_EXCEPTIONS), {"vptr"})
+        for checks in default.values():
+            self.assertFalse({"vptr", "unsigned-integer-overflow"} & set(checks))
 
     def test_bad_changes(self):
         def problems(text):

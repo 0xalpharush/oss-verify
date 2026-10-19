@@ -91,7 +91,8 @@ write_cc_shim "$SHIM/$CHOST-clang++-sealed" \
 DRVCC=$SHIM/$CHOST-clang-plain
 DRVCXX=$SHIM/$CHOST-clang++-plain
 # The UBSan checks: the release's fixed flags, unless tools/check gives a project's checks in OV_UBSAN_CHECKS (and
-# those that trap mode leaves out in OV_UBSAN_EXCLUDE), which it does only on a toolchain whose infra/toolchains.tsv
+# those that trap mode leaves out in OV_UBSAN_EXCLUDE; compile leaves OV_UBSAN_C_EXCLUDE out of the C compiles of a
+# c++ project), which it does only on a toolchain whose infra/toolchains.tsv
 # row says so (docs/project-yaml.md#ubsan_checks).
 if [ -n "${OV_UBSAN_CHECKS:-}" ]; then
   UBSAN="-fsanitize=$OV_UBSAN_CHECKS${OV_UBSAN_EXCLUDE:+ -fno-sanitize=$OV_UBSAN_EXCLUDE}"

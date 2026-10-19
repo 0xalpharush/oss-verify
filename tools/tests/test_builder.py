@@ -202,7 +202,8 @@ class UbsanChecks(unittest.TestCase):
                 check_build.build_project(job, "0" * 40, check_build.build_builder(), tag, work)
                 raw = work / "raw"
                 # null only: the null load traps, and the signed overflow, which the fixed flags catch, does not.
-                check_build.compile_build(tag, "ubsan", "undefined", raw, (["null"], ["function", "vptr"]))
+                # The C compiles also leave out function, as a c++ project's do.
+                check_build.compile_build(tag, "ubsan", "undefined", raw, (["null"], ["vptr"], ["function"]))
                 inputs = work / "in"
                 inputs.mkdir()
                 for case in "no":

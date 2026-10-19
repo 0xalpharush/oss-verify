@@ -26,7 +26,7 @@ Fields allowed in project.yaml:
     disabled: true | false              optional   true pauses the project
     sanitizers: [address, undefined]    optional   the sanitizer builds besides plain (this is the default; go and
                                                    jvm take none, and default to [])
-    ubsan_checks: {add, remove, reason}  optional  changes to the UBSan checks of the ubsan builds (default: OSS-Fuzz's),
+    ubsan_checks: {add, remove, reason}  optional  changes to the UBSan checks of the ubsan builds (default: OSS-Fuzz's, by language),
                                                    with a toolchain that applies them; provisional format
     fuzz_targets: [<target>, ...]       optional   default: every fuzz target the build produces
     patch_style: <path in your repo>    optional   or a patch_style.md next to project.yaml
@@ -142,17 +142,24 @@ UBSAN_NAMES = (
     "signed-integer-overflow", "undefined", "unreachable", "unsigned-integer-overflow", "unsigned-shift-base",
     "vla-bound", "vptr",
 )
-# Without ubsan_checks, the checks that OSS-Fuzz makes fatal: its -fno-sanitize-recover list. (It also instruments
-# unsigned-integer-overflow, but silences it with silence_unsigned_overflow=1.)
-DEFAULT_UBSAN_CHECKS = [
+# Without ubsan_checks, the checks that OSS-Fuzz makes fatal (its -fno-sanitize-recover list), less vptr, which trap
+# mode cannot make (TRAP_EXCEPTIONS). OSS-Fuzz drops function from each C compile, and from a Python project's native
+# code, so a c or python project's default does not have it, and a c++ project's C compiles do not either
+# (C_COMPILE_EXCLUDED). OSS-Fuzz also instruments unsigned-integer-overflow, but silences it with
+# silence_unsigned_overflow=1, which trap mode cannot do, so no default has it.
+CXX_UBSAN_CHECKS = [
     "array-bounds", "bool", "builtin", "enum", "function", "integer-divide-by-zero", "null", "object-size", "return",
-    "returns-nonnull-attribute", "shift", "signed-integer-overflow", "unreachable", "vla-bound", "vptr",
+    "returns-nonnull-attribute", "shift", "signed-integer-overflow", "unreachable", "vla-bound",
 ]
-# The checks that the trapping builds leave out of any list, and why. Pending: both are still to be confirmed by
-# probes of the toolchain (clang 20 refuses vptr with -fsanitize-trap; it takes function).
+C_COMPILE_EXCLUDED = ("function",)
+DEFAULT_UBSAN_CHECKS = {
+    "c++": CXX_UBSAN_CHECKS,
+    "c": [check for check in CXX_UBSAN_CHECKS if check not in C_COMPILE_EXCLUDED],
+    "python": [check for check in CXX_UBSAN_CHECKS if check not in C_COMPILE_EXCLUDED],
+}
+# The checks that the trapping builds leave out of any list, and why.
 TRAP_EXCEPTIONS = {
-    "vptr": "it needs the UBSan runtime, which trap mode does not have (pending)",
-    "function": "whether it works on riscv64 in trap mode is not confirmed yet (pending)",
+    "vptr": "it needs the UBSan runtime, which trap mode does not have",
 }
 # The keys of ubsan_checks: changes to the default, and the reason for them. Provisional, until the format is agreed.
 UBSAN_CHANGES = ("add", "remove", "reason")
@@ -228,12 +235,18 @@ def ubsan_changes_of(config):
     return tidy
 
 
+def default_ubsan_checks(language):
+    """The UBSan checks of a project in this language that does not set ubsan_checks."""
+    return list(DEFAULT_UBSAN_CHECKS.get(language, DEFAULT_UBSAN_CHECKS["c"]))
+
+
 def ubsan_checks_in_effect(config):
-    """The UBSan checks that a valid project.yaml asks for: the default, less `remove`, with `add`."""
+    """The UBSan checks that a valid project.yaml asks for: its language's default, less `remove`, with `add`."""
+    default = default_ubsan_checks(config.get("language"))
     changes = ubsan_changes_of(config) or {}
     removed = set(changes.get("remove") or [])
-    added = [check for check in changes.get("add") or [] if check not in DEFAULT_UBSAN_CHECKS]
-    return [check for check in DEFAULT_UBSAN_CHECKS if check not in removed] + added
+    added = [check for check in changes.get("add") or [] if check not in default]
+    return [check for check in default if check not in removed] + added
 
 
 def source_suffixes(config):
@@ -528,9 +541,10 @@ def config_warnings(config, files):
         removed = changes.get("remove") if isinstance(changes.get("remove"), list) else []
         for item in sorted(set(map(str, added)) & set(TRAP_EXCEPTIONS)):
             warnings.append(f"ubsan_checks: the trapping builds leave out {item}: {TRAP_EXCEPTIONS[item]}")
-        for item in sorted(set(map(str, added)) & set(DEFAULT_UBSAN_CHECKS)):
+        default = default_ubsan_checks(config.get("language"))
+        for item in sorted(set(map(str, added)) & set(default)):
             warnings.append(f"ubsan_checks.add: {item} is in the default already")
-        for item in sorted(set(map(str, removed)) - set(DEFAULT_UBSAN_CHECKS)):
+        for item in sorted(set(map(str, removed)) - set(default)):
             warnings.append(f"ubsan_checks.remove: {item} is not in the default, so there is nothing to remove")
         if not newest_toolchain_applies_ubsan_checks():
             warnings.append("ubsan_checks has no effect yet: the newest toolchain keeps the release's fixed UBSan flags, "

@@ -19,7 +19,7 @@ The field names come from OSS Scanner if it has the field, then from OSS-Fuzz. W
 | `pgp` | no | your armored OpenPGP public key | |
 | `disabled` | no | `true` pauses the project | `false` |
 | `sanitizers` | no | the sanitizer builds in addition to `plain` | `[address, undefined]` |
-| `ubsan_checks` | no | changes to the UBSan checks of the `ubsan` and `asan-ubsan` builds, with the next toolchain version ([below](#ubsan_checks)) | none: the checks that OSS-Fuzz makes fatal |
+| `ubsan_checks` | no | changes to the UBSan checks of the `ubsan` and `asan-ubsan` builds, with the next toolchain version ([below](#ubsan_checks)) | none: the checks that OSS-Fuzz makes fatal, for the project's language |
 | `fuzz_targets` | no | the fuzz targets to verify | each fuzz target that the build makes |
 | `patch_style` | no | the path of your `patch_style.md` in your repository ([below](#patch_style)) | |
 | `budgets` | no | the memory budgets of the statements | today's values |
@@ -109,17 +109,15 @@ Change the UndefinedBehaviorSanitizer checks of the `ubsan` and `asan-ubsan` bui
 
 > **WARNING:** Today's toolchain vintage does not apply this field. Its builds keep the fixed UBSan flags of the release ([build-contract.md](build-contract.md#the-builds)), so that its binaries are the release's. With this vintage, `tools/check` refuses a project that sets the field. The field applies with the next toolchain version.
 
-If you leave out the field, the builds make the checks that OSS-Fuzz makes fatal, which are those of its `-fno-sanitize-recover` list:
+If you leave out the field, the builds make the checks that OSS-Fuzz makes fatal, which are those of its `-fno-sanitize-recover` list, less `vptr`. For a `c++` project, these are the checks:
 
     array-bounds bool builtin enum function integer-divide-by-zero null object-size return
-    returns-nonnull-attribute shift signed-integer-overflow unreachable vla-bound vptr
+    returns-nonnull-attribute shift signed-integer-overflow unreachable vla-bound
 
-OSS-Fuzz also instruments `unsigned-integer-overflow`, but it silences the reports (`silence_unsigned_overflow=1`). Thus the default does not contain it.
+OSS-Fuzz leaves out `function` when it compiles C code, and when it compiles a Python project's native code. Thus a `c` or `python` project's default does not have `function`, and the C files of a `c++` project are compiled without it.
 
-The builds trap, and trap mode is likely to leave out two checks of this list. Both are pending: we are making sure with probes of the toolchain ([what-gets-proven.md](what-gets-proven.md#ubsan-checks)).
-
-* `vptr` needs the UBSan runtime, which trap mode does not have. clang 20 refuses it with `-fsanitize-trap`.
-* `function`: clang 20 takes it with `-fsanitize-trap` for riscv64. We are making sure that it works.
+* `vptr` needs the UBSan runtime, which trap mode does not have. Thus no default has it, and `tools/validate.py` warns if you add it.
+* OSS-Fuzz also instruments `unsigned-integer-overflow`, but it silences the reports (`silence_unsigned_overflow=1`). Trap mode cannot silence a check. Thus the default does not contain it.
 
 The field changes the default, and tells why:
 

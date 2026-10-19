@@ -90,7 +90,7 @@ The UBSan builds do not make these checks:
 * `vptr`, which needs a runtime;
 * the checks that clang leaves out of `undefined` by default: unsigned overflow, implicit conversions, `local-bounds`, float division by zero and nullability.
 
-With today's toolchain vintage, these flags are fixed, so that the ported builds make the release's binaries again. With the next toolchain version, a list replaces them: the checks that OSS-Fuzz makes fatal, changed by the project's `ubsan_checks` ([project-yaml.md](project-yaml.md#ubsan_checks)). `tools/check` then gives `compile` the checks, and `compile` builds the library and the fuzz targets with `-fsanitize=<checks> -fsanitize-trap=<checks>`. The driver never gets these flags. The `ubsan` column of `infra/toolchains.tsv` tells which way each toolchain image works: `fixed` or `checks`.
+With today's toolchain vintage, these flags are fixed, so that the ported builds make the release's binaries again. With the next toolchain version, a list replaces them: the checks that OSS-Fuzz makes fatal for the project's language, changed by the project's `ubsan_checks` ([project-yaml.md](project-yaml.md#ubsan_checks)). `tools/check` then gives `compile` the checks, and `compile` builds the library and the fuzz targets with `-fsanitize=<checks> -fsanitize-trap=<checks>`. As in OSS-Fuzz, the C files of a `c++` project are compiled without `function`. The driver never gets these flags. The `ubsan` column of `infra/toolchains.tsv` tells which way each toolchain image works: `fixed` or `checks`.
 
 The sealed AddressSanitizer runtime has these properties, as the documentation of that release describes:
 

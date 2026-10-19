@@ -54,6 +54,11 @@ real_cc=$CC real_cxx=$CXX
 suppress_unused_arg_werror
 define_fuzzing_build_mode
 CXXFLAGS="$CFLAGS -stdlib=libc++"
+# With a project's UBSan checks: what its C compiles leave out (OV_UBSAN_C_EXCLUDE), as OSS-Fuzz leaves function out
+# of each C compile. C++ compiles keep it.
+if [ -n "${OV_UBSAN_C_EXCLUDE:-}" ] && [ -n "${OV_UBSAN_CHECKS:-}" ]; then
+  case "$FLAV" in ubsan|asanubsan) CFLAGS="$CFLAGS -fno-sanitize=$OV_UBSAN_C_EXCLUDE" ;; esac
+fi
 
 # The driver and the seals are compiled as the release recipe compiles them: with no sanitizer, in every build.
 OV=/tmp/ov
@@ -155,6 +160,7 @@ export AR=$CHOST-ar NM=$CHOST-nm RANLIB=$CHOST-ranlib STRIP=$CHOST-strip OBJCOPY
 
 echo "compile: CC=$CC"
 echo "compile: CFLAGS=$CFLAGS"
+echo "compile: CXXFLAGS=$CXXFLAGS"
 bash -eux "$SRC/build.sh"
 
 # Save the stripped twin of each executable build.sh left in $OUT.

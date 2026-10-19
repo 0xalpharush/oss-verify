@@ -38,7 +38,7 @@ The statements catch each failure that the fuzz target would catch in OSS-Fuzz: 
 There are exceptions, and this is the full list. Each exception is a limit of how we run the fuzz target, which these builds cannot remove. No exception is a choice that a project makes.
 
 * **Leaks.** Leak detection is off in the AddressSanitizer builds (`detect_leaks=0`). The leak check of LeakSanitizer at exit cannot run in the sealed static runtime. Thus a leak, which OSS-Fuzz reports, is not an error here.
-* **UBSan checks that trap mode cannot make.** The UBSan builds trap, with no runtime. Thus they are likely to leave out `vptr`, which needs a runtime. They are also likely to leave out `function`, until we are sure that it works on riscv64 in trap mode. Both are pending. OSS-Fuzz makes both checks ([below](#ubsan-checks)).
+* **A UBSan check that trap mode cannot make.** The UBSan builds trap, with no runtime. Thus they leave out `vptr`, which needs a runtime. OSS-Fuzz makes it ([below](#ubsan-checks)).
 * **No MemorySanitizer.** There is no MemorySanitizer build, so we do not check reads of uninitialized memory. OSS-Fuzz runs MemorySanitizer for some projects. MemorySanitizer needs each library in the program built with it, the C and C++ libraries included. This static riscv64 toolchain does not supply them.
 * **One thread.** The process model runs one thread. A fuzz target that starts a thread leaves the model. We cannot prove its statements until the model includes threads.
 * **Inputs smaller than 64 MiB.** The driver refuses an input file of 64 MiB or more, with status 2. Thus no statement is about a larger input.
@@ -53,12 +53,12 @@ A statement about a `ubsan` or `asan-ubsan` binary names the UBSan checks in eff
 * **Today's toolchain vintage.** The checks are fixed: those that clang's `undefined` group makes in trap mode ([build-contract.md](build-contract.md#the-builds)).
 * **The next toolchain version.** The checks are those that OSS-Fuzz makes fatal, changed by the project's `ubsan_checks` if it has one ([project-yaml.md](project-yaml.md#ubsan_checks)).
 
-These are the default checks:
+These are the default checks of a `c++` project:
 
     array-bounds bool builtin enum function integer-divide-by-zero null object-size return
-    returns-nonnull-attribute shift signed-integer-overflow unreachable vla-bound vptr
+    returns-nonnull-attribute shift signed-integer-overflow unreachable vla-bound
 
-In both, trap mode is likely to leave out `vptr` and `function`. This is pending: we are making sure with probes of the toolchain. OSS-Fuzz also instruments `unsigned-integer-overflow`, but it silences the reports, so its default does not catch an unsigned overflow either. An unsigned overflow is not undefined behaviour, and correct code uses it.
+The default of a `c` or `python` project is the same, less `function`, and so are the checks of a `c++` project's C files. OSS-Fuzz leaves `function` out of those compiles too. Trap mode leaves out `vptr`, which OSS-Fuzz makes. OSS-Fuzz also instruments `unsigned-integer-overflow`, but it silences the reports, so its default does not catch an unsigned overflow either. An unsigned overflow is not undefined behaviour, and correct code uses it.
 
 ## Memory budgets
 

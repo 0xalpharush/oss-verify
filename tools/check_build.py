@@ -270,7 +270,8 @@ DOCKER_FAILED = 125
 
 def compile_build(tag, build, sanitizer, out, ubsan=None):
     """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`. `ubsan`, if given,
-    is (checks, left out): the UBSan checks of the build, and those that trap mode leaves out."""
+    is (checks, left out[, left out of C compiles]): the UBSan checks of the build, those that trap mode leaves out,
+    and those that its C compiles leave out."""
     step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
     empty_directory(out, tag)
     owner = f"{os.getuid()}:{os.getgid()}"
@@ -279,6 +280,8 @@ def compile_build(tag, build, sanitizer, out, ubsan=None):
     checks = []
     if ubsan and "undefined" in sanitizer:
         checks = ["-e", f"OV_UBSAN_CHECKS={','.join(ubsan[0])}", "-e", f"OV_UBSAN_EXCLUDE={','.join(ubsan[1])}"]
+        if len(ubsan) > 2 and ubsan[2]:
+            checks += ["-e", f"OV_UBSAN_C_EXCLUDE={','.join(ubsan[2])}"]
     command = ["docker", "run", "--rm", "--init", "--network=none", "-e", f"SANITIZER={sanitizer}",
                "-e", f"OV_OWNER={owner}", *jobs, *checks, "-v", f"{out}:/out", tag, "compile"]
     code = run(*command)

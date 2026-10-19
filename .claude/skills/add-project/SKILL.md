@@ -158,7 +158,7 @@ Start from `templates/project.yaml` (`docs/project-yaml.md`). Fill in these fiel
 
 Ask about `publish`: `after_fixes` (the default), `eager` or `never` (`docs/project-yaml.md`).
 
-For `ubsan_checks`, suggest the default: it is the list of OSS-Fuzz, and it is less likely to flag code that is not a bug. For example, it does not report an unsigned overflow. Remove a check (`remove`) only when it flags code that is not a bug. Add a stricter check (`add`), for example `alignment` or `float-cast-overflow`, only on purpose. In both cases, write why in `reason`. The format of the field is provisional, and today's toolchain vintage does not apply it (`docs/project-yaml.md`, "ubsan_checks").
+For `ubsan_checks`, suggest the default: it is the list of OSS-Fuzz for the project's language, and it is less likely to flag code that is not a bug. For example, it does not report an unsigned overflow, and it leaves `function` out of C code. Remove a check (`remove`) only when it flags code that is not a bug. Add a stricter check (`add`), for example `alignment` or `float-cast-overflow`, only on purpose. In both cases, write why in `reason`. The format of the field is provisional, and today's toolchain vintage does not apply it (`docs/project-yaml.md`, "ubsan_checks").
 
 <!-- PENDING: the suggested removals, each with its reason. -->
 **Suggested removals: pending.** A short list of checks that often flag code that is not a bug, each with its reason, will follow.
