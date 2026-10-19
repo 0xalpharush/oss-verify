@@ -786,7 +786,7 @@ mongoose	no	-	-	-	the release did not build it (status not-yet-built: not-attemp
 more-itertools	yes	fuzz_mi	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 mosh	yes	terminal_fuzzer,terminal_parser_fuzzer	reproduces	all binaries match the release's	-
 mosquitto	no	-	-	-	the release did not build it (status held: held)
-mp4parse-rust	yes	avif,mp4	checking	-	the release built it in its Rust build, which it did not publish
+mp4parse-rust	yes	avif,mp4	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Rust build, which it did not publish
 mp4san	no	-	-	-	the release did not build it (status language-pending: rust)
 mpg123	no	-	-	-	the release records no full commit for its library
 mpv	yes	fuzzer_json	reproduces	all binaries match the release's	-
@@ -1054,7 +1054,7 @@ qubes-os	yes	input-proxy-receiver_fuzzer	reproduces	all binaries match the relea
 quic-go	no	-	-	-	the release did not build it (status language-pending: go)
 quiche	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 quiche-cloudflare	no	-	-	-	the release did not build it (status language-pending: rust)
-quick-xml	yes	fuzz_chunked_reader,fuzz_target_1,structured_roundtrip	checking	-	the release built it in its Rust build, which it did not publish
+quick-xml	yes	fuzz_chunked_reader,fuzz_target_1,structured_roundtrip	reproducible	12 binaries; a second build is identical; the release has none to compare	the release built it in its Rust build, which it did not publish
 quickjs	yes	fuzz_regexp	reproduces	all binaries match the release's	-
 r	no	-	-	-	the release did not build it (status not-yet-built: toolchain)
 rabbitmq-c	yes	fuzz_codec,fuzz_handle_input,fuzz_method_decode,fuzz_properties_decode,fuzz_server,fuzz_table,fuzz_url	reproduces	all binaries match the release's	-
@@ -1234,7 +1234,7 @@ tidy-html5	yes	tidy_config_fuzzer,tidy_fuzzer,tidy_parse_string_fuzzer,tidy_xml_
 time	no	-	-	-	the release did not build it (status language-pending: go)
 timestamp-authority	no	-	-	-	the release did not build it (status language-pending: go)
 tink-cc	yes	tink_encrypt_fuzzer	reproduces	all binaries match the release's	tink_encrypt_fuzzer: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; tink_encrypt_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
-tinycss2	yes	fuzz_components,fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+tinycss2	yes	fuzz_components,fuzz_parse	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 tinygltf	yes	fuzz_gltf_v3_c	reproduces	all binaries match the release's	-
 tinyobjloader	yes	fuzz_tobj_c	reproduces	all binaries match the release's	-
 tinysparql	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
@@ -1246,7 +1246,7 @@ tomcat	no	-	-	-	the release did not build it (status language-pending: jvm)
 toml	no	-	-	-	the release did not build it (status language-pending: python)
 toml_edit	yes	parse_document	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Rust build, which it did not publish; the release held back these builds: asan
 tomli	no	-	-	-	the release did not build it (status language-pending: python)
-tomlkit	yes	fuzz_dumps,fuzz_parser	checking	-	the release built it in its Python build, which it did not publish
+tomlkit	yes	fuzz_dumps,fuzz_parser	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 tomlplusplus	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 toolbelt	no	-	-	-	the release did not build it (status language-pending: python)
 toolz	yes	fuzz_itertoolz	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
@@ -1380,7 +1380,7 @@ znc	no	-	-	-	the release did not build it (status held: held)
 zookeeper	no	-	-	-	the release did not build it (status language-pending: jvm)
 zopfli	yes	zopfli_compress_fuzzer,zopfli_deflate_fuzzer	reproduces	all binaries match the release's	zopfli_compress_fuzzer: the harness is in OSS-Fuzz's repository, not the project's; zopfli_deflate_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
 zstd	yes	block_decompress,block_round_trip,decompress_cross_format,decompress_dstSize_tooSmall,dictionary_decompress,dictionary_loader,fse_read_ncount,huf_decompress,huf_round_trip,sequence_compression_api,simple_compress,simple_decompress,stream_decompress,zstd_frame_info	reproduces	all binaries match the release's	-
-zstd-safe	yes	zstd_fuzzer	checking	-	the release built it in its Rust build, which it did not publish
+zstd-safe	yes	zstd_fuzzer	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Rust build, which it did not publish
 zt-zip	no	-	-	-	the release did not build it (status language-pending: jvm)
 zxc	yes	zxc_fuzzer_decompress,zxc_fuzzer_dict,zxc_fuzzer_pstream,zxc_fuzzer_roundtrip,zxc_fuzzer_seekable	reproduces	all binaries match the release's	-
 zxing	no	-	-	-	the release did not build it (status language-pending: jvm)

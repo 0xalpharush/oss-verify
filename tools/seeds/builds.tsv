@@ -201,7 +201,7 @@ meshoptimizer	reproduces	all binaries match the release's
 miniz	reproduces	all binaries match the release's
 more-itertools	reproducible	4 binaries; a second build is identical; the release has none to compare
 mosh	reproduces	all binaries match the release's
-mp4parse-rust	checking	-
+mp4parse-rust	reproducible	8 binaries; a second build is identical; the release has none to compare
 mpv	reproduces	all binaries match the release's
 msgpack-c	reproduces	all binaries match the release's
 muparser	reproduces	all binaries match the release's
@@ -275,7 +275,7 @@ qpdf	reproduces	all binaries match the release's
 qpid-proton	reproduces	all binaries match the release's
 quantlib	reproduces	all binaries match the release's
 qubes-os	reproduces	all binaries match the release's
-quick-xml	checking	-
+quick-xml	reproducible	12 binaries; a second build is identical; the release has none to compare
 quickjs	reproduces	all binaries match the release's
 rabbitmq-c	reproduces	all binaries match the release's
 radvd	reproduces	all binaries match the release's
@@ -317,14 +317,14 @@ thrift-c_glib	reproduces	all binaries match the release's
 thrift-cpp	reproduces	all binaries match the release's
 tidy-html5	reproduces	all binaries match the release's
 tink-cc	reproduces	all binaries match the release's
-tinycss2	checking	-
+tinycss2	reproducible	8 binaries; a second build is identical; the release has none to compare
 tinygltf	reproduces	all binaries match the release's
 tinyobjloader	reproduces	all binaries match the release's
 tinyxml2	reproduces	all binaries match the release's
 tmux	reproduces	all binaries match the release's
 tokio	reproducible	8 binaries; a second build is identical; the release has none to compare
 toml_edit	reproducible	4 binaries; a second build is identical; the release has none to compare
-tomlkit	checking	-
+tomlkit	reproducible	8 binaries; a second build is identical; the release has none to compare
 toolz	reproducible	4 binaries; a second build is identical; the release has none to compare
 tremor	reproduces	all binaries match the release's
 trust-dns	reproducible	4 binaries; a second build is identical; the release has none to compare
@@ -371,6 +371,6 @@ zlib	reproduces	all binaries match the release's
 zlib-ng	reproduces	all binaries match the release's
 zopfli	reproduces	all binaries match the release's
 zstd	reproduces	all binaries match the release's
-zstd-safe	checking	-
+zstd-safe	reproducible	4 binaries; a second build is identical; the release has none to compare
 zxc	reproduces	all binaries match the release's
 zydis	reproduces	all binaries match the release's
