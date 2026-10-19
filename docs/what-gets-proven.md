@@ -27,6 +27,8 @@ Thus each expected outcome must end as `return 0`. Examples of expected outcomes
 
 > **WARNING:** Do not return 1 for an input that is not of interest, as some OSS-Fuzz fuzz targets do. That return value makes the statement false.
 
+> **WARNING:** Do not return -1 for a failed property. -1 counts as a pass, so the statement holds although the property fails. For a failed property, call `abort()`.
+
 ## What the statements catch
 
 The statements catch each failure that the fuzz target would catch in OSS-Fuzz: a crash, a hang, a failed assertion or a sanitizer detection. They catch it on each input, not only on the inputs that a fuzzer tries.

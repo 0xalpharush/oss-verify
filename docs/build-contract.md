@@ -176,6 +176,8 @@ Thus an OSS-Fuzz testcase needs six zero bytes in front of it: `00 00 00 00 00 0
 | 134 | `abort()`: a failed `assert()`, an AddressSanitizer detection, or an uncaught C++ exception |
 | 139 | `SIGSEGV`: a crash |
 
+> **WARNING:** Do not return -1 for a failed property. The driver counts -1 as a pass: status 0. For a failed property, call `abort()`.
+
 A statement accepts only the statuses 0 and 2 ([what-gets-proven.md](what-gets-proven.md#what-a-statement-accepts)). The driver refuses the input with status 2 for these causes:
 
 * the number of arguments is not one;
@@ -249,7 +251,7 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 * For each property, a one-line change to the code makes the fuzz target abort on a recorded input.
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
-* `LLVMFuzzerTestOneInput` returns 0, or -1 to reject an input. It never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+* `LLVMFuzzerTestOneInput` returns 0, or -1 to reject an input outside the domain of a property. It never returns -1 for a failed property. It never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
 
 ## Run a binary
 

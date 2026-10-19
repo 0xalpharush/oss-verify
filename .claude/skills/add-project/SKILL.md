@@ -96,6 +96,8 @@ The process model has one thread, and the input is its only data. Thus obey thes
 
 > **WARNING:** Do not call `exit()` or `_exit()`. Do not catch all exceptions. Do not install a signal handler. Such code hides the failures that the statements must show.
 
+> **WARNING:** Do not return -1 for a failed property. libFuzzer reads -1 as "do not add this input to the corpus", not as a failure. The driver also counts -1 as a pass: exit status 0. The statement then holds, although the property fails. For a failed property, call `abort()` (3.2). Return -1 only for an input that is outside the domain of the property. Return it only for few inputs, because each check must run (3.3).
+
 Return 0 from `LLVMFuzzerTestOneInput`, or -1 to reject an input. Change each expected outcome into `return 0`, narrowly. Examine the library's error code, or catch the one exception type that the API documents.
 
 Give each file a header that tells what it is and its licence. A file copied from the project's repository keeps the project's licence and tells so.
