@@ -176,9 +176,21 @@ Thus an OSS-Fuzz testcase needs six zero bytes in front of it: `00 00 00 00 00 0
 | 134 | `abort()`: a failed `assert()`, an AddressSanitizer detection, or an uncaught C++ exception |
 | 139 | `SIGSEGV`: a crash |
 
-> **WARNING:** Do not return -1 for a failed property. The driver counts -1 as a pass: status 0. For a failed property, call `abort()`. Return -1 only for a failed expectation that the input chooses, or for an input outside a property's domain. Step 3.7 of [the add-project skill](../.claude/skills/add-project/SKILL.md) tells why.
+Today's driver counts a return value of -1 as 0. It also writes each return value on standard output, so a -1 stays observable.
 
-A statement accepts only the statuses 0 and 2 ([what-gets-proven.md](what-gets-proven.md#what-a-statement-accepts)). The driver refuses the input with status 2 for these causes:
+> **Next toolchain version.** The driver of the next toolchain version maps the return values to the exit status in a different way:
+>
+> | status | meaning in the next toolchain version |
+> |---:|---|
+> | 0 | each call of the fuzz target returned 0 |
+> | 3 | one or more calls returned -1, and no call returned another value |
+> | 78 | a call of the fuzz target returned a value that is not 0 or -1 |
+>
+> The statuses 2 and 77, and the statuses of the signals, do not change. A call of `exit()` during `LLVMFuzzerInitialize` with a status other than 0 or 2 becomes status 77. A halts statement then accepts the statuses 0, 2 and 3. A project with proofs keeps today's driver, through the vintage that its lock pins ([Toolchains](#toolchains)).
+
+> **WARNING:** Do not return -1 for a failed property. The driver counts -1 as a pass: status 0 today, and status 3 in the next toolchain version. A halts statement accepts both. For a failed property, call `abort()`. Return -1 only for a failed expectation that the input chooses, or for an input outside a property's domain. Step 3.7 of [the add-project skill](../.claude/skills/add-project/SKILL.md) tells why.
+
+With today's driver, a statement accepts only the statuses 0 and 2 ([what-gets-proven.md](what-gets-proven.md#what-a-statement-accepts)). The driver refuses the input with status 2 for these causes:
 
 * the number of arguments is not one;
 * it cannot open or read the input file;
