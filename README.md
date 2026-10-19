@@ -5,7 +5,7 @@ OSS Verifier is a Theorem program that verifies open-source software. We prove t
 
 ## Who can enroll
 
-A core maintainer of an open-source project can enroll it. The project needs a public git repository, at least one fuzz target, a security contact, and a language that our builder supports ([docs/project-yaml.md](docs/project-yaml.md#language)). We seeded some projects already, and a maintainer can adopt one ([docs/project-yaml.md](docs/project-yaml.md#seeded-projects)).
+A core maintainer of an open-source project can enroll it. The project needs at least one fuzz target and a build that our builder can do. [docs/faq.md](docs/faq.md#which-projects-can-enroll) gives each condition. We seeded some projects already, and a maintainer can adopt one ([docs/project-yaml.md](docs/project-yaml.md#seeded-projects)).
 
 ## Enroll a project
 
@@ -35,4 +35,4 @@ To pause the project, set `disabled: true` in `project.yaml`. To leave, remove `
 
 ## Learn more
 
-Visit [theorem.dev/oss-verifier](https://theorem.dev/oss-verifier/) for answers to common questions. [SECURITY.md](SECURITY.md) tells how to report a vulnerability in this repository. Use of OSS Verifier is subject to the [OSS Verifier terms](https://theorem.dev/oss-verifier/terms/). We accept only enrollment pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)).
+Visit [theorem.dev/oss-verifier](https://theorem.dev/oss-verifier/) for answers to common questions, and [docs/faq.md](docs/faq.md) for the questions that it does not answer. [SECURITY.md](SECURITY.md) tells how to report a vulnerability in this repository. Use of OSS Verifier is subject to the [OSS Verifier terms](https://theorem.dev/oss-verifier/terms/). We accept only enrollment pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)).
