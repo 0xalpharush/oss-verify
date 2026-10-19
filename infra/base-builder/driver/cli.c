@@ -15,7 +15,7 @@
  * it cannot open or read, one shorter than its header, one of 64 MiB or more, or no memory to read it into.
  * docs/build-contract.md lists the other statuses.
  *
- * From the oss-fuzz-theorems 2026.10.0-rc.2 release recipe (src/cli.c). The code is unchanged; the comments are new.
+ * From the oss-fuzz-theorems 2026.10 release recipe (src/cli.c). The code is unchanged; the comments are new.
  */
 #include <fcntl.h>
 #include <stdio.h>

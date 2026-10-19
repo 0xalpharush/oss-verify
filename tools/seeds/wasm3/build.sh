@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Builds fuzzer, wasm3's own fuzz target (platforms/app_fuzz/fuzzer.c), into $OUT.
-# Ported from OSS-Fuzz's projects/wasm3/build.sh as oss-fuzz-theorems 2026.10.0-rc.2 built it: this reproduces that
+# Ported from OSS-Fuzz's projects/wasm3/build.sh as the oss-fuzz-theorems 2026.10 release built it: this reproduces that
 # release's four wasm3 binaries byte for byte.
 
 # Build a copy of the checkout, at the path the release built wasm3 at. An AddressSanitizer build records the path of

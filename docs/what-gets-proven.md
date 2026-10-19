@@ -50,7 +50,7 @@ A program can run out of memory, and a statement must tell what happens then. Th
 * **Refusals at start do not count.** A statement is not about a program that gets no memory before it gets to the fuzz target.
 * **No allocation fails at random.** No statement lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
 
-A budget is a quantity of memory that a build can allocate. It is a condition of the statement: an input that needs more memory is not in the statement. It is not a failure. These are the defaults, which oss-fuzz-theorems 2026.10.0-rc.2 uses:
+A budget is a quantity of memory that a build can allocate. It is a condition of the statement: an input that needs more memory is not in the statement. It is not a failure. These are the defaults, which the oss-fuzz-theorems 2026.10 release uses:
 
 ```yaml
 budgets:

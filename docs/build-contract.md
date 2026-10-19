@@ -17,7 +17,7 @@ An OSS-Fuzz `Dockerfile` and `build.sh` do not run here without changes. They ex
 
 ## The builder
 
-The default toolchain image is the one that oss-fuzz-theorems 2026.10.0-rc.2 built its binaries in: `ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816865c7ec61801ae0fcab6d9c81a599ffcb20616576a9c668abd8b0a7b`. It contains these items:
+The default toolchain image is the one that the oss-fuzz-theorems 2026.10 release built its binaries in: `ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816865c7ec61801ae0fcab6d9c81a599ffcb20616576a9c668abd8b0a7b`. It contains these items:
 
 * clang 20.1.8 for `riscv64-linux-musl`, and lld;
 * the musl sysroot at `/opt/musl-sysroot`, with static builds of common libraries that a project can link;
@@ -305,11 +305,11 @@ These steps rebuild a binary and compare it with its lock in the proofs reposito
 * `matches the lock` tells you that each binary that the lock pins has the same bytes.
 * `DIFFERENT FROM THE LOCK` lists each binary that has different bytes.
 
-`tools/check` also accepts a `harness.yaml` of oss-fuzz-theorems 2026.10.0-rc.2 as a lock. Use this to check a binary of that release. If the bytes differ, open an issue in this repository. Include the output of `tools/check`.
+`tools/check` also accepts a `harness.yaml` of the oss-fuzz-theorems 2026.10 release as a lock. Use this to check a binary of that release. If the bytes differ, open an issue in this repository. Include the output of `tools/check`.
 
 ## Builds ported from oss-fuzz-theorems
 
-`tools/port.py` can port the build of a project that we seeded from oss-fuzz-theorems 2026.10.0-rc.2, from the release's build recipe. It writes three files next to `project.yaml`:
+`tools/port.py` can port the build of a project that we seeded from the oss-fuzz-theorems 2026.10 release, from the release's build recipe. It writes three files next to `project.yaml`:
 
 * `Dockerfile`: gets the project at `COMMIT` into `$SRC/upstream/<name>`, then runs `lay-out-sources` on `sources`.
 * `sources`: tells where each source tree goes, as the release's source manifest tells. It names a copy of the checkout for each release target, and each other tree or file, pinned by commit or SHA-256. It also names the release's own files for a target, and its build patches. It is the only place that records the pin of a dependency. A `Dockerfile` never holds one.

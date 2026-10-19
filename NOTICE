@@ -18,7 +18,7 @@ CODE_OF_CONDUCT.md is the Contributor Covenant, version 2.0 (https://www.contrib
 
 infra/base-builder/ takes its driver (driver/), its compiler wrappers and flags (toolchain.sh), the shape of a
 fuzz target's link (link-fuzz-target), the release's recipes (recipes.sh) and the steps of its build around a target
-(release-target.sh) from the build recipe of oss-fuzz-theorems release 2026.10.0-rc.2
+(release-target.sh) from the build recipe of the oss-fuzz-theorems 2026.10 release
 (https://github.com/theorem-labs/oss-fuzz-theorems), Copyright 2026 Theorem Labs, PBC.
 
 The files tools/port.py writes under projects/<name>/ and tools/seeds/<name>/ come from that same build recipe: the

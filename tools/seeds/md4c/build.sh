@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Builds fuzz-mdhtml, md4c's own fuzz target (test/fuzzers/fuzz-mdhtml.c), into $OUT.
-# Ported from OSS-Fuzz's projects/md4c/build.sh as oss-fuzz-theorems 2026.10.0-rc.2 built it: this reproduces that
+# Ported from OSS-Fuzz's projects/md4c/build.sh as the oss-fuzz-theorems 2026.10 release built it: this reproduces that
 # release's four md4c binaries byte for byte.
 
 # Build a copy of the checkout, at the path the release built md4c at. An AddressSanitizer build records the path of

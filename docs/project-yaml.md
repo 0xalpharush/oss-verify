@@ -159,7 +159,7 @@ With each value, we hold back each statement that shows a finding that is not pu
 
 ## Seeded projects
 
-We seeded some projects ourselves, on branches named `draft-generic-oss-fuzz-<name>` ([faq.md](faq.md#how-do-you-choose-projects)). We used the build data of oss-fuzz-theorems 2026.10.0-rc.2. A seeded project has `primary_contact: n/a`. Its `project.yaml` starts with two comment lines that tell that we seeded it. `tools/validate.py` warns about `n/a`, and the triage comment on a pull request shows it.
+We seeded some projects ourselves, on branches named `draft-generic-oss-fuzz-<name>` ([faq.md](faq.md#how-do-you-choose-projects)). We used the build data of the oss-fuzz-theorems 2026.10 release. A seeded project has `primary_contact: n/a`. Its `project.yaml` starts with two comment lines that tell that we seeded it. `tools/validate.py` warns about `n/a`, and the triage comment on a pull request shows it.
 
 A core maintainer can adopt a seeded project:
 

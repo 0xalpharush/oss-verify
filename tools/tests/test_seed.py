@@ -25,7 +25,7 @@ RECIPE = seed.load_recipe(FIXTURE / "recipe")
 IDENTITY = {"GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.org",
             "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.org"}
 CEE = (
-    "# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's\n"
+    "# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release (tools/seed.py), not enrolled by the project's\n"
     "# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).\n"
     "repo: https://example.org/cee#1111111111111111111111111111111111111111\n"
     "primary_contact: n/a\n"
@@ -225,7 +225,7 @@ class Repository(unittest.TestCase):
         self.assertEqual(self.run_git("diff", "--name-only", main, commit).split(),
                          ["projects/cee/Dockerfile", "projects/cee/build.sh", "projects/cee/project.yaml"])
         message = self.run_git("log", "-1", "--format=%B", commit)
-        self.assertTrue(message.startswith("Draft: seed projects/cee from oss-fuzz-theorems 2026.10.0-rc.2\n\n"
+        self.assertTrue(message.startswith("Draft: seed projects/cee from the oss-fuzz-theorems 2026.10 release\n\n"
                                            "Build files: tools/check builds them and reproduces"))
         self.assertIn("Co-Authored-By: Someone <someone@example.org>", message)
         # The working tree, the index and HEAD are as they were.

@@ -13,7 +13,7 @@
  *   exit guard).
  * - The allocation mask is ignored: this adapter makes no allocation fail.
  *
- * From the oss-fuzz-theorems 2026.10.0-rc.2 release recipe (src/ossfuzz_adapter.h). The code is unchanged; the
+ * From the oss-fuzz-theorems 2026.10 release recipe (src/ossfuzz_adapter.h). The code is unchanged; the
  * comments are new, and the include of a header that defines nothing this file uses is left out.
  */
 #ifndef OFT_OSSFUZZ_ADAPTER_H

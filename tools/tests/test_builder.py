@@ -187,7 +187,8 @@ class Builder(unittest.TestCase):
 
 CJSON = pathlib.Path(__file__).resolve().parent / "fixtures" / "cjson"
 CJSON_TAG = "oss-verifier-test/cjson:latest"
-CJSON_COMMIT = "acc76239bee01d8e9c858ae2cab296704e52d916"  # cJSON 1.7.18, as oss-fuzz-theorems 2026.10.0-rc.2 built it
+# cJSON 1.7.18, as the oss-fuzz-theorems 2026.10 release built it.
+CJSON_COMMIT = "acc76239bee01d8e9c858ae2cab296704e52d916"
 # That release's cjson_read_fuzzer binaries (its projects/cjson/cjson_read_fuzzer/harness.yaml).
 CJSON_RELEASE = {
     "plain": "b40ed189a37beb50da46f04a457ec144b05319a845fa3b0639d7a117ffd1696d",

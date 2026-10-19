@@ -1,4 +1,4 @@
-# Seeded by Theorem from oss-fuzz-theorems 2026.10.0-rc.2 (tools/seed.py), not enrolled by the project's
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release (tools/seed.py), not enrolled by the project's
 # maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
 repo: https://github.com/dovecot/core#25eb82b31e0283c2b4b8f23f71e527dce57de292
 primary_contact: n/a

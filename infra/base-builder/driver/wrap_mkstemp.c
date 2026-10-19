@@ -5,7 +5,7 @@
  * template become 000000 and the file is created in the current directory under the template's last component, so
  * that the program depends only on its input file. A template without six X's (before its suffix) fails, as it
  * would with the C library.
- * From the oss-fuzz-theorems 2026.10.0-rc.2 release recipe (src/wrap_mkstemp.c). The code is that of its release
+ * From the oss-fuzz-theorems 2026.10 release recipe (src/wrap_mkstemp.c). The code is that of its release
  * builds; the configuration those builds do not use is left out.
  */
 #include <fcntl.h>

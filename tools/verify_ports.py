@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Port projects from oss-fuzz-theorems 2026.10.0-rc.2 and check each port against the release's binaries.
+"""Port projects from the oss-fuzz-theorems 2026.10 release and check each port against the release's binaries.
 
     tools/verify_ports.py --from CHECKOUT --recipe RECIPE --assets ASSETS --work DIR --results FILE [NAME ...]
 
@@ -40,6 +40,7 @@ import sys
 import threading
 
 import port
+import release_tag
 import seed
 import validate
 
@@ -160,6 +161,7 @@ def main():
     parser.add_argument("--min-free-gb", type=float, default=300, help="stop starting projects below this (default 300)")
     parser.add_argument("--timeout", type=int, default=4 * 3600, help="seconds one project's check may take (default 4 h)")
     options = parser.parse_args()
+    release_tag.check(options.checkout)
     release = port.Release(options.checkout, options.recipe, options.assets)
     names = options.names or sorted(
         path.parent.name for path in (options.checkout / "projects").glob("*/project.yaml")

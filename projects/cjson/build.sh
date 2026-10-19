@@ -5,8 +5,8 @@
 # Builds cjson_read_fuzzer, cJSON's own fuzz target (fuzzing/cjson_read_fuzzer.c), into $OUT.
 # Ported from OSS-Fuzz's projects/cjson/build.sh, which runs cJSON's fuzzing/ossfuzz.sh.
 
-# Build a copy of the checkout, at the path oss-fuzz-theorems 2026.10.0-rc.2 built its cjson binaries at, so that all
-# four builds reproduce the SHA-256s it published. An AddressSanitizer build records the path of each source file it
+# Build a copy of the checkout, at the path the oss-fuzz-theorems 2026.10 release built its cjson binaries at, so that
+# all four builds reproduce the SHA-256s it published. An AddressSanitizer build records the path of each source file it
 # instruments, so the path is part of the bytes: built in place at $SRC/cjson, the plain and UBSan binaries are the
 # same, and the two ASan binaries differ in that path (/src/cjson/cJSON.c).
 build=$SRC/cjson-cjson_read_fuzzer

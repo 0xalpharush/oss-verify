@@ -3,7 +3,7 @@
 #
 # The compilers and flags of one build, sourced by `compile` with FLAV set to plain, asan, ubsan or asanubsan.
 #
-# Taken from the build body of the oss-fuzz-theorems 2026.10.0-rc.2 release recipe (tools/build-body.sh), whose
+# Taken from the build body of the oss-fuzz-theorems 2026.10 release recipe (tools/build-body.sh), whose
 # binaries this reproduces byte for byte. Kept as it is there: the flags, the compiler shims and what they write,
 # the sealed AddressSanitizer configuration and which compiler each build uses. Left out: the release's neutral
 # source layout under /src (here every build already compiles at its final path), its link record, and the

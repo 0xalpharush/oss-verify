@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * What cli.c needs from an adapter (adapter.c, through ossfuzz_adapter.h).
- * From the oss-fuzz-theorems 2026.10.0-rc.2 release recipe (src/target.h). The code is unchanged.
+ * From the oss-fuzz-theorems 2026.10 release recipe (src/target.h). The code is unchanged.
  */
 #ifndef TARGET_H
 #define TARGET_H

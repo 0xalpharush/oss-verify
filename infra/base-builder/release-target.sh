@@ -1,7 +1,7 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build one target of the oss-fuzz-theorems 2026.10.0-rc.2 release the way its build body does, from a build.sh that
+# Build one target of the oss-fuzz-theorems 2026.10 release the way its build body does, from a build.sh that
 # compile runs. A ported build.sh runs with sh -e (busybox), as the release ran its build body, sources this file, and
 # builds each fuzz target in a subshell of its own:
 #

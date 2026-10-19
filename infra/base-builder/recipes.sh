@@ -1,7 +1,7 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
 #
-# The build recipes of the oss-fuzz-theorems 2026.10.0-rc.2 release (its tools/ossfuzz/recipes.sh, sha256
+# The build recipes of the oss-fuzz-theorems 2026.10 release (its tools/ossfuzz/recipes.sh, sha256
 # b5ab933ca8a32fc3604a5ba9f0b655058d5dec93a0f46e382d172effd3d16399), for build.sh files ported from that release's
 # pins: oft_build_cmake, oft_build_autotools (with oft_gnulib_bootstrap), oft_build_meson (which writes a Meson cross
 # file), oft_build_blind, oft_build_header_only, oft_build_harness, oft_require_target_cxx (the C++ runtime group),

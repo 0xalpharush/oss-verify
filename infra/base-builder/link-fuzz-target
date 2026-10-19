@@ -5,7 +5,7 @@
 # link-fuzz-target <compiler> <arguments>: the link of a fuzz target, a link whose arguments name
 # $LIB_FUZZING_ENGINE. $CC and $CXX hand such a link here; build.sh never calls this itself.
 #
-# The link is made as the oss-fuzz-theorems 2026.10.0-rc.2 release recipe makes it, whose binaries this reproduces
+# The link is made as the oss-fuzz-theorems 2026.10 release recipe makes it, whose binaries this reproduces
 # byte for byte:
 #
 #     <compiler> -static -no-pie -Wl,--gc-sections <driver> [<silent reports>] <the link's own arguments> <seals>

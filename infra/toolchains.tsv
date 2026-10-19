@@ -3,4 +3,4 @@
 # Each row is a C and C++ toolchain. The builders for Rust and Python are pending: their images are not published
 # yet, so they have no row (docs/project-yaml.md#language).
 # name	image	what it is
-2026.10.0-rc.2	ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816865c7ec61801ae0fcab6d9c81a599ffcb20616576a9c668abd8b0a7b	the toolchain oss-fuzz-theorems 2026.10.0-rc.2 built its binaries in (its toolchain/toolchain.lock)
+oss-fuzz-theorems-2026.10	ghcr.io/theorem-labs/oss-fuzz-theorems-toolchain@sha256:6a6b4816865c7ec61801ae0fcab6d9c81a599ffcb20616576a9c668abd8b0a7b	the toolchain the oss-fuzz-theorems 2026.10 release built its binaries in (its toolchain/toolchain.lock)

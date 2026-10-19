@@ -3,7 +3,7 @@
  *
  * Linked into every fuzz target with -Wl,--wrap=getpid -Wl,--wrap=getppid: both return 1, so that the program
  * depends only on its input file.
- * From the oss-fuzz-theorems 2026.10.0-rc.2 release recipe (src/wrap_getpid.c). The code is unchanged.
+ * From the oss-fuzz-theorems 2026.10 release recipe (src/wrap_getpid.c). The code is unchanged.
  */
 #include <sys/types.h>
 #include <unistd.h>
