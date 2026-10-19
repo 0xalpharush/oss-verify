@@ -23,6 +23,10 @@ func Fuzz(data []byte) int {
 		// program.
 		var p *int
 		return *p
+	case 'M':
+		// More than the runtime's limit for one allocation (1<<48 bytes): a panic, which asks the system for nothing.
+		big := make([]byte, 1<<49+int(data[0]))
+		return int(big[0])
 	case 'x':
 		os.Exit(3)
 	case 'd':

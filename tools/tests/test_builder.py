@@ -377,10 +377,10 @@ class RustBuilder(unittest.TestCase):
 
 GO_FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "go-example"
 GO_TAG = "oss-verify-test/go-example:latest"
-# Payload first byte -> exit status of the Go fixture's plain build (fixtures/go-example/example/fuzz.go): a panic and
-# a runtime error exit 79, a load through a nil pointer is a segmentation fault, os.Exit exits 77, and a fatal error of
-# the runtime 80. A header shorter than six bytes is 2.
-GO_EXPECTED = {"": 0, "r": 0, "z": 0, "p": 79, "n": 79, "s": 139, "x": 77, "d": 80}
+# Payload first byte -> exit status of the Go fixture's plain build (fixtures/go-example/example/fuzz.go): a panic, a
+# runtime error and a make() larger than the runtime's limit exit 79, a load through a nil pointer is a segmentation
+# fault, os.Exit exits 77, and a fatal error of the runtime 80. A header shorter than six bytes is 2.
+GO_EXPECTED = {"": 0, "r": 0, "z": 0, "p": 79, "n": 79, "M": 79, "s": 139, "x": 77, "d": 80}
 
 
 @unittest.skipUnless(os.environ.get("OV_DOCKER_TESTS") == "1" and toolchain_ready("go"),
