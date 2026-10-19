@@ -24,6 +24,8 @@ trees out under /work, where the release's build had them.
                                               with a path component matching NAME; !DIR/ leaves out that subtree. A
                                               member already present must have exactly its bytes
     copy     <path>  <project file>           one of the project's files, under another name
+    corpus   <path>  <project file>           the inputs of one of the project's seed corpora (a zip file of files),
+                                              each in the directory <path>
     patch    <path>  <project file>           a build-only patch, applied to the tree at <path> with git apply
 
 The directives run in order, and the patches in the order the project's series file lists them, which must be the
@@ -229,6 +231,16 @@ def copy(path, name, files):
     shutil.copy2(files / name, path)
 
 
+def corpus(path, name, files):
+    fresh(path)
+    path.mkdir()
+    with zipfile.ZipFile(files / name) as seeds:
+        for info in seeds.infolist():
+            if info.is_dir() or "/" in info.filename or info.filename.startswith("."):
+                raise Failed(f"{name}: {info.filename!r} is not a file at the top level")
+            (path / info.filename).write_bytes(seeds.read(info))
+
+
 def patch(path, name, files):
     subprocess.run(["git", "apply", "--whitespace=nowarn", "-p1", str(files / name)], cwd=path, check=True,
                    stdin=subprocess.DEVNULL)
@@ -261,6 +273,8 @@ def main():
                 file(destination, *args)
             elif kind == "archive" and len(args) >= 3:
                 archive(destination, *args)
+            elif kind == "corpus" and len(args) == 1:
+                corpus(destination, args[0], files)
             elif kind == "copy" and len(args) == 1:
                 copy(destination, args[0], files)
             elif kind == "patch" and len(args) == 1:

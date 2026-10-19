@@ -29,6 +29,11 @@ targets whose binaries were built from the library as upstream wrote it:
     links it, otherwise the release's (OSS-Fuzz's) language.
   - sanitizers: the sanitizer builds the release made of every one of those harnesses.
 
+A project in another language than C and C++ that the release built but did not publish (its project.yaml says status
+language-pending) is seeded from its row in tools/seeds/languages.tsv instead: what the release's build of that
+language pinned, a repository and full commit, and the fuzz targets it built. A project of OSS-Fuzz whose fuzz targets
+are in more than one repository is seeded as one project for each repository.
+
 Every file is checked with tools/validate.py before it is written.
 
 --branch makes draft-generic-oss-fuzz-<name> from the current main: main's tree plus projects/<name>/ (its project.yaml,
@@ -79,6 +84,11 @@ SEEDS = ROOT / "tools" / "seeds"
 BUILDS = SEEDS / "builds.tsv"
 # The tag that names each pinned commit, as git ls-remote found it: a pinned commit's tag does not change.
 TAGS = SEEDS / "tags.tsv"
+# The projects in another language than C and C++ that the release built but did not publish, as its build pinned them.
+LANGUAGE_SEEDS = SEEDS / "languages.tsv"
+LANGUAGE_NAMES = {"rust": "Rust", "python": "Python", "go": "Go", "javascript": "JavaScript", "jvm": "JVM"}
+LANGUAGE_COLUMNS = ("project", "oss_fuzz", "language", "repo", "commit", "homepage", "sanitizers", "fuzz_targets",
+                    "release_targets", "held")
 # How many git ls-remote calls run at once on one host. All the calls start together; each waits for its host.
 HOST_JOBS = {"github.com": 16}
 OTHER_HOST_JOBS = 2
@@ -273,9 +283,56 @@ def build_sanitizers(builds):
     return ({"address"} if "asan" in builds else set()) | ({"undefined"} if "ubsan" in builds else set())
 
 
-def assess(name, checkout, recipe):
-    """Decide what can be seeded of one project of the release. `recipe` is load_recipe()'s result, or None."""
+def read_language_seeds(path=LANGUAGE_SEEDS):
+    """The rows of tools/seeds/languages.tsv: {project: {column: value}}."""
+    rows = {}
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line and not line.startswith("#"):
+                fields = line.split("\t")
+                if len(fields) != len(LANGUAGE_COLUMNS):
+                    raise SeedError(f"{path}: a row has {len(fields)} fields, not {len(LANGUAGE_COLUMNS)}: {line!r}")
+                rows[fields[0]] = dict(zip(LANGUAGE_COLUMNS, fields))
+    return rows
+
+
+def assess_language(seed, row, checkout):
+    """Seed one project from its row of tools/seeds/languages.tsv: a project in another language than C and C++ that
+    the release built, but did not publish."""
+    project_file = checkout / "projects" / row["oss_fuzz"] / "project.yaml"
+    project = read_yaml(project_file) if project_file.is_file() else None
+    if not isinstance(project, dict) or project.get("status") != "language-pending":
+        seed.reason = f"the release has no project {row['oss_fuzz']} whose build it held back for its language"
+        seed.kind = "not a project of the release"
+        return seed
+    seed.repo, seed.commit, seed.language = row["repo"], row["commit"], row["language"]
+    seed.release_repo = seed.repo
+    if not validate.is_https_url(seed.repo) or "#" in seed.repo or not validate.FULL_COMMIT.fullmatch(seed.commit):
+        seed.reason, seed.kind = f"its row in {LANGUAGE_SEEDS.name} names no https repository and full commit", "bad row"
+        return seed
+    if seed.language not in validate.LANGUAGES or seed.language != project.get("language"):
+        seed.reason, seed.kind = f"its row in {LANGUAGE_SEEDS.name} names another language", "bad row"
+        return seed
+    if validate.is_https_url(row["homepage"]):
+        seed.homepage = row["homepage"]
+    seed.sanitizers = [sanitizer for sanitizer in validate.SANITIZERS if sanitizer in row["sanitizers"].split(",")]
+    seed.targets = row["fuzz_targets"].split(",")
+    seed.notes.append(f"the release built it in its {LANGUAGE_NAMES.get(seed.language, seed.language)} build, which "
+                      "it did not publish")
+    if row["oss_fuzz"] != seed.name:
+        seed.notes.append(f"one of the repositories of OSS-Fuzz's project {row['oss_fuzz']}, each a project here")
+    if row["held"] != "-":
+        seed.notes.append(f"the release held back these builds: {row['held']}")
+    return seed
+
+
+def assess(name, checkout, recipe, languages=None):
+    """Decide what can be seeded of one project of the release. `recipe` is load_recipe()'s result, or None.
+    `languages` is read_language_seeds()'s result (by default, tools/seeds/languages.tsv's)."""
     seed = Seed(name)
+    row = (read_language_seeds() if languages is None else languages).get(name)
+    if row is not None:
+        return assess_language(seed, row, checkout)
     project_file = checkout / "projects" / name / "project.yaml"
     if not project_file.is_file():
         seed.reason, seed.kind = "not a project of the release", "not a project"
@@ -575,16 +632,30 @@ def read_builds(path=BUILDS):
     return builds
 
 
+# What a draft's commit message says of the build files in tools/seeds/<name>/, by its result in builds.tsv.
+WITH_FILES = {
+    "reproduces": ("Build files: tools/check builds them and reproduces the release's binaries of these fuzz targets "
+                   "byte for byte."),
+    # Each binary that the release has is byte for byte the release's, and a second build from scratch makes the same
+    # bytes; the release has none of the others.
+    "reproduces-some": ("Build files: tools/check builds them twice from scratch, with the same bytes each time. The "
+                        "binaries that the release built are byte for byte the release's; it built no others."),
+    # Two builds from scratch make the same bytes; the release built none of these binaries.
+    "reproducible": ("Build files: tools/check builds them twice from scratch, with the same bytes each time. The "
+                     "release built no binaries of these fuzz targets to compare with."),
+    "checking": "Build files: ported from the release's build, and not checked yet.",
+}
+
+
 def build_status(name, builds, seeds=SEEDS):
     """What a draft's commit message says of its build files."""
     result, detail = builds.get(name, ("", ""))
     if seed_files(name, seeds):
-        if result != "reproduces":
+        if result not in WITH_FILES:
             raise SeedError(f"tools/seeds/{name}/ has build files, but tools/seeds/builds.tsv does not say they "
-                            "reproduce the release's binaries")
-        return ("Build files: tools/check builds them and reproduces the release's binaries of these fuzz targets "
-                "byte for byte.")
-    if result == "reproduces":
+                            "reproduce the release's binaries, or that they are being checked")
+        return WITH_FILES[result]
+    if result in WITH_FILES:
         raise SeedError(f"{name}: its port reproduces the release's binaries, but tools/seeds/{name}/ has no build files")
     why = {
         "differs": "the build ported from the release's builds, but not every binary is the release's",
@@ -837,15 +908,30 @@ def check(checkout, recipe, offline, projects=validate.PROJECTS, tags=None):
     return differing
 
 
-def report(checkout, recipe, path, builds=None):
+def report(checkout, recipe, path, builds=None, languages=None):
     """Write the TSV of every project of the release: whether it can be seeded, its fuzz targets, how its build ported
-    from the release's fares (`builds`, as read_builds() reads them), and why."""
+    from the release's fares (`builds`, as read_builds() reads them), and why. `languages` is read_language_seeds()'s
+    result (by default, tools/seeds/languages.tsv's)."""
     builds = read_builds() if builds is None else builds
-    rows = [f"# generated by tools/seed.py from {release_tag.NAME} and tools/seeds/builds.tsv; do not edit",
+    rows = [f"# generated by tools/seed.py from {release_tag.NAME}, tools/seeds/languages.tsv and "
+            "tools/seeds/builds.tsv; do not edit",
             "project\tseedable\tfuzz_targets\tbuild\tbuild notes\treason or notes"]
     counts = {}
-    for project_file in sorted((checkout / "projects").glob("*/project.yaml")):
-        seed = assess(project_file.parent.name, checkout, recipe)
+    languages = read_language_seeds() if languages is None else languages
+    # A project of the release that is seeded as one project for each of its repositories, under other names.
+    split = {}
+    for row in languages.values():
+        if row["project"] != row["oss_fuzz"]:
+            split.setdefault(row["oss_fuzz"], []).append(row["project"])
+    names = [project_file.parent.name for project_file in sorted((checkout / "projects").glob("*/project.yaml"))]
+    for name in sorted(set(names) | set(languages)):
+        if name in split and name not in languages:
+            rows.append(f"{name}\tno\t-\t-\t-\tseeded as {', '.join(sorted(split[name]))}: one project for each "
+                        "of its repositories")
+            key = "seeded as one project for each repository"
+            counts[key] = counts.get(key, 0) + 1
+            continue
+        seed = assess(name, checkout, recipe, languages)
         if seed.reason:
             rows.append(f"{seed.name}\tno\t-\t-\t-\t{seed.reason}")
             key = seed.kind or seed.reason

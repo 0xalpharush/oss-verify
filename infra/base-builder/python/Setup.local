@@ -1,0 +1,62 @@
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# The extension modules that a Python fuzz target's CPython 3.11 has, built into libpython.
+#
+# CPython builds the Setup.bootstrap modules (posix, _io, _sre, _codecs, time, ...) into libpython. Each module of
+# Setup.stdlib is a shared library by default, which a static program cannot load. makesetup reads Setup.local first,
+# and its first rule for a module wins, so each module named here is built into libpython3.11.a and listed in the
+# inittab (Modules/config.c). Their order is the inittab's.
+#
+# The set: the standard library's accelerators that a pure-Python library often uses (no external library, no system
+# call at import), and zlib and the bundled expat for xml, gzip and zipfile. Not here: _ssl and _hashlib (OpenSSL),
+# _ctypes (dlopen, libffi), readline, curses, tkinter and the CJK codecs.
+# From the build recipe of the oss-fuzz-theorems 2026.10 release (tools/python/Setup.local).
+*static*
+array arraymodule.c
+_bisect _bisectmodule.c
+_contextvars _contextvarsmodule.c
+_csv _csv.c
+_heapq _heapqmodule.c
+_json _json.c
+_opcode _opcode.c
+_pickle _pickle.c
+_queue _queuemodule.c
+_random _randommodule.c
+_struct _struct.c
+_typing _typingmodule.c
+_zoneinfo _zoneinfo.c
+math mathmodule.c
+cmath cmathmodule.c
+_statistics _statisticsmodule.c
+_datetime _datetimemodule.c
+binascii binascii.c
+_md5 md5module.c
+_sha1 sha1module.c
+_sha256 sha256module.c
+_sha512 sha512module.c
+_sha3 _sha3/sha3module.c
+_blake2 _blake2/blake2module.c _blake2/blake2b_impl.c _blake2/blake2s_impl.c
+unicodedata unicodedata.c
+select selectmodule.c
+fcntl fcntlmodule.c
+_posixsubprocess _posixsubprocess.c
+zlib zlibmodule.c
+pyexpat pyexpat.c
+_elementtree _elementtree.c
+# Each of these is imported by the fuzz targets of some projects (asn1crypto, typing_extensions, netaddr,
+# defusedxml: _socket; pyparsing, zipp, netaddr, defusedxml: _bz2; parse: _decimal). Importing one makes no
+# system call; using one can (a socket, an mmap).
+_socket socketmodule.c
+_bz2 _bz2module.c
+_lzma _lzmamodule.c
+_decimal _decimal/_decimal.c
+mmap mmapmodule.c
+grp grpmodule.c
+termios termios.c
+_posixshmem _multiprocessing/posixshmem.c
+_multiprocessing _multiprocessing/multiprocessing.c _multiprocessing/semaphore.c
+_asyncio _asynciomodule.c
+_uuid _uuidmodule.c
+_sqlite3 _sqlite/blob.c _sqlite/connection.c _sqlite/cursor.c _sqlite/microprotocols.c _sqlite/module.c _sqlite/prepare_protocol.c _sqlite/row.c _sqlite/statement.c _sqlite/util.c
+_lsprof _lsprof.c rotatingtree.c

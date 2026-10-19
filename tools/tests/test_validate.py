@@ -135,10 +135,22 @@ class Languages(unittest.TestCase):
             problems, _, _ = check(MINIMAL.replace("language: c", f"language: {language}"))
             self.assertTrue(any("language must be one of" in problem for problem in problems), language)
 
-    def test_only_c_and_cxx_build_today(self):
+    def test_the_languages_built_today(self):
         self.assertEqual(check(MINIMAL)[1], [])
-        _, warnings, _ = check(MINIMAL.replace("language: c", "language: rust"))
+        self.assertEqual(check(MINIMAL.replace("language: c", "language: python"))[1], [])
+        _, warnings, _ = check(MINIMAL.replace("language: c", "language: javascript"))
         self.assertTrue(any("the builder cannot build it yet" in warning for warning in warnings), warnings)
+        # A language is built today if, and only if, a toolchain in infra/toolchains.tsv builds it.
+        listed = {language for _, _, _, languages in validate.check_build.toolchains() for language in languages}
+        self.assertEqual(set(validate.BUILT_TODAY), listed)
+
+    def test_ubsan_checks_are_for_c_and_cxx(self):
+        changes = "ubsan_checks: {remove: [shift], reason: shifts of negative values are intended}\n"
+        problems, _, _ = check(MINIMAL.replace("language: c", "language: javascript") + changes)
+        self.assertTrue(any("applies only to C, C++ and Python" in problem for problem in problems), problems)
+        for language in ("c", "python"):
+            problems, _, _ = check(MINIMAL.replace("language: c", f"language: {language}") + changes)
+            self.assertFalse(any("applies only to" in problem for problem in problems), problems)
 
     def test_go_and_jvm_have_the_plain_build_only(self):
         for language in ("go", "jvm"):

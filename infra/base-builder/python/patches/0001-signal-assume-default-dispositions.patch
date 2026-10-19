@@ -1,0 +1,45 @@
+A patch to CPython 3.11.13 for Python fuzz targets: the dispositions that the signal module asks for at import.
+
+At `import signal`, signal_get_set_handlers() calls PyOS_getsig(), that is rt_sigaction(sig, NULL, &old), for each
+signal from 1 to Py_NSIG-1. It then installs the KeyboardInterrupt handler with PyOS_setsig(), an rt_sigaction with
+an oldact that is not NULL. The process model refuses each rt_sigaction with an oldact.
+
+With -DOFT_SIGNAL_ASSUME_DEFAULT, the module takes the dispositions that a new process has (each SIG_DFL) without
+asking, and installs the SIGINT handler with a NULL oldact. Without the macro the file compiles as it was.
+From the build recipe of the oss-fuzz-theorems 2026.10 release. python/patches/apply.py applies it:
+
+--- cpython-3.11.13/Modules/signalmodule.c	2026-09-26 18:47:17.441636179 +0000
++++ cpython-3.11.13-oft/Modules/signalmodule.c	2026-09-26 19:20:38.256176750 +0000
+@@ -1616,7 +1616,11 @@
+ {
+     // Get signal handlers
+     for (int signum = 1; signum < Py_NSIG; signum++) {
++#ifdef OFT_SIGNAL_ASSUME_DEFAULT
++        void (*c_handler)(int) = SIG_DFL;
++#else
+         void (*c_handler)(int) = PyOS_getsig(signum);
++#endif
+         PyObject *func;
+         if (c_handler == SIG_DFL) {
+             func = state->default_handler;
+@@ -1645,7 +1649,20 @@
+ 
+         set_handler(SIGINT, int_handler);
+         Py_DECREF(sigint_func);
++#ifdef OFT_SIGNAL_ASSUME_DEFAULT
++        {
++            /* PyOS_setsig() flags (SA_ONSTACK; no SA_RESTART, as its
++               siginterrupt(sig, 1) leaves it), but a NULL oldact. */
++            struct sigaction sa;
++            memset(&sa, 0, sizeof(sa));
++            sa.sa_handler = signal_handler;
++            sigemptyset(&sa.sa_mask);
++            sa.sa_flags = SA_ONSTACK;
++            (void)sigaction(SIGINT, &sa, NULL);
++        }
++#else
+         PyOS_setsig(SIGINT, signal_handler);
++#endif
+     }
+     return 0;
+ }

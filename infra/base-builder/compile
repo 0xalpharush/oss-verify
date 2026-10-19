@@ -91,6 +91,7 @@ case "$FLAV" in asan|asanubsan) silent="-Wl,--defsym=__sanitizer_silent_reports=
 cat > "$OV/link.env" <<EOF
 OV_LFE='$LIB_FUZZING_ENGINE'
 OV_DRIVER='$OV/cli.o $OV/adapter.o'
+OV_CLI='$OV/cli.o'
 OV_SILENT_LD='$silent'
 OV_SEALS='$OV/wrap_getenv.o -Wl,--wrap=getenv $OV/wrap_mkstemp.o -Wl,--wrap=mkstemp -Wl,--wrap=mkostemp -Wl,--wrap=mkstemps -Wl,--wrap=mkostemps $OV/wrap_getpid.o -Wl,--wrap=getpid -Wl,--wrap=getppid'
 OV_TWINS='$OV/twins'

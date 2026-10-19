@@ -1,0 +1,38 @@
+# The projects of the oss-fuzz-theorems 2026.10 release in a language other than C and C++ that its build ported and
+# built, but that it did not publish (its project.yaml says status language-pending): what that build pinned of
+# each, read from its records. tools/seed.py seeds a project from its row (docs/project-yaml.md#seeded-projects).
+# A project of OSS-Fuzz whose fuzz targets are in two repositories is two rows, one for each repository; oss_fuzz is
+# OSS-Fuzz's name. release_targets are the release's names of the fuzz targets, in order; held names the builds that
+# the release held back, if any.
+# project	oss_fuzz	language	repo	commit	homepage	sanitizers	fuzz_targets	release_targets	held
+asn1crypto	asn1crypto	python	https://github.com/wbond/asn1crypto	a767d2daa8ef4549d497b67a0304561c2eb4b858	https://github.com/wbond/asn1crypto	address,undefined	fuzz_parse	asn1crypto-fuzz_parse	-
+chardet	chardet	python	https://github.com/erikrose/chardet	b3af62de2df2b6b41fb361e3312991a4acb55d30	https://github.com/erikrose/chardet	address,undefined	fuzz_detector	chardet-fuzz_detector	-
+cssselect	cssselect	python	https://github.com/scrapy/cssselect	663d90899e3a5d1503d756204565033989d1256f	https://github.com/scrapy/cssselect	address,undefined	fuzz_parse,fuzz_xpath	cssselect-fuzz_parse,cssselect-fuzz_xpath	-
+defusedxml	defusedxml	python	https://github.com/tiran/defusedxml	c7445887f5e1bcea470a16f61369d29870cfcfe1	https://github.com/tiran/defusedxml	address,undefined	fuzz_etree_parse,fuzz_parse_string	defusedxml-fuzz_etree_parse,defusedxml-fuzz_parse_string	-
+idna	idna	python	https://github.com/kjd/idna	c79316ffefd06e7fcd05d33a57e3f0a4fd1c2f5d	https://github.com/kjd/idna	address,undefined	fuzz_encode_decode,fuzz_idna_api,fuzz_idna_codec	idna-fuzz_encode_decode,idna-fuzz_idna_api,idna-fuzz_idna_codec	-
+iniconfig	iniconfig	python	https://github.com/pytest-dev/iniconfig	00e7d87c7353b1ffecc4cd55f19acfffedd5233e	https://github.com/pytest-dev/iniconfig	address,undefined	fuzz_parse	iniconfig-fuzz_parse	-
+isodate	isodate	python	https://github.com/gweis/isodate	17cb25eb7bc3556a68f3f7b241313e9bb8b23760	https://github.com/gweis/isodate	address,undefined	fuzz_parse	isodate-fuzz_parse	-
+jmespathpy	jmespathpy	python	https://github.com/jmespath/jmespath.py	2812594e69d43098ef60f81f4efc404c071b0418	https://github.com/jmespath/jmespath.py	address,undefined	fuzz_parse	jmespathpy-fuzz_parse	-
+mdurl	mdurl	python	https://github.com/executablebooks/mdurl	524d2edbbcb8bb48301ba716c7482827bcabb281	https://github.com/executablebooks/mdurl	address,undefined	fuzz_mdurl	mdurl-fuzz_mdurl	-
+more-itertools	more-itertools	python	https://github.com/more-itertools/more-itertools	790bb0bb2c03e7a07282e5f16f4b1fde35b8fcf5	https://github.com/more-itertools/more-itertools	address,undefined	fuzz_mi	more-itertools-fuzz_mi	-
+netaddr-py	netaddr-py	python	https://github.com/netaddr/netaddr	d340feab548d948c5dc92cedcb05c69f57f9386e	https://github.com/netaddr/netaddr	address,undefined	fuzz_parsing	netaddr-py-fuzz_parsing	-
+packaging	packaging	python	https://github.com/pypa/packaging	7b898d9f0b343ca06993157fc328d7caad51d5c2	https://github.com/pypa/packaging	address,undefined	fuzz_packaging	packaging-fuzz_packaging	-
+parse	parse	python	https://github.com/r1chardj0n3s/parse	529dc2e01a0d882ec55d673304253b40eb4d38b2	https://github.com/r1chardj0n3s/parse	address,undefined	fuzz_parse	parse-fuzz_parse	-
+pyasn1	pyasn1	python	https://github.com/etingof/pyasn1	db8f1a7930c6b5826357646746337dafc983f953	https://github.com/etingof/pyasn1	address,undefined	fuzz_decode	pyasn1-fuzz_decode	-
+pycparser	pycparser	python	https://github.com/eliben/pycparser	f93324c195dd1c0d73cfe93cdf8e8a5aede377df	https://github.com/eliben/pycparser	address,undefined	fuzz_c_parser	pycparser-fuzz_c_parser	-
+pyjson5	pyjson5	python	https://github.com/dpranke/pyjson5	b1b09eb8eea3738f619b955d00ac6ec4a940a007	https://github.com/dpranke/pyjson5	address,undefined	fuzz_json	pyjson5-fuzz_json	-
+pyparsing	pyparsing	python	https://github.com/pyparsing/pyparsing	f803ae834288032a700331977639fc49c62fcd7f	https://github.com/pyparsing/pyparsing	address,undefined	fuzz_parse	pyparsing-fuzz_parse	-
+python-markdown	python-markdown	python	https://github.com/python-markdown/markdown	0ffbf00cf667971d46f43aafba825e8d25098bc5	https://github.com/python-markdown/markdown	address,undefined	fuzz_convert	python-markdown-fuzz_convert	-
+python-pathspec	python-pathspec	python	https://github.com/cpburnz/python-pathspec	67f92eb506a735ec4956dd371c536703b7a18fb2	https://github.com/cpburnz/python-pathspec	address,undefined	fuzz_pathspec	python-pathspec-fuzz_pathspec	-
+python-rison	python-rison	python	https://github.com/betodealmeida/python-rison	501b4e3ece2ed96ac2c29f417b57fcbb59fb9cc5	https://github.com/betodealmeida/python-rison	address,undefined	fuzz_decode,fuzz_roundtrip	python-rison-fuzz_decode,python-rison-fuzz_roundtrip	-
+python-tabulate	python-tabulate	python	https://github.com/astanin/python-tabulate	268615a5c27dc40e5c22454c07b44d5c50410da0	https://github.com/astanin/python-tabulate	address,undefined	fuzz_tabulate	python-tabulate-fuzz_tabulate	-
+six	six	python	https://github.com/benjaminp/six	c8e394065cd541a16c040515dc0afb85cf22a7c3	https://github.com/benjaminp/six	address,undefined	fuzz_six	six-fuzz_six	-
+sqlparse	sqlparse	python	https://github.com/andialbrecht/sqlparse	60cdc649726bf1bc4f1b336050560b336da715ec	https://github.com/andialbrecht/sqlparse	address,undefined	fuzz_format,fuzz_parse	sqlparse-fuzz_format,sqlparse-fuzz_parse	-
+tinycss2	tinycss2	python	https://github.com/Kozea/tinycss2	c73bf7135a75e11d58e75cf398f2e11f46282353	https://github.com/Kozea/tinycss2	address,undefined	fuzz_components,fuzz_parse	tinycss2-fuzz_components,tinycss2-fuzz_parse	-
+tomlkit	tomlkit	python	https://github.com/sdispater/tomlkit	8c959b51c7da2734662af759a7c9f95e9a78060a	https://github.com/sdispater/tomlkit	address,undefined	fuzz_dumps,fuzz_parser	tomlkit-fuzz_dumps,tomlkit-fuzz_parser	-
+toolz	toolz	python	https://github.com/pytoolz/toolz	451af60dec590a6010e2babdbf391ea8f815122f	https://github.com/pytoolz/toolz	address,undefined	fuzz_itertoolz	toolz-fuzz_itertoolz	-
+typing_extensions	typing_extensions	python	https://github.com/python/typing_extensions	3ae9b7553a5c560dc09b484078d98ece2985eecd	https://github.com/python/typing_extensions	address,undefined	fuzz_typing_extensions	typing_extensions-fuzz_typing_extensions	-
+uritemplate	uritemplate	python	https://github.com/python-hyper/uritemplate	e7a947e7385de3e04bb05d73d4acbc4c4409f059	https://github.com/python-hyper/uritemplate	address,undefined	fuzz_expand	uritemplate-fuzz_expand	-
+validators	validators	python	https://github.com/python-validators/validators	70de324322def13a49a93d222f798ec1ab700885	https://github.com/python-validators/validators	address,undefined	fuzz_validators	validators-fuzz_validators	-
+w3lib	w3lib	python	https://github.com/scrapy/w3lib	d5d5e4f4acaf5ed25e255bfa8639987c165a18a9	https://github.com/scrapy/w3lib	address,undefined	fuzz_parse_data_uri,fuzz_safe_download_url,fuzz_url_safe	w3lib-fuzz_parse_data_uri,w3lib-fuzz_safe_download_url,w3lib-fuzz_url_safe	-
+zipp	zipp	python	https://github.com/jaraco/zipp	29a7a55c6bac1a6f705b54135dbea82d03e997c3	https://github.com/jaraco/zipp	address,undefined	fuzz_zipp	zipp-fuzz_zipp	-

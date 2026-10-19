@@ -117,8 +117,12 @@ LANGUAGES = {
 SOURCE_SUFFIXES = tuple(dict.fromkeys(suffix for suffixes in LANGUAGES.values() for suffix in suffixes))
 # The languages with halts statements only, about the plain build: they take no sanitizer builds.
 PLAIN_ONLY = ("go", "jvm")
-# The languages that the builder builds today. The builders of the others are pending.
-BUILT_TODAY = ("c", "c++")
+# The languages that the builder builds today: those of the toolchains in infra/toolchains.tsv. The builders of the
+# others are pending.
+BUILT_TODAY = ("c", "c++", "python")
+# The languages whose UBSan builds are clang's UndefinedBehaviorSanitizer, which ubsan_checks changes (a python
+# project's builds compile CPython with it).
+UBSAN_CHECK_LANGUAGES = ("c", "c++", "python")
 SANITIZERS = ("address", "undefined")
 PUBLISH = ("eager", "after_fixes", "never")
 # The builds, in the order their statements and manifests list them, each with the SANITIZER that `compile` takes.
@@ -500,6 +504,10 @@ def check_ubsan_changes(config, changes):
         yield "ubsan_checks.reason must say why the project's checks differ from the default"
     if "undefined" not in sanitizers_of(config):
         yield "ubsan_checks applies only to the UBSan builds: sanitizers must contain undefined"
+    language = config.get("language")
+    if language in LANGUAGES and language not in UBSAN_CHECK_LANGUAGES:
+        yield (f"ubsan_checks applies only to C, C++ and Python: a {language} project's ubsan build does not use "
+               "UndefinedBehaviorSanitizer")
 
 
 def newest_toolchain_applies_ubsan_checks():
@@ -669,8 +677,8 @@ def check_project(directory):
 
     files = {path.name: read_bytes(path, MAX_CORPUS_BYTES) if SEED_CORPUS.fullmatch(path.name)
              else read_text(path, limit_for(path.name, source_suffixes(config))) for path in beside}
-    for name in copied_by_sources(files) & set(files):
-        files[name] = read_text(directory / name, MAX_SOURCE_BYTES)
+    for copied in copied_by_sources(files) & set(files):
+        files[copied] = read_text(directory / copied, MAX_SOURCE_BYTES)
     problems = check_config(config, files)
     if problems:
         return problems, [], None

@@ -1,0 +1,6 @@
+schema: oss-fuzz-theorems/project/1
+project: crabs
+homepage: https://example.org/crabs
+language: rust
+status: language-pending
+reason: rust

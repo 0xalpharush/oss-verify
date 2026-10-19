@@ -24,6 +24,9 @@
 # it names, whose calls of the allocators are renamed to allocation_failure.c's. Those are the only changes.
 # $LIB_ALLOCATION_COUNTING_ENGINE makes the same, with counting mode on (allocation_counting.o), for sweep and test
 # builds.
+#
+# A recipe that compiles its own adapter (python/recipes.sh, with python_tier_plugin.h) names it in OV_ADAPTER: it
+# takes the place of adapter.o.
 set -euo pipefail
 
 # shellcheck source=/dev/null
@@ -52,6 +55,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ -n "${OV_ADAPTER:-}" ]; then
+  [ "$driver" = "$OV_DRIVER" ] || { echo "link-fuzz-target: a fuzz target with its own adapter has no allocation-failure form" >&2; exit 1; }
+  driver="$OV_CLI $OV_ADAPTER"
+fi
 
 if [ "$driver" = "$OV_AF_DRIVER" ] || [ "$driver" = "$OV_AFC_DRIVER" ]; then
   copies=$(mktemp -d /tmp/ov/af.XXXXXX)

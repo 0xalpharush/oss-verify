@@ -70,7 +70,9 @@ This table is the only list of languages in these documents. It gives the status
 | | R | pending, likely address-only (pending): `tools/validate.py` does not accept it yet | |
 | | Swift | not possible: RISC-V LLVM has no Swift calling convention | |
 
-Our builder has only the C and C++ toolchain today. Thus `tools/check` builds only `c` and `c++` projects, and `tools/validate.py` warns about the other languages. The builders for Rust and Python are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
+Our builder builds `c`, `c++` and `python` projects today. `tools/validate.py` warns about the other languages, and `tools/check` refuses them. The builders of the other languages are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
+
+A `python` project has all four builds: each build compiles CPython with its own flags.
 
 A `go` or `jvm` project has only the plain build, because it has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`.
 
@@ -100,7 +102,7 @@ Each build makes a different set of binaries, with its own statements.
 
 ### ubsan_checks
 
-Change the UndefinedBehaviorSanitizer checks of the `ubsan` and `asan-ubsan` builds. Use this field only if `sanitizers` contains `undefined`.
+Change the UndefinedBehaviorSanitizer checks of the `ubsan` and `asan-ubsan` builds. Use this field only if `sanitizers` contains `undefined`, and only for a `c`, `c++` or `python` project.
 
 <!-- PENDING: the final format of ubsan_checks. -->
 **The format of this field is provisional.** It can change before the next toolchain version applies it.

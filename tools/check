@@ -21,7 +21,7 @@ It runs these steps:
     1. Check projects/<name>/ against the enrollment rules (tools/validate.py).
     2. Resolve repo#ref to a full commit id (git ls-remote), unless the ref is one. With --lock, the lock's commit.
     3. Build the builder image from infra/base-builder, FROM a toolchain image: the lock's, with --lock; else the newest
-       in infra/toolchains.tsv (docs/build-contract.md, "Toolchains").
+       for the project's language in infra/toolchains.tsv (docs/build-contract.md, "Toolchains").
     4. Build the project's Dockerfile on it with --build-arg COMMIT=<commit> (and REPO, BASE_BUILDER). The network
        is available. The build context is projects/<name>/, or your repository at that commit if dockerfile: is set.
     5. Run `compile` once per build, each in a fresh container with no network (docker run --network=none).
@@ -94,6 +94,7 @@ def load(project):
         fuzz_targets=config.get("fuzz_targets"),
         # The checks in effect, if the project changes the default: the default, less what it removes, with what it adds.
         ubsan_checks=validate.ubsan_checks_in_effect(config) if config.get("ubsan_checks") is not None else None,
+        language=config["language"],
     )
 
 
@@ -182,10 +183,14 @@ def main():
         locked_toolchain = image or locked_toolchain
         pins = {**(pins or {}), **more}
     try:
-        toolchain = options.toolchain or locked_toolchain or check_build.newest_toolchain()
+        toolchain = options.toolchain or locked_toolchain or check_build.newest_toolchain(job.language)
+        languages = check_build.languages_of(toolchain)
     except Failed as failure:
         sys.exit(f"tools/check: {failure}")
-    why = "--toolchain" if options.toolchain else "the lock's" if locked_toolchain else "the newest"
+    if languages is not None and job.language not in languages:
+        sys.exit(f"tools/check: the toolchain {toolchain} builds {', '.join(languages)}, not {job.language} "
+                 "(infra/toolchains.tsv)")
+    why = "--toolchain" if options.toolchain else "the lock's" if locked_toolchain else f"the newest for {job.language}"
     try:
         ubsan_settings(job, toolchain)  # before anything is fetched or built: it exits if the toolchain refuses them
     except Failed as failure:

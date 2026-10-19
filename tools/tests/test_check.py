@@ -135,7 +135,7 @@ class Twice(unittest.TestCase):
         self.assertEqual(manifest.load_lock(self.work / "manifest.yaml")[0], COMMIT)
 
     def test_a_language_with_no_builder_yet(self):
-        text = (self.project / "project.yaml").read_text().replace("language: c", "language: rust")
+        text = (self.project / "project.yaml").read_text().replace("language: c", "language: javascript")
         (self.project / "project.yaml").write_text(text)
         with mock.patch.object(sys, "argv", ["tools/check", "--no-shell", str(self.project)]), \
                 contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as stop:
@@ -177,6 +177,32 @@ class UbsanSettings(unittest.TestCase):
     def test_today_s_toolchains_keep_the_fixed_flags(self):
         self.assertEqual(check_build.ubsan_mode(check_build.newest_toolchain()), "fixed")
         self.assertEqual(check_build.ubsan_mode(TOOLCHAIN), "fixed")
+
+
+class Toolchains(unittest.TestCase):
+    """The toolchain that tools/check builds a project with, by its language (infra/toolchains.tsv)."""
+
+    def test_the_newest_for_a_language(self):
+        self.assertEqual(check_build.newest_toolchain(), check_build.newest_toolchain("c"))
+        self.assertEqual(check_build.newest_toolchain("c"), check_build.newest_toolchain("c++"))
+        self.assertIn("oss-fuzz-theorems-toolchain-python@sha256:", check_build.newest_toolchain("python"))
+        self.assertEqual(check_build.languages_of(check_build.newest_toolchain("python")), ("python",))
+        self.assertIsNone(check_build.languages_of("example.org/not-listed:1"))
+        with self.assertRaises(check_build.Failed):
+            check_build.newest_toolchain("javascript")
+
+    def test_a_toolchain_for_another_language_is_refused(self):
+        project = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory())) / "demo"
+        project.mkdir()
+        (project / "project.yaml").write_text(
+            "repo: https://example.org/demo#" + "a" * 40 + "\nprimary_contact: a@example.org\nlanguage: python\n")
+        (project / "Dockerfile").write_text("FROM x\n")
+        (project / "build.sh").write_text("#!/bin/bash\n")
+        c_toolchain = check_build.newest_toolchain("c")
+        with mock.patch.object(sys, "argv", ["tools/check", "--no-shell", "--toolchain", c_toolchain, str(project)]), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as stop:
+            check_tool.main()
+        self.assertIn("builds c, c++, not python", str(stop.exception.code))
 
 
 if __name__ == "__main__":

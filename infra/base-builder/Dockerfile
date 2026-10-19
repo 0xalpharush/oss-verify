@@ -12,6 +12,7 @@ FROM ${TOOLCHAIN}
 
 COPY toolchain.sh link-fuzz-target recipes.sh release-target.sh /usr/local/lib/oss-verify/
 COPY driver/ /usr/local/lib/oss-verify/driver/
+COPY python/ /usr/local/lib/oss-verify/python/
 COPY compile fetch-commit lay-out-sources /usr/local/bin/
 RUN chmod 0755 /usr/local/bin/compile /usr/local/bin/fetch-commit /usr/local/bin/lay-out-sources \
                /usr/local/lib/oss-verify/link-fuzz-target \
