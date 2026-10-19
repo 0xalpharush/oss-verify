@@ -174,6 +174,60 @@ class Report(unittest.TestCase):
             self.assertEqual(seed.read_builds(pathlib.Path(scratch) / "none.tsv"), {})
 
 
+class Tags(unittest.TestCase):
+    """The tag of a pinned commit, from git ls-remote or from tools/seeds/tags.tsv."""
+
+    PIN = seed.Seed(name="ex", repo="https://example.org/ex", commit="a" * 40, version="1.0")
+
+    def test_the_cache_reads_back(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            path = pathlib.Path(scratch) / "tags.tsv"
+            tags = {("https://example.org/b", "b" * 40): "v2", ("https://example.org/a", "a" * 40): ""}
+            seed.write_tags(tags, path)
+            self.assertEqual(seed.read_tags(path), tags)
+            self.assertEqual(seed.read_tags(pathlib.Path(scratch) / "none.tsv"), {})
+
+    def test_a_cached_pin_is_not_looked_up(self):
+        with mock.patch.object(seed, "look_up_tag", side_effect=AssertionError("looked up")):
+            self.assertEqual(seed.tag_for(self.PIN, False, {(self.PIN.repo, self.PIN.commit): "v1.0"}), "v1.0")
+            self.assertIsNone(seed.tag_for(self.PIN, False, {(self.PIN.repo, self.PIN.commit): ""}))
+            self.assertIsNone(seed.tag_for(self.PIN, True, {}))
+        tags = {}
+        with mock.patch.object(seed, "look_up_tag", return_value="1.0") as look:
+            self.assertEqual(seed.tag_for(self.PIN, False, tags), "1.0")
+            self.assertEqual(seed.tag_for(self.PIN, False, tags), "1.0")
+        self.assertEqual(look.call_count, 1)
+        self.assertEqual(tags, {(self.PIN.repo, self.PIN.commit): "1.0"})
+
+    def test_new_pins_are_looked_up_in_parallel(self):
+        pins = [seed.Seed(name=f"p{i}", repo=f"https://example.org/p{i}", commit=f"{i:040x}", version="1")
+                for i in range(20)]
+        pins += [seed.Seed(name="again", repo=pins[0].repo, commit=pins[0].commit, version="1"),
+                 seed.Seed(name="unversioned", repo="https://example.org/u", commit="c" * 40)]
+        asked = []
+
+        def look(pin):
+            asked.append(pin.name)
+            if pin.name == "p3":
+                raise seed.SeedError("p3: cannot list the tags")
+            return "v1" if pin.name == "p5" else ""
+
+        tags = {(pins[1].repo, pins[1].commit): "v9"}
+        with mock.patch.object(seed, "look_up_tag", side_effect=look):
+            errors = seed.look_up_tags(pins, tags, jobs=4)
+        self.assertEqual(errors, ["p3: cannot list the tags"])
+        self.assertEqual(sorted(asked), sorted(f"p{i}" for i in range(20) if i != 1))
+        self.assertEqual(len(tags), 19)
+        self.assertEqual(tags[(pins[5].repo, pins[5].commit)], "v1")
+        self.assertEqual(tags[(pins[1].repo, pins[1].commit)], "v9")
+        self.assertNotIn((pins[3].repo, pins[3].commit), tags)
+
+    def test_a_slow_server_times_out(self):
+        with mock.patch.object(seed.subprocess, "run", side_effect=subprocess.TimeoutExpired("git", 60)):
+            with self.assertRaisesRegex(seed.SeedError, "took more than"):
+                seed.look_up_tag(self.PIN)
+
+
 class Repository(unittest.TestCase):
     """--check and --branch, in a throwaway git repository."""
 
@@ -251,6 +305,55 @@ class Repository(unittest.TestCase):
                          ["projects/cee/Dockerfile", "projects/cee/build.sh", "projects/cee/project.yaml"])
         with self.assertRaises(seed.SeedError):
             seed.make_branch("enrolled", text, [], root=self.root, seeds=self.seeds, builds=self.builds)
+
+    def test_rebase(self):
+        """Once main moves, a draft moves onto it as it is, with no lookup; a stale draft is refused."""
+        _, text = seed.generate("cee", RELEASE, RECIPE, offline=True)
+        options = {"root": self.root, "seeds": self.seeds, "builds": self.builds}
+        _, first = seed.make_branch("cee", text, ["Co-Authored-By: Someone <someone@example.org>"], **options)
+        message = self.run_git("log", "-1", "--format=%B", first)
+        project = self.run_git("rev-parse", f"{first}:projects/cee").strip()
+        (self.root / "NOTES").write_text("more\n")
+        self.run_git("add", "NOTES")
+        self.run_git("commit", "-q", "-m", "more")
+        main = self.run_git("rev-parse", "main").strip()
+        with mock.patch.object(seed, "look_up_tag", side_effect=AssertionError("looked up")):
+            branch, moved = seed.rebase_branch("cee", **options)
+        self.assertEqual(self.run_git("rev-parse", branch).strip(), moved)
+        self.assertEqual(self.run_git("rev-list", "--parents", "-n1", moved).split()[1:], [main])
+        self.assertEqual(self.run_git("rev-parse", f"{moved}:projects/cee").strip(), project)
+        self.assertEqual(self.run_git("log", "-1", "--format=%B", moved), message)
+        self.assertEqual(self.run_git("diff", "--name-only", main, moved).split(),
+                         ["projects/cee/Dockerfile", "projects/cee/build.sh", "projects/cee/project.yaml"])
+        self.assertEqual(self.run_git("status", "--porcelain"), "")
+        # A pushed draft that is on main already is kept as it is.
+        self.run_git("update-ref", f"refs/remotes/origin/{branch}", moved)
+        self.assertEqual(seed.rebase_branch("cee", **options)[1], moved)
+        # A draft that a reseed would make otherwise is refused, and left as it is.
+        (self.seeds / "cee" / "build.sh").write_text("#!/bin/bash -eux\n")
+        with self.assertRaisesRegex(seed.SeedError, "needs a full reseed: its build files"):
+            seed.rebase_branch("cee", **options)
+        (self.seeds / "cee" / "build.sh").write_text("#!/bin/bash -eu\n")
+        with mock.patch.object(seed, "HEADER", "# Another header\n"):
+            with self.assertRaisesRegex(seed.SeedError, "needs a full reseed: its project.yaml"):
+                seed.rebase_branch("cee", **options)
+        with mock.patch.object(seed.release_tag, "NAME", "another release"):
+            with self.assertRaisesRegex(seed.SeedError, "needs a full reseed: its commit message"):
+                seed.rebase_branch("cee", **options)
+        self.assertEqual(self.run_git("rev-parse", branch).strip(), moved)
+        with self.assertRaisesRegex(seed.SeedError, "no such branch"):
+            seed.rebase_branch("plus", **options)
+
+    def test_rebase_refuses_a_draft_that_changes_more(self):
+        _, text = seed.generate("cee", RELEASE, RECIPE, offline=True)
+        options = {"root": self.root, "seeds": self.seeds, "builds": self.builds}
+        branch, commit = seed.make_branch("cee", text, [], **options)
+        self.run_git("checkout", "-q", branch)
+        (self.root / "README.md").write_text("# Changed\n")
+        self.run_git("commit", "-q", "--amend", "-a", "--no-edit")
+        self.run_git("checkout", "-q", "main")
+        with self.assertRaisesRegex(seed.SeedError, "changes more than projects/cee/"):
+            seed.rebase_branch("cee", **options)
 
     def test_branch_status(self):
         """A draft without build files says why it has none; build files the results do not vouch for are refused."""

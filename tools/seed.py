@@ -8,6 +8,7 @@
     tools/seed.py --from CHECKOUT [--recipe RECIPE] --report FILE           say which projects can be seeded, and why
     tools/seed.py --from CHECKOUT [--recipe RECIPE] [--offline] --branch NAME ...
                                                                             (re)create draft-generic-oss-fuzz-NAME
+    tools/seed.py --rebase [NAME ...]                                       move drafts onto main, as they are
 
 CHECKOUT is a checkout of oss-fuzz-theorems (https://github.com/theorem-labs/oss-fuzz-theorems) at the release that
 tools/release_tag.py names; this reads its projects/<name>/project.yaml and projects/<name>/<harness>/harness.yaml.
@@ -38,13 +39,24 @@ The commit message says how the project builds, from tools/seeds/builds.tsv (wha
 ported the release's build and checked it). It uses git plumbing and leaves the working tree and the index alone;
 running it again replaces the branch. --trailer adds a line to the end of the commit message.
 
+The tag that names a pinned commit comes from git ls-remote, asked of TAG_JOBS repositories at once with a timeout
+each, and is kept in tools/seeds/tags.tsv: a pinned commit's tag does not change, so a reseed asks only about new pins.
+
+--rebase moves each draft onto the current main as it is: its projects/<name>/ and its commit message, checked with
+tools/validate.py, and nothing looked up. It refuses a draft that a reseed would now make otherwise from main: other
+build files than tools/seeds/<name>/, another seeded header, or another message. Use --rebase whenever main moves, and
+--branch only when the release's metadata, tools/seeds/ or the rules of seeding change.
+
 --report writes one row per project of the release, with tools/seeds/builds.tsv's result for each seedable one.
 
 Exit codes: 0 if everything asked for was done (or, with --check, every seeded project is up to date); 1 otherwise.
 """
 import argparse
+import concurrent.futures
+import contextlib
 import dataclasses
 import difflib
+import hashlib
 import os
 import pathlib
 import re
@@ -62,6 +74,10 @@ import validate
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SEEDS = ROOT / "tools" / "seeds"
 BUILDS = SEEDS / "builds.tsv"
+# The tag that names each pinned commit, as git ls-remote found it: a pinned commit's tag does not change.
+TAGS = SEEDS / "tags.tsv"
+TAG_JOBS = 8  # repositories asked at once
+TAG_TIMEOUT = 60  # seconds for one git ls-remote
 BRANCH = "draft-generic-oss-fuzz-{name}"
 REMOTE = "origin"  # where drafts are pushed
 HEADER = (
@@ -390,24 +406,79 @@ def assess(name, checkout, recipe):
     return seed
 
 
-def tag_for(seed, offline):
-    """The tag to name the release's commit by (v<version> or <version>), or None to name the commit itself."""
-    if offline or not seed.version:
-        return None
-    names = [name for name in (f"v{seed.version}", seed.version)
-             if validate.URL.fullmatch(f"https://x#{name}") and not validate.FULL_COMMIT.fullmatch(name)]
-    if not names:
-        return None
+def tag_names(seed):
+    """The tags that may name the release's commit: v<version> and <version>, where each is a valid ref."""
+    if not seed.version:
+        return []
+    return [name for name in (f"v{seed.version}", seed.version)
+            if validate.URL.fullmatch(f"https://x#{name}") and not validate.FULL_COMMIT.fullmatch(name)]
+
+
+def look_up_tag(seed):
+    """Ask the project's repository which of tag_names(seed) names the release's commit: that name, or ""."""
+    names = tag_names(seed)
     wanted = [f"refs/tags/{name}{peel}" for name in names for peel in ("", "^{}")]
     try:
-        listing = check_build.output(*check_build.git("ls-remote", "--tags", "--", seed.repo, *wanted))
-    except check_build.Failed as error:
-        raise SeedError(f"{seed.name}: cannot list the tags of {seed.repo}: {error}") from None
-    refs = dict(reversed(line.split("\t", 1)) for line in listing.splitlines() if "\t" in line)
+        done = subprocess.run(check_build.git("ls-remote", "--tags", "--", seed.repo, *wanted),
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace",
+                              timeout=TAG_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise SeedError(f"{seed.name}: git ls-remote {seed.repo} took more than {TAG_TIMEOUT} s") from None
+    if done.returncode != 0:
+        raise SeedError(f"{seed.name}: cannot list the tags of {seed.repo}: {done.stderr.strip()[-1500:]}")
+    refs = dict(reversed(line.split("\t", 1)) for line in done.stdout.splitlines() if "\t" in line)
     for name in names:
         if (refs.get(f"refs/tags/{name}^{{}}") or refs.get(f"refs/tags/{name}")) == seed.commit:
             return name
-    return None
+    return ""
+
+
+def read_tags(path=TAGS):
+    """What earlier lookups found: {(repo, commit): its tag, or "" if no tag that we look for names it}."""
+    tags = {}
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line and not line.startswith(("#", "repo\t")):
+                repo, commit, tag = (line.split("\t") + ["", ""])[:3]
+                tags[(repo, commit)] = tag
+    return tags
+
+
+def write_tags(tags, path=TAGS):
+    rows = ["# generated by tools/seed.py: the tag that names each pinned commit (empty: none does); do not edit",
+            "repo\tcommit\ttag", *(f"{repo}\t{commit}\t{tag}" for (repo, commit), tag in sorted(tags.items()))]
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+def look_up_tags(seeds, tags, jobs=TAG_JOBS):
+    """Fill in `tags` for each seed whose pin it does not know, asking `jobs` repositories at once. Return the errors;
+    a pin that could not be looked up stays unknown."""
+    todo = {}
+    for seed in seeds:
+        if tag_names(seed) and (seed.repo, seed.commit) not in tags:
+            todo.setdefault((seed.repo, seed.commit), seed)
+    errors = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = {pool.submit(look_up_tag, seed): key for key, seed in todo.items()}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                tags[futures[future]] = future.result()
+            except SeedError as error:
+                errors.append(str(error))
+    return errors
+
+
+def tag_for(seed, offline, tags=None):
+    """The tag to name the release's commit by (v<version> or <version>), or None to name the commit itself. `tags`,
+    if given, holds what earlier lookups found, and gets what this one finds."""
+    if offline or not tag_names(seed):
+        return None
+    key = (seed.repo, seed.commit)
+    if tags is None:
+        return look_up_tag(seed) or None
+    if key not in tags:
+        tags[key] = look_up_tag(seed)
+    return tags[key] or None
 
 
 def plain(value, flow=False):
@@ -446,12 +517,12 @@ def checked(seed, text):
     return text
 
 
-def generate(name, checkout, recipe, offline):
-    """(Seed, project.yaml text or None)."""
-    seed = assess(name, checkout, recipe)
+def generate(name, checkout, recipe, offline, tags=None, found=None):
+    """(Seed, project.yaml text or None). `found` is assess()'s Seed for the project, if it is known already."""
+    seed = found or assess(name, checkout, recipe)
     if seed.reason:
         return seed, None
-    ref = tag_for(seed, offline) or seed.commit
+    ref = tag_for(seed, offline, tags) or seed.commit
     return seed, checked(seed, render(seed, ref))
 
 
@@ -510,46 +581,202 @@ def build_status(name, builds, seeds=SEEDS):
     return f"No build files yet: {why} ({detail})." if detail and detail != "-" else f"No build files yet: {why}."
 
 
-def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS, builds=None):
-    """(Re)create the draft branch of one project with git plumbing. Return (branch, commit)."""
-    main = git("rev-parse", "--verify", "refs/heads/main", root=root).strip()
-    if git("ls-tree", main, "--", f"projects/{name}", root=root).strip():
-        raise SeedError(f"projects/{name} is on main already: a draft is for a project main does not have")
-    status = build_status(name, read_builds() if builds is None else builds, seeds)
-    files = {"project.yaml": (text.encode(), "100644"), **seed_files(name, seeds)}
-    with tempfile.TemporaryDirectory(prefix="seed-branch.") as scratch:
-        scratch = pathlib.Path(scratch)
-        draft = scratch / "projects" / name
-        draft.mkdir(parents=True)
-        for file, (data, mode) in files.items():
-            (draft / file).write_bytes(data)
-            if mode == "100755":
-                (draft / file).chmod(0o755)
-        problems, _, _ = validate.check_project(draft)
+class Plumbing:
+    """git cat-file --batch and git mktree --batch, kept running: each object read or tree written costs no new
+    process. Trees are lists of (mode, name, object id) entries."""
+
+    def __init__(self, root=ROOT):
+        self.root = root
+        hash_name = git("rev-parse", "--show-object-format", root=root).strip()
+        self.hash = getattr(hashlib, hash_name)
+        self.reader = subprocess.Popen(["git", "-C", str(root), "cat-file", "--batch"],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.maker = subprocess.Popen(["git", "-C", str(root), "mktree", "--batch"],
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    def close(self):
+        for process in (self.reader, self.maker):
+            process.stdin.close()
+            process.wait()
+            process.stdout.close()
+
+    def read(self, rev):
+        """(type, bytes) of the object that `rev` names, or None if it names none."""
+        self.reader.stdin.write(rev.encode() + b"\n")
+        self.reader.stdin.flush()
+        header = self.reader.stdout.readline().split()
+        if len(header) != 3:
+            return None
+        data = self.reader.stdout.read(int(header[2]))
+        self.reader.stdout.read(1)
+        return header[1].decode(), data
+
+    def tree(self, rev):
+        """The entries of the tree that `rev` names: [(mode, name, id)]."""
+        found = self.read(rev)
+        if found is None or found[0] != "tree":
+            raise SeedError(f"{rev} is not a tree")
+        data, entries, at, size = found[1], [], 0, self.hash().digest_size
+        while at < len(data):
+            space = data.index(b" ", at)
+            nul = data.index(b"\0", space)
+            entries.append((data[at:space].decode(), data[space + 1:nul].decode(), data[nul + 1:nul + 1 + size].hex()))
+            at = nul + 1 + size
+        return entries
+
+    def commit(self, rev):
+        """(tree, [parents], message) of the commit that `rev` names, or None."""
+        found = self.read(rev)
+        if found is None or found[0] != "commit":
+            return None
+        head, _, message = found[1].decode(errors="replace").partition("\n\n")
+        fields = [line.split(" ", 1) for line in head.splitlines() if " " in line]
+        return (next(value for key, value in fields if key == "tree"),
+                [value for key, value in fields if key == "parent"], message)
+
+    def mktree(self, entries):
+        """Write a tree of these entries. Return its id."""
+        kinds = {"40000": "tree", "040000": "tree", "160000": "commit"}
+        text = "".join(f"{mode} {kinds.get(mode, 'blob')} {oid}\t{name}\n" for mode, name, oid in entries)
+        self.maker.stdin.write(text.encode() + b"\n")
+        self.maker.stdin.flush()
+        return self.maker.stdout.readline().decode().strip()
+
+    def blob_id(self, data):
+        """The id that git gives a blob of these bytes."""
+        return self.hash(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+class Drafts:
+    """Makes draft branches from the current main with git plumbing, leaving the working tree and the index alone.
+    Use it as a context manager: the branches are updated, all at once, when it closes."""
+
+    def __init__(self, root=ROOT, seeds=SEEDS, builds=None):
+        self.root, self.seeds = root, seeds
+        self.builds = read_builds() if builds is None else builds
+        self.main = git("rev-parse", "--verify", "refs/heads/main", root=root).strip()
+        self.plumbing = Plumbing(root)
+        self.root_entries = self.plumbing.tree(f"{self.main}^{{tree}}")
+        projects = [oid for mode, name, oid in self.root_entries if name == "projects"]
+        self.projects = self.plumbing.tree(projects[0]) if projects else []
+        self.refs = dict(line.split(" ", 1)[::-1] for line in git(
+            "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads/draft-generic-oss-fuzz-*",
+            f"refs/remotes/{REMOTE}/draft-generic-oss-fuzz-*", root=root).splitlines())
+        self.updates = {}
+        self.ancestors = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            if self.updates and exc[0] is None:
+                git("update-ref", "--stdin", root=self.root,
+                    data="".join(f"update refs/heads/{branch} {commit}\n" for branch, commit in self.updates.items()))
+        finally:
+            self.plumbing.close()
+
+    def message(self, name, trailers=()):
+        """The commit message of a draft: what the release seeds and how the project builds."""
+        status = build_status(name, self.builds, self.seeds)
+        message = f"Draft: seed projects/{name} from {release_tag.NAME}\n\n{textwrap.fill(status, 72)}\n"
+        return message + ("\n" + "\n".join(trailers) + "\n" if trailers else "")
+
+    def commit(self, name, project_tree, message):
+        """Main plus projects/<name> as `project_tree`, as one commit: what was pushed, if that is it already."""
+        if any(entry == name for _, entry, _ in self.projects):
+            raise SeedError(f"projects/{name} is on main already: a draft is for a project main does not have")
+        projects = self.plumbing.mktree([*self.projects, ("40000", name, project_tree)])
+        tree = self.plumbing.mktree([entry for entry in self.root_entries if entry[1] != "projects"] +
+                                    [("40000", "projects", projects)])
+        branch = BRANCH.format(name=name)
+        # The draft as it was pushed to origin, if that is this draft already: kept, so that it is not pushed again.
+        pushed = self.refs.get(f"refs/remotes/{REMOTE}/{branch}")
+        if pushed and self.plumbing.commit(pushed) == (tree, [self.main], message):
+            commit = pushed
+        else:
+            commit = git("commit-tree", tree, "-p", self.main, "-F", "-", root=self.root, data=message).strip()
+        self.updates[branch] = commit
+        return branch, commit
+
+    def seed(self, name, text, trailers):
+        """(Re)make a draft from its seeded project.yaml and the build files in tools/seeds/<name>/."""
+        files = {"project.yaml": (text.encode(), "100644"), **seed_files(name, self.seeds)}
+        with tempfile.TemporaryDirectory(prefix="seed-branch.") as scratch:
+            draft = pathlib.Path(scratch) / "projects" / name
+            draft.mkdir(parents=True)
+            for file, (data, mode) in files.items():
+                (draft / file).write_bytes(data)
+                if mode == "100755":
+                    (draft / file).chmod(0o755)
+            problems, _, _ = validate.check_project(draft)
+            if problems:
+                raise SeedError(f"{name}: the draft's projects/{name}/ breaks the rules: {'; '.join(problems)}")
+            paths = "".join(f"{draft / file}\n" for file in files)
+            blobs = git("hash-object", "-w", "--no-filters", "--stdin-paths", root=self.root, data=paths).split()
+        project = self.plumbing.mktree([(mode, file, blob) for (file, (_, mode)), blob in zip(files.items(), blobs)])
+        return self.commit(name, project, self.message(name, trailers))
+
+    def rebase(self, name):
+        """Move a draft onto the current main as it is: its projects/<name>/ and its message, checked with validate.py.
+        Refuse a draft that is no longer what a reseed from main's tools/seeds/ would make."""
+        branch = BRANCH.format(name=name)
+        source = self.refs.get(f"refs/heads/{branch}") or self.refs.get(f"refs/remotes/{REMOTE}/{branch}")
+        found = source and self.plumbing.commit(source)
+        if not found:
+            raise SeedError(f"{branch}: no such branch, here or on {REMOTE}")
+        tree, parents, message = found
+        if len(parents) != 1:
+            raise SeedError(f"{branch}: not one commit on main")
+        if parents[0] not in self.ancestors:
+            self.ancestors[parents[0]] = subprocess.run(
+                ["git", "-C", str(self.root), "merge-base", "--is-ancestor", parents[0], self.main]).returncode == 0
+        if not self.ancestors[parents[0]]:
+            raise SeedError(f"{branch}: its parent {parents[0][:12]} is not on main")
+        # The draft is its parent plus projects/<name>/, and nothing else.
+        old_root = self.plumbing.tree(tree)
+        parent_root = self.plumbing.tree(f"{parents[0]}^{{tree}}")
+        old_projects = self.plumbing.tree(next(oid for mode, entry, oid in old_root if entry == "projects"))
+        parent_projects = next((self.plumbing.tree(oid) for mode, entry, oid in parent_root if entry == "projects"), [])
+        project = [oid for mode, entry, oid in old_projects if entry == name]
+        if (not project or [entry for entry in old_root if entry[1] != "projects"] !=
+                [entry for entry in parent_root if entry[1] != "projects"] or
+                [entry for entry in old_projects if entry[1] != name] != parent_projects):
+            raise SeedError(f"{branch}: changes more than projects/{name}/")
+        files = {entry: (mode, oid) for mode, entry, oid in self.plumbing.tree(project[0])}
+        # Still what main's seed inputs make: its build files, the seeded header and the message.
+        expected = {file: (mode, self.plumbing.blob_id(data))
+                    for file, (data, mode) in seed_files(name, self.seeds).items()}
+        if {file: found for file, found in files.items() if file != "project.yaml"} != expected:
+            raise SeedError(f"{name}: needs a full reseed: its build files are not those in tools/seeds/{name}/")
+        text = self.plumbing.read(files["project.yaml"][1])[1].decode() if "project.yaml" in files else ""
+        if not text.startswith(HEADER):
+            raise SeedError(f"{name}: needs a full reseed: its project.yaml does not start with the seeded header")
+        if not message.startswith(self.message(name)):
+            raise SeedError(f"{name}: needs a full reseed: its commit message is not what tools/seed.py writes now")
+        with tempfile.TemporaryDirectory(prefix="seed-rebase.") as scratch:
+            draft = pathlib.Path(scratch) / "projects" / name
+            draft.mkdir(parents=True)
+            for file, (mode, oid) in files.items():
+                (draft / file).write_bytes(self.plumbing.read(oid)[1])
+                if mode == "100755":
+                    (draft / file).chmod(0o755)
+            problems, _, _ = validate.check_project(draft)
         if problems:
             raise SeedError(f"{name}: the draft's projects/{name}/ breaks the rules: {'; '.join(problems)}")
+        return self.commit(name, project[0], message)
 
-        # A scratch index: the working tree and the repository's own index are never touched.
-        env = {**os.environ, "GIT_INDEX_FILE": str(scratch / "index")}
-        git("read-tree", main, root=root, env=env)
-        for file, (data, mode) in files.items():
-            blob = git("hash-object", "-w", "--stdin", root=root, data=data).decode().strip()
-            git("update-index", "--add", "--cacheinfo", f"{mode},{blob},projects/{name}/{file}", root=root, env=env)
-        tree = git("write-tree", root=root, env=env).strip()
-    message = f"Draft: seed projects/{name} from {release_tag.NAME}\n\n{textwrap.fill(status, 72)}\n"
-    if trailers:
-        message += "\n" + "\n".join(trailers) + "\n"
-    branch = BRANCH.format(name=name)
-    # The draft as it was pushed to origin, if that is this draft already: kept, so that it is not pushed again.
-    pushed = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"refs/remotes/{REMOTE}/{branch}"],
-                            capture_output=True, text=True).stdout.strip()
-    if pushed and git("rev-list", "--parents", "-n1", pushed, root=root).split()[1:] == [main] and \
-            git("rev-parse", f"{pushed}^{{tree}}", root=root).strip() == tree:
-        commit = pushed
-    else:
-        commit = git("commit-tree", tree, "-p", main, "-F", "-", root=root, data=message).strip()
-    git("update-ref", f"refs/heads/{branch}", commit, root=root)
-    return branch, commit
+
+def make_branch(name, text, trailers, root=ROOT, seeds=SEEDS, builds=None):
+    """(Re)create the draft branch of one project. Return (branch, commit)."""
+    with Drafts(root, seeds, builds) as drafts:
+        return drafts.seed(name, text, trailers)
+
+
+def rebase_branch(name, root=ROOT, seeds=SEEDS, builds=None):
+    """Move the draft branch of one project onto the current main, as it is. Return (branch, commit)."""
+    with Drafts(root, seeds, builds) as drafts:
+        return drafts.rebase(name)
 
 
 def seeded_here(projects=validate.PROJECTS):
@@ -565,16 +792,20 @@ def seeded_here(projects=validate.PROJECTS):
     return found
 
 
-def check(checkout, recipe, offline, projects=validate.PROJECTS):
+def check(checkout, recipe, offline, projects=validate.PROJECTS, tags=None):
     """Regenerate every seeded project here and compare. Return the number that differ."""
     differing = 0
+    seeds = {name: assess(name, checkout, recipe) for name in seeded_here(projects)}
+    if not offline and tags is not None:
+        for error in look_up_tags([seed for seed in seeds.values() if not seed.reason], tags):
+            print(validate.printable(error), file=sys.stderr)
     for name, committed in seeded_here(projects).items():
-        seed = assess(name, checkout, recipe)
+        seed = seeds[name]
         if seed.reason:
             print(f"{name}: can no longer be seeded: {seed.reason}", file=sys.stderr)
             differing += 1
             continue
-        ref = tag_for(seed, offline)
+        ref = tag_for(seed, offline, tags)
         if offline:
             # Nothing is looked up: a committed tag is accepted if it is one tag_for() would look for.
             current = (yaml.safe_load(committed) or {}).get("repo", "")
@@ -617,7 +848,7 @@ def report(checkout, recipe, path, builds=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("names", nargs="*", help="projects of the release to seed")
-    parser.add_argument("--from", dest="checkout", type=pathlib.Path, required=True,
+    parser.add_argument("--from", dest="checkout", type=pathlib.Path,
                         help="a checkout of oss-fuzz-theorems at the release that tools/release_tag.py names")
     parser.add_argument("--recipe", type=pathlib.Path, help="that release's build recipe, unpacked")
     parser.add_argument("--offline", action="store_true", help="look nothing up: name each library by its commit")
@@ -625,10 +856,18 @@ def main():
     mode.add_argument("--check", action="store_true", help="check every seeded project here against the release")
     mode.add_argument("--report", type=pathlib.Path, help="write which projects can be seeded, and why, to this file")
     mode.add_argument("--branch", action="store_true", help="(re)create draft-generic-oss-fuzz-<name> for each name")
+    mode.add_argument("--rebase", action="store_true",
+                      help="move each draft (default: every local one) onto main as it is; no release needed")
     parser.add_argument("--trailer", action="append", default=[], help="a line to end each draft commit's message with")
     parser.add_argument("--out", type=pathlib.Path, help="write NAME/project.yaml under OUT instead of projects/")
     options = parser.parse_args()
 
+    if options.rebase:
+        if options.checkout or options.recipe or options.trailer or options.out:
+            parser.error("--rebase takes only project names: it keeps each draft's files and message")
+        return rebase(options.names)
+    if options.checkout is None:
+        parser.error("--from is required")
     if not (options.checkout / "projects").is_dir():
         parser.error(f"{options.checkout} has no projects/: it is not a checkout of oss-fuzz-theorems")
     release_tag.check(options.checkout)
@@ -636,42 +875,75 @@ def main():
         parser.error("--check and --report take no project names")
     if not (options.check or options.report) and not options.names:
         parser.error("name at least one project")
+    tags = read_tags()
+    known = dict(tags)
     try:
         recipe = load_recipe(options.recipe) if options.recipe else None
         if options.check:
-            return 1 if check(options.checkout, recipe, options.offline) else 0
+            return 1 if check(options.checkout, recipe, options.offline, tags=tags) else 0
         if options.report:
             counts = report(options.checkout, recipe, options.report)
             for key, count in sorted(counts.items(), key=lambda item: -item[1]):
                 print(f"{count:6}  {key}")
             return 0
+        seeds = {name: assess(name, options.checkout, recipe) for name in options.names}
+        if not options.offline:
+            for error in look_up_tags([seed for seed in seeds.values() if not seed.reason], tags):
+                print(validate.printable(error), file=sys.stderr)
         failed = 0
-        for name in options.names:
-            try:
-                seed, text = generate(name, options.checkout, recipe, options.offline)
-                if text is None:
-                    print(validate.printable(f"{name}: not seeded: {seed.reason}"), file=sys.stderr)
+        with contextlib.ExitStack() as stack:
+            drafts = stack.enter_context(Drafts()) if options.branch else None
+            for name in options.names:
+                try:
+                    seed, text = generate(name, options.checkout, recipe, options.offline, tags, seeds[name])
+                    if text is None:
+                        print(validate.printable(f"{name}: not seeded: {seed.reason}"), file=sys.stderr)
+                        failed += 1
+                        continue
+                    if drafts:
+                        branch, commit = drafts.seed(name, text, options.trailer)
+                except SeedError as error:  # this project; the others go on
+                    print(validate.printable(str(error)), file=sys.stderr)
                     failed += 1
                     continue
-                if options.branch:
-                    branch, commit = make_branch(name, text, options.trailer)
-            except SeedError as error:  # this project; the others go on
-                print(validate.printable(str(error)), file=sys.stderr)
-                failed += 1
-                continue
-            if options.branch:
-                print(f"{branch}: {commit}")
-            else:
-                directory = (options.out or validate.PROJECTS) / name
-                directory.mkdir(parents=True, exist_ok=True)
-                (directory / "project.yaml").write_text(text, encoding="utf-8")
-                print(f"projects/{name}/project.yaml")
-            for note in seed.notes:
-                print(validate.printable(f"  {name}: {note}"))
+                if drafts:
+                    print(f"{branch}: {commit}")
+                else:
+                    directory = (options.out or validate.PROJECTS) / name
+                    directory.mkdir(parents=True, exist_ok=True)
+                    (directory / "project.yaml").write_text(text, encoding="utf-8")
+                    print(f"projects/{name}/project.yaml")
+                for note in seed.notes:
+                    print(validate.printable(f"  {name}: {note}"))
         return 1 if failed else 0
     except SeedError as error:
         print(validate.printable(str(error)), file=sys.stderr)
         return 1
+    finally:
+        if tags != known:
+            write_tags(tags)
+
+
+def rebase(names, root=ROOT, seeds=SEEDS):
+    """--rebase: move each named draft (default: every local draft branch) onto main. Return the exit code."""
+    prefix = "refs/heads/draft-generic-oss-fuzz-"
+    names = names or [ref[len(prefix):] for ref in git("for-each-ref", "--format=%(refname)", prefix + "*",
+                                                          root=root).split()]
+    failed = 0
+    try:
+        with Drafts(root, seeds) as drafts:
+            for name in names:
+                try:
+                    branch, commit = drafts.rebase(name)
+                except SeedError as error:  # this draft; the others go on
+                    print(validate.printable(str(error)), file=sys.stderr)
+                    failed += 1
+                    continue
+                print(f"{branch}: {commit}")
+    except SeedError as error:
+        print(validate.printable(str(error)), file=sys.stderr)
+        return 1
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
