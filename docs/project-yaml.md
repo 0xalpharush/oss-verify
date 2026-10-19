@@ -19,6 +19,7 @@ The field names come from OSS Scanner if it has the field, then from OSS-Fuzz. W
 | `pgp` | no | your armored OpenPGP public key | |
 | `disabled` | no | `true` pauses the project | `false` |
 | `sanitizers` | no | the sanitizer builds in addition to `plain` | `[address, undefined]` |
+| `ubsan_checks` | no | changes to the UBSan checks of the `ubsan` and `asan-ubsan` builds, with the next toolchain version ([below](#ubsan_checks)) | none: the checks that OSS-Fuzz makes fatal |
 | `fuzz_targets` | no | the fuzz targets to verify | each fuzz target that the build makes |
 | `patch_style` | no | the path of your `patch_style.md` in your repository ([below](#patch_style)) | |
 | `budgets` | no | the memory budgets of the statements | today's values |
@@ -96,6 +97,43 @@ Each build makes a different set of binaries, with its own statements.
 | `asan-ubsan` | `sanitizers` contains both | both |
 
 [build-contract.md](build-contract.md#the-builds) gives the flags of each build. A `go` or `jvm` project has the plain build only ([above](#language)).
+
+### ubsan_checks
+
+Change the UndefinedBehaviorSanitizer checks of the `ubsan` and `asan-ubsan` builds. Use this field only if `sanitizers` contains `undefined`.
+
+<!-- PENDING: the final format of ubsan_checks. -->
+**The format of this field is provisional.** It can change before the next toolchain version applies it.
+
+> **WARNING:** Today's toolchain vintage does not apply this field. Its builds keep the fixed UBSan flags of the release ([build-contract.md](build-contract.md#the-builds)), so that its binaries are the release's. With this vintage, `tools/check` refuses a project that sets the field. The field applies with the next toolchain version.
+
+If you leave out the field, the builds make the checks that OSS-Fuzz makes fatal, which are those of its `-fno-sanitize-recover` list:
+
+    array-bounds bool builtin enum function integer-divide-by-zero null object-size return
+    returns-nonnull-attribute shift signed-integer-overflow unreachable vla-bound vptr
+
+OSS-Fuzz also instruments `unsigned-integer-overflow`, but it silences the reports (`silence_unsigned_overflow=1`). Thus the default does not contain it.
+
+The builds trap, and trap mode is likely to leave out two checks of this list. Both are pending: we are making sure with probes of the toolchain ([what-gets-proven.md](what-gets-proven.md#ubsan-checks)).
+
+* `vptr` needs the UBSan runtime, which trap mode does not have. clang 20 refuses it with `-fsanitize-trap`.
+* `function`: clang 20 takes it with `-fsanitize-trap` for riscv64. We are making sure that it works.
+
+The field changes the default, and tells why:
+
+* `add`: the checks to make in addition to the default, as clang names them;
+* `remove`: the checks of the default to leave out;
+* `reason`: why the project's checks differ from the default. This key is required.
+
+For example:
+
+```yaml
+ubsan_checks:
+  add: [alignment]
+  reason: "the decoder reads packed structures, and must never read them misaligned"
+```
+
+`tools/validate.py` refuses a name that clang does not know, a check that the field both adds and removes, and a change without a reason. In these lists, `null` needs no quotes.
 
 ### fuzz_targets
 

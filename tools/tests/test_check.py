@@ -16,6 +16,7 @@ import yaml
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import check_build  # noqa: E402
 import manifest  # noqa: E402
+import validate  # noqa: E402
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 LOADER = importlib.machinery.SourceFileLoader("check_tool", str(TOOLS / "check"))
@@ -147,6 +148,35 @@ class Twice(unittest.TestCase):
         self.assertEqual(data["rebuild"]["result"], "differs")
         self.assertEqual(data["rebuild"]["targets"]["demo_fuzzer"]["builds"]["ubsan"]["sha256"], "e" * 64)
         self.assertEqual(data["targets"]["demo_fuzzer"]["builds"]["ubsan"]["sha256"], "2" * 64)
+
+
+class UbsanSettings(unittest.TestCase):
+    """The UBSan checks that tools/check gives compile, by the toolchain's row in infra/toolchains.tsv."""
+
+    def job(self, checks=None):
+        return check_build.Job(name="demo", directory=pathlib.Path("/nowhere"), repo="https://example.org/demo",
+                               ref="", dockerfile="", builds=BUILDS, fuzz_targets=None, ubsan_checks=checks)
+
+    def test_a_fixed_toolchain_keeps_its_flags(self):
+        with mock.patch.object(check_build, "ubsan_mode", return_value="fixed"):
+            self.assertIsNone(check_tool.ubsan_settings(self.job(), TOOLCHAIN))
+            with contextlib.redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit) as stop:
+                check_tool.ubsan_settings(self.job(["null"]), TOOLCHAIN)
+        self.assertEqual(stop.exception.code, 2)
+        self.assertIn("keeps the release's fixed UBSan flags", error.getvalue())
+
+    def test_a_toolchain_that_applies_the_checks(self):
+        with mock.patch.object(check_build, "ubsan_mode", return_value="checks"):
+            checks, left_out = check_tool.ubsan_settings(self.job(), TOOLCHAIN)
+            self.assertEqual(checks, [check for check in validate.DEFAULT_UBSAN_CHECKS if check not in ("function", "vptr")])
+            self.assertEqual(left_out, ["function", "vptr"])
+            # A project's checks in effect (the default, changed): less those that trap mode leaves out.
+            self.assertEqual(check_tool.ubsan_settings(self.job(["null", "alignment", "vptr"]), TOOLCHAIN)[0],
+                             ["null", "alignment"])
+
+    def test_today_s_toolchains_keep_the_fixed_flags(self):
+        self.assertEqual(check_build.ubsan_mode(check_build.newest_toolchain()), "fixed")
+        self.assertEqual(check_build.ubsan_mode(TOOLCHAIN), "fixed")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ CACHE = pathlib.Path(os.environ.get("XDG_CACHE_HOME") or "~/.cache").expanduser(
 FULL_COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 TOOLCHAIN_ARG = re.compile(r"^ARG TOOLCHAIN=(\S+)$", re.M)
 TOOLCHAINS = ROOT / "infra" / "toolchains.tsv"
+# How a toolchain's UBSan builds choose their checks: the release's fixed flags, or the project's ubsan_checks.
+UBSAN_MODES = ("fixed", "checks")
 # The git checkouts under $SRC in a project image, and their commits, for the manifest.
 LIST_SOURCES = (
     'find "$SRC" -maxdepth 4 -name .git 2>/dev/null | sort | while read -r g; do d=${g%/.git}; '
@@ -48,6 +50,7 @@ class Job:
     dockerfile: str  # path in the repository; "" if it is kept next to project.yaml
     builds: list
     fuzz_targets: list | None  # None: every fuzz target the build produces
+    ubsan_checks: list | None = None  # the UBSan checks in effect if the project changes them; None: the default
 
 
 _UNSAFE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
@@ -165,12 +168,19 @@ def toolchain():
 
 
 def toolchains():
-    """The toolchain images a project can be built with, oldest first (infra/toolchains.tsv): [(name, image)]."""
+    """The toolchain images a project can be built with, oldest first (infra/toolchains.tsv): [(name, image, ubsan)].
+    ubsan is how the UBSan builds choose their checks: "fixed" (the release's flags) or "checks" (ubsan_checks)."""
     rows = [line.split("\t") for line in TOOLCHAINS.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")]
-    if not rows or any(len(row) < 2 for row in rows):
-        raise Failed(f"{TOOLCHAINS} lists no toolchain, or a row has no image")
-    return [(row[0], row[1]) for row in rows]
+    if not rows or any(len(row) < 3 or row[2] not in UBSAN_MODES for row in rows):
+        raise Failed(f"{TOOLCHAINS} lists no toolchain, or a row has no image, or no ubsan of {', '.join(UBSAN_MODES)}")
+    return [(row[0], row[1], row[2]) for row in rows]
+
+
+def ubsan_mode(image):
+    """How the UBSan builds on this toolchain image choose their checks: as its row says, or "fixed" for an image
+    that infra/toolchains.tsv does not list."""
+    return next((mode for _, listed, mode in toolchains() if listed == image), "fixed")
 
 
 def newest_toolchain():
@@ -246,15 +256,19 @@ def empty_directory(path, tag):
 DOCKER_FAILED = 125
 
 
-def compile_build(tag, build, sanitizer, out):
-    """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`."""
+def compile_build(tag, build, sanitizer, out, ubsan=None):
+    """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`. `ubsan`, if given,
+    is (checks, left out): the UBSan checks of the build, and those that trap mode leaves out."""
     step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
     empty_directory(out, tag)
     owner = f"{os.getuid()}:{os.getgid()}"
     # The number of parallel jobs, if set here, for recipes that read it; it does not change the bytes.
     jobs = ["-e", "OFT_MAKE_JOBS"] if os.environ.get("OFT_MAKE_JOBS") else []
+    checks = []
+    if ubsan and "undefined" in sanitizer:
+        checks = ["-e", f"OV_UBSAN_CHECKS={','.join(ubsan[0])}", "-e", f"OV_UBSAN_EXCLUDE={','.join(ubsan[1])}"]
     command = ["docker", "run", "--rm", "--init", "--network=none", "-e", f"SANITIZER={sanitizer}",
-               "-e", f"OV_OWNER={owner}", *jobs, "-v", f"{out}:/out", tag, "compile"]
+               "-e", f"OV_OWNER={owner}", *jobs, *checks, "-v", f"{out}:/out", tag, "compile"]
     code = run(*command)
     if code == DOCKER_FAILED:
         # docker run itself failed (the daemon could not start the container), not the build: once more, afresh.

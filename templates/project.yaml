@@ -35,6 +35,13 @@ language: c
 # asan-ubsan build. This is the default.
 sanitizers: [address, undefined]
 
+# Optional, and only with the next toolchain version: changes to the UBSan checks of the ubsan and asan-ubsan builds,
+# whose default is the checks that OSS-Fuzz makes fatal (docs/project-yaml.md#ubsan_checks). Provisional format.
+# ubsan_checks:
+#   add: [alignment]
+#   remove: []
+#   reason: "why the project's checks differ from the default"
+
 # Optional. The fuzz targets to verify, as build.sh names them in $OUT. Omit it to verify every fuzz target the build
 # produces; tools/check lists them.
 fuzz_targets:

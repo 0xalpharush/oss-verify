@@ -185,6 +185,40 @@ class Builder(unittest.TestCase):
                 self.assertEqual(results[(target, build, "calls")], "0,0,0,", (target, build))
 
 
+@unittest.skipUnless(os.environ.get("OV_DOCKER_TESTS") == "1" and docker_ready(),
+                     "set OV_DOCKER_TESTS=1, with Docker and the toolchain image, to build the fixture")
+class UbsanChecks(unittest.TestCase):
+    """The UBSan checks that tools/check gives compile on a toolchain that applies a project's ubsan_checks."""
+
+    @unittest.skipUnless(QEMU, "no qemu-riscv64 on this machine")
+    def test_only_the_given_checks_trap(self):
+        tag = "oss-verifier-test/example-ubsan:latest"
+        with tempfile.TemporaryDirectory(prefix="ov-test-ubsan.") as scratch:
+            work = pathlib.Path(scratch)
+            job = check_build.Job(name="example", directory=FIXTURE, repo="https://example.invalid/example", ref="",
+                                  dockerfile="", builds=["ubsan"], fuzz_targets=None)
+            try:
+                check_build.build_project(job, "0" * 40, check_build.build_builder(), tag, work)
+                raw = work / "raw"
+                # null only: the null load traps, and the signed overflow, which the fixed flags catch, does not.
+                check_build.compile_build(tag, "ubsan", "undefined", raw, (["null"], ["function", "vptr"]))
+                inputs = work / "in"
+                inputs.mkdir()
+                for case in "no":
+                    (inputs / f"case-{case}").write_bytes(b"\0" * 6 + case.encode())
+                runner = ('for c in /in/*; do timeout 60 /qemu /raw/example_fuzzer "$c" > /dev/null 2>&1; '
+                          'echo "${c#/in/} $?"; done')
+                done = subprocess.run(
+                    ["docker", "run", "--rm", "--network=none", "-v", f"{QEMU}:/qemu:ro", "-v", f"{inputs}:/in:ro",
+                     "-v", f"{raw}:/raw:ro", "--entrypoint", "sh", tag, "-c", runner],
+                    capture_output=True, text=True, check=True,
+                )
+            finally:
+                subprocess.run(["docker", "image", "rm", tag], capture_output=True)
+        results = dict(line.split() for line in done.stdout.splitlines())
+        self.assertEqual(results, {"case-n": "132", "case-o": "0"})
+
+
 CJSON = pathlib.Path(__file__).resolve().parent / "fixtures" / "cjson"
 CJSON_TAG = "oss-verifier-test/cjson:latest"
 # cJSON 1.7.18, as the oss-fuzz-theorems 2026.10 release built it.

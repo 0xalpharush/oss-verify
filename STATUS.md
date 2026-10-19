@@ -25,6 +25,7 @@ The repository is not open for enrollment yet. This page tells what works today,
 
 ## Not yet, or not checked
 
+* **ubsan_checks**, in a provisional format (add, remove, reason) until its final format is agreed: `tools/validate.py` checks the names (clang 20's, probed in the toolchain image for riscv64 trap mode) and requires a reason. With today's toolchain (`fixed` in infra/toolchains.tsv), `tools/check` refuses the field. The builder's path for a list (OV_UBSAN_CHECKS) is tested with today's clang in tools/tests/test_builder.py, and used only once a toolchain row says `checks`. The trap-mode exceptions (vptr, function) are pending probes of the toolchain, and the skill's suggested removals are to come.
 * **The next driver contract** (status 3 when a call returns -1; halts statements accept 0, 2 and 3) is documented as a note in docs/build-contract.md and the skill's step 3.7. The vendored driver does not change until the next toolchain version brings it; projects with proofs stay on today's driver.
 * **docs/dsl.md** is to come: the skill names it as "to come".
 * **DSL drivers** are not in this repository yet. When they come, they have the `LLVMFuzzerTestOneInput` shape (the skill's step 3.1 and 3.7, and docs/build-contract.md), and main carries only that shape. Proven API drivers keep their earlier whole-program shape until they are proved again: their locks name the recipe commit that builds them. The details of the operations are to come.

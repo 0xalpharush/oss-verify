@@ -26,6 +26,8 @@ Fields allowed in project.yaml:
     disabled: true | false              optional   true pauses the project
     sanitizers: [address, undefined]    optional   the sanitizer builds besides plain (this is the default; go and
                                                    jvm take none, and default to [])
+    ubsan_checks: {add, remove, reason}  optional  changes to the UBSan checks of the ubsan builds (default: OSS-Fuzz's),
+                                                   with a toolchain that applies them; provisional format
     fuzz_targets: [<target>, ...]       optional   default: every fuzz target the build produces
     patch_style: <path in your repo>    optional   or a patch_style.md next to project.yaml
     budgets: {halts: ..., agrees: ...}  optional   memory budgets (docs/what-gets-proven.md)
@@ -47,6 +49,8 @@ import sys
 import zipfile
 from urllib.parse import urlparse
 
+import check_build
+
 try:
     import yaml
 except ImportError:
@@ -57,7 +61,7 @@ PROJECTS = pathlib.Path(__file__).resolve().parent.parent / "projects"
 REQUIRED_KEYS = ("repo", "primary_contact", "language")
 OPTIONAL_KEYS = (
     "auto_ccs", "homepage", "pgp", "disabled", "dockerfile",
-    "sanitizers", "fuzz_targets", "patch_style", "budgets", "proofs", "publish",
+    "sanitizers", "ubsan_checks", "fuzz_targets", "patch_style", "budgets", "proofs", "publish",
 )
 ALLOWED_KEYS = REQUIRED_KEYS + OPTIONAL_KEYS
 # Settings controlled by the program's operators. A pull request may not set them. There are none yet.
@@ -121,6 +125,32 @@ PUBLISH = ("eager", "after_fixes", "never")
 BUILDS = {"plain": "none", "ubsan": "undefined", "asan": "address", "asan-ubsan": "address-undefined"}
 
 DEFAULT_SANITIZERS = ["address", "undefined"]
+# The UndefinedBehaviorSanitizer checks and groups that the toolchain's clang (20) takes with -fsanitize-trap for
+# riscv64, and vptr, which it takes only without trap mode (objc-cast it does not take for riscv64 at all).
+UBSAN_NAMES = (
+    "alignment", "array-bounds", "bool", "bounds", "builtin", "enum", "float-cast-overflow", "float-divide-by-zero",
+    "function", "implicit-bitfield-conversion", "implicit-conversion", "implicit-integer-arithmetic-value-change",
+    "implicit-integer-sign-change", "implicit-integer-truncation", "implicit-signed-integer-truncation",
+    "implicit-unsigned-integer-truncation", "integer", "integer-divide-by-zero", "local-bounds", "nonnull-attribute",
+    "null", "nullability", "nullability-arg", "nullability-assign", "nullability-return", "object-size",
+    "pointer-overflow", "return", "returns-nonnull-attribute", "shift", "shift-base", "shift-exponent",
+    "signed-integer-overflow", "undefined", "unreachable", "unsigned-integer-overflow", "unsigned-shift-base",
+    "vla-bound", "vptr",
+)
+# Without ubsan_checks, the checks that OSS-Fuzz makes fatal: its -fno-sanitize-recover list. (It also instruments
+# unsigned-integer-overflow, but silences it with silence_unsigned_overflow=1.)
+DEFAULT_UBSAN_CHECKS = [
+    "array-bounds", "bool", "builtin", "enum", "function", "integer-divide-by-zero", "null", "object-size", "return",
+    "returns-nonnull-attribute", "shift", "signed-integer-overflow", "unreachable", "vla-bound", "vptr",
+]
+# The checks that the trapping builds leave out of any list, and why. Pending: both are still to be confirmed by
+# probes of the toolchain (clang 20 refuses vptr with -fsanitize-trap; it takes function).
+TRAP_EXCEPTIONS = {
+    "vptr": "it needs the UBSan runtime, which trap mode does not have (pending)",
+    "function": "whether it works on riscv64 in trap mode is not confirmed yet (pending)",
+}
+# The keys of ubsan_checks: changes to the default, and the reason for them. Provisional, until the format is agreed.
+UBSAN_CHANGES = ("add", "remove", "reason")
 DEFAULT_PUBLISH = "after_fixes"
 # Today's values (docs/what-gets-proven.md, Memory budgets): the halts budget for each build run alone; for each
 # sanitizer, the agrees budgets of the plain side and the sanitizer side. asan-ubsan uses the address pair.
@@ -178,6 +208,27 @@ def sanitizers_of(config):
     if isinstance(sanitizers, list):
         return list(sanitizers)
     return [] if config.get("language") in PLAIN_ONLY else list(DEFAULT_SANITIZERS)
+
+
+def ubsan_changes_of(config):
+    """A project's ubsan_checks as {"add": [...], "remove": [...], "reason": ...}, or None if it has none, or the value
+    as it is if it is not a mapping. YAML reads a bare `null` as no value: in these lists it is the check null."""
+    changes = config.get("ubsan_checks")
+    if not isinstance(changes, dict):
+        return changes
+    tidy = dict(changes)
+    for key in ("add", "remove"):
+        if isinstance(tidy.get(key), list):
+            tidy[key] = ["null" if item is None else item for item in tidy[key]]
+    return tidy
+
+
+def ubsan_checks_in_effect(config):
+    """The UBSan checks that a valid project.yaml asks for: the default, less `remove`, with `add`."""
+    changes = ubsan_changes_of(config) or {}
+    removed = set(changes.get("remove") or [])
+    added = [check for check in changes.get("add") or [] if check not in DEFAULT_UBSAN_CHECKS]
+    return [check for check in DEFAULT_UBSAN_CHECKS if check not in removed] + added
 
 
 def source_suffixes(config):
@@ -274,6 +325,10 @@ def check_builds(config):
             if language in PLAIN_ONLY and sanitizers:
                 yield (f"a {language} project has halts statements only, about the plain build: give sanitizers: [] "
                        "or leave it out")
+
+    changes = ubsan_changes_of(config)
+    if changes is not None:
+        yield from check_ubsan_changes(config, changes)
 
     targets = config.get("fuzz_targets")
     if targets is not None:
@@ -414,9 +469,63 @@ def check_files(config, files):
         yield "patches need a series file beside them that lists them, one per line, in the order they are applied"
 
 
+def check_ubsan_changes(config, changes):
+    """Yield a problem with ubsan_checks: changes to the default list, with the reason. (The format is provisional.)"""
+    if not isinstance(changes, dict):
+        yield "ubsan_checks must be a mapping of add, remove and reason (or left out, for the default)"
+        return
+    for key in changes:
+        if key not in UBSAN_CHANGES:
+            yield printable(f"ubsan_checks: unknown field {key!r} (allowed: {', '.join(UBSAN_CHANGES)})")
+    for key in ("add", "remove"):
+        checks = changes.get(key)
+        if checks is None:
+            continue
+        if not (isinstance(checks, list) and all(isinstance(item, str) for item in checks)):
+            yield f"ubsan_checks.{key} must be a list of UBSan check names"
+            continue
+        for item in checks:
+            if item not in UBSAN_NAMES:
+                yield printable(f"ubsan_checks.{key}: {item!r} is not a UBSan check that clang knows")
+        if len(set(checks)) != len(checks):
+            yield f"ubsan_checks.{key} names a check twice"
+    added, removed = changes.get("add") or [], changes.get("remove") or []
+    if isinstance(added, list) and isinstance(removed, list):
+        if set(map(str, added)) & set(map(str, removed)):
+            yield "ubsan_checks adds and removes the same check"
+        if not added and not removed:
+            yield "ubsan_checks changes nothing: leave it out for the default"
+    reason = changes.get("reason")
+    if not (isinstance(reason, str) and reason.strip()):
+        yield "ubsan_checks.reason must say why the project's checks differ from the default"
+    if "undefined" not in sanitizers_of(config):
+        yield "ubsan_checks applies only to the UBSan builds: sanitizers must contain undefined"
+
+
+def newest_toolchain_applies_ubsan_checks():
+    """Whether the newest toolchain in infra/toolchains.tsv applies a project's ubsan_checks."""
+    try:
+        return check_build.ubsan_mode(check_build.newest_toolchain()) == "checks"
+    except (OSError, check_build.Failed):
+        return False
+
+
 def config_warnings(config, files):
     """Return warnings: things that are allowed but worth a second look."""
     warnings = []
+    changes = ubsan_changes_of(config)
+    if isinstance(changes, dict):
+        added = changes.get("add") if isinstance(changes.get("add"), list) else []
+        removed = changes.get("remove") if isinstance(changes.get("remove"), list) else []
+        for item in sorted(set(map(str, added)) & set(TRAP_EXCEPTIONS)):
+            warnings.append(f"ubsan_checks: the trapping builds leave out {item}: {TRAP_EXCEPTIONS[item]}")
+        for item in sorted(set(map(str, added)) & set(DEFAULT_UBSAN_CHECKS)):
+            warnings.append(f"ubsan_checks.add: {item} is in the default already")
+        for item in sorted(set(map(str, removed)) - set(DEFAULT_UBSAN_CHECKS)):
+            warnings.append(f"ubsan_checks.remove: {item} is not in the default, so there is nothing to remove")
+        if not newest_toolchain_applies_ubsan_checks():
+            warnings.append("ubsan_checks has no effect yet: the newest toolchain keeps the release's fixed UBSan flags, "
+                            "and tools/check refuses the field with it")
     if config.get("primary_contact") == NO_CONTACT:
         warnings.append(
             "primary_contact is n/a: only a project we seeded may say that, and only until a maintainer adopts it"

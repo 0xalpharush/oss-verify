@@ -90,6 +90,15 @@ write_cc_shim "$SHIM/$CHOST-clang++-sealed" \
 # The driver is compiled without a sanitizer in every build. The library and the harness get the build's own.
 DRVCC=$SHIM/$CHOST-clang-plain
 DRVCXX=$SHIM/$CHOST-clang++-plain
+# The UBSan checks: the release's fixed flags, unless tools/check gives a project's checks in OV_UBSAN_CHECKS (and
+# those that trap mode leaves out in OV_UBSAN_EXCLUDE), which it does only on a toolchain whose infra/toolchains.tsv
+# row says so (docs/project-yaml.md#ubsan_checks).
+if [ -n "${OV_UBSAN_CHECKS:-}" ]; then
+  UBSAN="-fsanitize=$OV_UBSAN_CHECKS${OV_UBSAN_EXCLUDE:+ -fno-sanitize=$OV_UBSAN_EXCLUDE}"
+  UBSAN="$UBSAN -fsanitize-trap=$OV_UBSAN_CHECKS -fno-sanitize-recover=all"
+else
+  UBSAN="-fsanitize=undefined -fno-sanitize-recover=all -fsanitize-trap=all -fno-sanitize=function"
+fi
 case "$FLAV" in
   asan)
     CC=$SHIM/$CHOST-clang-sealed
@@ -98,11 +107,11 @@ case "$FLAV" in
   asanubsan)
     CC=$SHIM/$CHOST-clang-sealed
     CXX=$SHIM/$CHOST-clang++-sealed
-    SAN="-fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fsanitize-trap=all -fno-sanitize=function" ;;
+    SAN="-fsanitize=address $UBSAN" ;;
   ubsan)
     CC=$DRVCC
     CXX=$DRVCXX
-    SAN="-fsanitize=undefined -fno-sanitize-recover=all -fsanitize-trap=all -fno-sanitize=function" ;;
+    SAN="$UBSAN" ;;
   plain)
     CC=$DRVCC
     CXX=$DRVCXX

@@ -202,6 +202,58 @@ class SeedCorpora(unittest.TestCase):
         has("only project.yaml", self.problems(corpus({"x": b"1"}), name="inputs.zip"))
 
 
+class UbsanChecks(unittest.TestCase):
+    """ubsan_checks, in its provisional format: changes to the default, with the reason."""
+
+    def has(self, fragment, texts):
+        self.assertTrue(any(fragment in text for text in texts), f"{fragment!r} not in {texts}")
+
+    def test_changes_with_a_reason(self):
+        added = "ubsan_checks:\n  add: [alignment]\n  reason: the decoder must not read packed structures misaligned\n"
+        problems, warnings, _ = check(MINIMAL + added)
+        self.assertEqual(problems, [])
+        self.has("has no effect yet", warnings)
+        removed = "ubsan_checks: {remove: [function], reason: callbacks are called through a void pointer type}\n"
+        self.assertEqual(check(MINIMAL + removed)[0], [])
+        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL + added)), [*validate.DEFAULT_UBSAN_CHECKS, "alignment"])
+        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL + removed)),
+                         [check for check in validate.DEFAULT_UBSAN_CHECKS if check != "function"])
+        self.assertEqual(validate.ubsan_checks_in_effect(yaml_of(MINIMAL)), validate.DEFAULT_UBSAN_CHECKS)
+
+    def test_bad_changes(self):
+        def problems(text):
+            return check(MINIMAL + text)[0]
+        self.has("must be a mapping", problems("ubsan_checks: [null, bool]\n"))
+        self.has("unknown field 'only'", problems("ubsan_checks: {only: [null], reason: x}\n"))
+        self.has("'made-up' is not a UBSan check", problems("ubsan_checks: {add: [made-up], reason: x}\n"))
+        self.has("'objc-cast' is not a UBSan check", problems("ubsan_checks: {add: [objc-cast], reason: x}\n"))
+        self.has("ubsan_checks.add must be a list", problems("ubsan_checks: {add: alignment, reason: x}\n"))
+        self.has("names a check twice", problems("ubsan_checks: {remove: [enum, enum], reason: x}\n"))
+        self.has("adds and removes the same check", problems("ubsan_checks: {add: [enum], remove: [enum], reason: x}\n"))
+        self.has("changes nothing", problems("ubsan_checks: {add: [], reason: x}\n"))
+        self.has("must say why", problems("ubsan_checks: {add: [alignment]}\n"))
+        self.has("must say why", problems("ubsan_checks: {add: [alignment], reason: ' '}\n"))
+        self.has("sanitizers must contain undefined",
+                 problems("sanitizers: [address]\nubsan_checks: {add: [alignment], reason: x}\n"))
+
+    def test_warnings(self):
+        warnings = check(MINIMAL + "ubsan_checks: {add: [vptr, enum], remove: [alignment], reason: x}\n")[1]
+        self.has("the trapping builds leave out vptr", warnings)
+        self.has("enum is in the default already", warnings)
+        self.has("alignment is not in the default", warnings)
+        with mock.patch.object(validate, "newest_toolchain_applies_ubsan_checks", return_value=True):
+            warnings = check(MINIMAL + "ubsan_checks: {add: [alignment], reason: x}\n")[1]
+        self.assertFalse(any("has no effect yet" in warning for warning in warnings), warnings)
+
+    def test_a_bare_null_is_the_check_null(self):
+        self.assertEqual(validate.ubsan_changes_of({"ubsan_checks": {"remove": [None]}}), {"remove": ["null"]})
+        self.assertIsNone(validate.ubsan_changes_of({}))
+
+
+def yaml_of(text):
+    return validate.yaml.safe_load(text)
+
+
 class Problems(unittest.TestCase):
     def assertProblem(self, text, fragment, files=None, name="example"):
         problems, _, summary = check(text, files, name)
