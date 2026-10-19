@@ -366,7 +366,7 @@ yara	reproduces	all binaries match the release's
 yoga	reproduces	all binaries match the release's
 yyjson	reproduces	all binaries match the release's
 zip	reproduces	all binaries match the release's
-zipp	checking	-
+zipp	reproducible	4 binaries; a second build is identical; the release has none to compare
 zlib	reproduces	all binaries match the release's
 zlib-ng	reproduces	all binaries match the release's
 zopfli	reproduces	all binaries match the release's
