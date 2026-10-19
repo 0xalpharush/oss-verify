@@ -9,16 +9,19 @@ A DSL fuzz target is also called an API driver. It is a fuzz target with the usu
 
 ## The input
 
-The driver gives `LLVMFuzzerTestOneInput` the payload of the input file ([build-contract.md](build-contract.md#the-driver)). For a DSL fuzz target, the payload has its own header, and then the program:
+The driver reads the outer header of the input file, and gives `LLVMFuzzerTestOneInput` the payload ([build-contract.md](build-contract.md#the-driver)). For a DSL fuzz target, the payload starts with an inner header, and then the program:
 
     [u16 config length][config bytes][u32 allocation mask][program]
 
 The two integers are little-endian.
 
 * The low 15 bits of the first word give the length of the config bytes. A published build has no counting mode, so the top bit has no effect.
-* If the payload is shorter than its 6-byte header, the fuzz target runs no operation and returns 0. Thus a short payload never looks like a failed check.
+* If the input file is shorter than the outer header, the driver refuses it with status 2, as for each fuzz target.
+* If the payload is shorter than the 6-byte inner header, the fuzz target runs no operation and returns 0, never -1. With the next toolchain version, -1 gives status 3, which must tell only that a check failed.
 
-The config bytes set the run:
+Thus status 2 tells that the driver refused the outer header, and status 3 tells only that a check failed.
+
+The config bytes of the inner header set the run:
 
 | byte | bits | meaning |
 |---|---|---|
@@ -29,7 +32,7 @@ The config bytes set the run:
 | 1 | all | the seed of the deterministic filler, which makes the bytes that an operation asks for. If there is no byte 1, the seed is 0. |
 | 2 and more | all | the extension of the allocation mask ([below](#the-allocation-mask)) |
 
-A one-byte config `00` gives one repeat, the full output, the base budget and seed 0. Thus the shortest useful payload starts with `01 00 00 00 00 00 00`: config length 1, config byte 0 and an empty allocation mask.
+A one-byte config `00` gives one repeat, the full output, the base budget and seed 0. Thus the shortest useful payload starts with the inner header `01 00 00 00 00 00 00`: config length 1, config byte 0 and an empty allocation mask.
 
 ## Frames
 
@@ -145,13 +148,13 @@ The base budget is 4,096 steps, or less if the fuzz target sets it lower. The sc
 
 The allocation mask makes chosen allocations fail ([build-contract.md](build-contract.md#allocation-failure-fuzz-targets)). Bit i of the mask makes the i-th counted allocation fail. The allocation then returns `NULL` with `errno` set to `ENOMEM`, or a throwing `operator new` throws `std::bad_alloc`.
 
-* Bits 0 to 31 are the u32 of the payload's header.
+* Bits 0 to 31 are the u32 of the inner header.
 * Bit i, for i of 32 or more, is bit (i − 32) % 8 of config byte 2 + (i − 32) / 8, low bit first. The extension has at most 4,096 bytes. A missing byte reads as 0.
 * The memory of the machine itself is never counted, so no mask can make it fail.
 * `expect alloc` and `allocs` give the number of counted allocations of this repeat.
 
 <!-- PENDING: who arms the mask in a DSL fuzz target, and the scope of its counter. -->
-**Pending:** which part arms the mask, and where its counter starts. Either the fuzz target arms the mask of the payload's header at each call, or the allocation-failure driver owns the mask. The allocation functions that are counted, and whether `allocs` writes a total after the run, are also pending.
+**Pending:** which part arms the mask, and where its counter starts. Either the fuzz target arms the mask of the inner header at each call, or the allocation-failure driver owns the mask. The allocation functions that are counted, and whether `allocs` writes a total after the run, are also pending.
 
 ## An example
 
@@ -166,12 +169,12 @@ The toy library `kv` is a key-value store. Its DSL fuzz target defines four oper
 
 This payload makes a store, stores `v` under `k1` and reads it back. Then it checks that the last call succeeded:
 
-    01 00  00  00 00 00 00        config length 1, config byte 0, allocation mask 0
+    01 00  00  00 00 00 00        inner header: config length 1, config byte 0, allocation mask 0
     00 00                         new
     01 07  02 00 6b 31  01 00 76  put: key "k1", value "v"
     02 04  02 00 6b 31            get: key "k1"
     ff 02  03 00                  expect last 0
 
-To run it under the driver, put six zero bytes in front of it ([build-contract.md](build-contract.md#run-a-binary)). The run writes the trace of the three operations, then a summary line with `steps=3 ok=3 err=0 skip=0 chk=1 fail=0`. The call returns 0. If you change the last frame to `ff 02 03 01`, the check fails, and the call returns -1.
+To run it under the driver, put the outer header in front of it: six zero bytes ([build-contract.md](build-contract.md#run-a-binary)). The run writes the trace of the three operations, then a summary line with `steps=3 ok=3 err=0 skip=0 chk=1 fail=0`. The call returns 0. If you change the last frame to `ff 02 03 01`, the check fails, and the call returns -1.
 
 A property of `kv` itself goes in a project operation, as a check that aborts. For example, `get` can check that a key read right after `put` gives the stored value, and call `abort()` if it does not.
