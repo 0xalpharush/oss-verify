@@ -9,6 +9,7 @@ are what is collected, published and pinned.
 
 The manifest's targets.<target>.builds section has the shape of the builds: section of an oss-fuzz-theorems
 harness.yaml (file, bytes, sha256 for each build), so that the lock in the proofs repository can take it as it is.
+With --twice, its rebuild block records the second build in the same shape, and whether the two are identical.
 """
 import hashlib
 import os
@@ -213,6 +214,28 @@ def manifest(*, project, repo, ref, commit, oss_verifier, builder, sources, buil
         "fuzz_targets": targets,
         "targets": {target: {"builds": entries[target]} for target in targets},
     }
+
+
+def rebuild(first, second, targets, *, host, at, builder, builds):
+    """The rebuild block that tools/check --twice adds to a manifest once it has compared its second build with the
+    first: where and when the second build ran, its builder, each binary that it made (as the top level's targets
+    section), and whether every binary has the first build's bytes. `first` and `second` are collect()'s entries.
+
+    Return (block, differences, matched): a difference is a binary that one build made and the other did not, or made
+    with other bytes; matched counts the binaries whose bytes are identical."""
+    pins = {(target, build): entry for target in first for build, entry in first[target].items()}
+    differences, extras, matched = compare(second, pins, builds)
+    differences += extras
+    block = {
+        "kind": "same-host",
+        "host": host,
+        "at": at,
+        "builder": builder,
+        "builds": builds,
+        "targets": {target: {"builds": second[target]} for target in targets},
+        "result": "differs" if differences else "identical",
+    }
+    return block, differences, matched
 
 
 def write_manifest(path, data):

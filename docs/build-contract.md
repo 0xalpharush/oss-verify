@@ -265,13 +265,22 @@ The exit status tells the result ([above](#exit-statuses)).
 * `builder`: the toolchain image of the builder ([Toolchains](#toolchains)), and the local ids of the builder and project images;
 * `sources`: each git checkout under `$SRC` in the project image, with its commit;
 * `builds` and `fuzz_targets`: what we built, with "each fuzz target" written as a list;
-* `targets.<target>.builds.<build>`: the `file`, `bytes` and `sha256` of each binary, in the format of the `builds:` section of an oss-fuzz-theorems `harness.yaml`.
+* `targets.<target>.builds.<build>`: the `file`, `bytes` and `sha256` of each binary, in the format of the `builds:` section of an oss-fuzz-theorems `harness.yaml`;
+* `rebuild`, only with `--twice`: the second build ([below](#reproducibility)).
 
 We will write the lock in the proofs repository from the manifest. The lock is the only place that records the commit. `tools/check --lock <file>` builds the commit that a lock names, and compares each binary with the lock ([below](#check-a-binary-against-a-lock)). The lock can be a manifest or an oss-fuzz-theorems `harness.yaml`.
 
 ## Reproducibility
 
-`tools/check --twice` builds everything a second time from the start, with `docker build --no-cache`, a new fetch and a new compile of each build. It fails if a byte is different. We pin only binaries that two clean builds reproduce. The Build check of a pull request runs `tools/check --twice` too.
+`tools/check --twice` builds everything a second time from the start, with `docker build --no-cache`, a new fetch and a new compile of each build. It fails if a byte is different. The Build check of a pull request runs `tools/check --twice` too.
+
+After the comparison, `tools/check --twice` adds the `rebuild` block to the manifest. It also adds the block when the builds differ. The block contains these items:
+
+* `kind: same-host`, the `host` and the time (`at`, in UTC) of the second build;
+* `builder`, `builds` and `targets` of the second build, in the same format as at the top level of the manifest;
+* `result`: `identical` if each binary has the bytes of the first build, or `differs`.
+
+We pin only binaries that two clean builds reproduce. Thus we pin a binary only from a manifest whose `rebuild` block says `result: identical`. The second build uses the same toolchain. Its local image ids can differ from those of the first build, because Docker records the time of each build.
 
 We found that these items decide the bytes:
 
