@@ -1,0 +1,6 @@
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+repo: https://example.invalid/python-example
+primary_contact: security@example.invalid
+language: python
+fuzz_targets: [fuzz_example]

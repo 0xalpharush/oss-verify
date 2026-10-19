@@ -1,7 +1,7 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Build tests/fixtures/example and tests/fixtures/cjson with the builder and run what they make. Needs Docker and the
-toolchain image (and, for cJSON, the network):
+"""Build tests/fixtures/example, tests/fixtures/cjson and tests/fixtures/python-example with the builder and run what they
+make. Needs Docker and the toolchain images (and, for cJSON and the Python build backend, the network):
 
     OV_DOCKER_TESTS=1 python3 -m unittest discover -s tools/tests
 
@@ -217,6 +217,82 @@ class UbsanChecks(unittest.TestCase):
                 subprocess.run(["docker", "image", "rm", tag], capture_output=True)
         results = dict(line.split() for line in done.stdout.splitlines())
         self.assertEqual(results, {"case-n": "132", "case-o": "0"})
+
+
+PYTHON_FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "python-example"
+PYTHON_TAG = "oss-verify-test/python-example:latest"
+# Payload first byte -> exit status in each build of the Python fixture (fixtures/python-example/pkg/example): an
+# uncaught exception exits 79, a MemoryError 2, a SystemExit 77. The same in all four builds.
+PYTHON_EXPECTED = {"": 0, "a": 0, "p": 0, "e": 79, "m": 2, "x": 77}
+
+
+def toolchain_ready(language):
+    """Whether Docker runs and the newest toolchain image for a language is here."""
+    try:
+        image = check_build.newest_toolchain(language)
+        return subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode == 0
+    except (OSError, check_build.Failed):
+        return False
+
+
+@unittest.skipUnless(os.environ.get("OV_DOCKER_TESTS") == "1" and toolchain_ready("python"),
+                     "set OV_DOCKER_TESTS=1, with Docker and the Python toolchain image, to build the Python fixture")
+class PythonBuilder(unittest.TestCase):
+    """fixtures/python-example: an atheris harness, built with python/recipes.sh in each build. Getting its build
+    backend needs the network."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scratch = tempfile.TemporaryDirectory(prefix="ov-test-python.")
+        cls.work = pathlib.Path(cls.scratch.name)
+        job = check_build.Job(name="python-example", directory=PYTHON_FIXTURE,
+                              repo="https://example.invalid/python-example", ref="", dockerfile="", builds=BUILDS,
+                              fuzz_targets=["fuzz_example"], language="python")
+        builder = check_build.build_builder(check_build.newest_toolchain("python"))
+        check_build.build_project(job, "0" * 40, builder, PYTHON_TAG, cls.work)
+        cls.raw = {}
+        for build in BUILDS:
+            cls.raw[build] = cls.work / "raw" / build
+            check_build.compile_build(PYTHON_TAG, build, validate.BUILDS[build], cls.raw[build])
+        found = {build: manifest.discover(directory) for build, directory in cls.raw.items()}
+        cls.targets, cls.problems = manifest.resolve_targets(found, job.fuzz_targets)
+        cls.entries, cls.missing = manifest.collect(cls.raw, cls.targets, cls.work / "out")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.scratch.cleanup()
+        subprocess.run(["docker", "image", "rm", PYTHON_TAG], capture_output=True)
+
+    def test_discovery(self):
+        self.assertEqual((self.problems, self.missing, self.targets), ([], [], ["fuzz_example"]))
+
+    @unittest.skipUnless(QEMU, "no qemu-riscv64 on this machine")
+    def test_exit_statuses(self):
+        inputs = self.work / "in"
+        inputs.mkdir()
+        for case in PYTHON_EXPECTED:
+            (inputs / f"case-{case or 'empty'}").write_bytes(b"\0" * 6 + case.encode())
+        binaries = self.work / "bin"
+        binaries.mkdir()
+        for build in BUILDS:
+            shutil.copy(self.work / "out" / "fuzz_example" / f"fuzz_example.{build}", binaries)
+        runner = ('for b in plain ubsan asan asan-ubsan; do for c in /in/*; do '
+                  'timeout 600 /qemu /bin2/fuzz_example.$b "$c" > /dev/null 2>&1; echo "$b ${c#/in/case-} $?"; done; '
+                  'printf "%s " "$b printed"; timeout 600 /qemu /bin2/fuzz_example.$b /in/case-p | tr "\\n" ,; echo; '
+                  'done')
+        done = subprocess.run(
+            ["docker", "run", "--rm", "--network=none", "-v", f"{QEMU}:/qemu:ro", "-v", f"{inputs}:/in:ro",
+             "-v", f"{binaries}:/bin2:ro", "--entrypoint", "sh", PYTHON_TAG, "-c", runner],
+            capture_output=True, text=True, check=True,
+        )
+        results = {tuple(line.split(" ", 2)[:2]): line.split(" ", 2)[2] for line in done.stdout.splitlines()}
+        for case, status in PYTHON_EXPECTED.items():
+            for build in BUILDS:
+                with self.subTest(build=build, case=case):
+                    self.assertEqual(results[(build, case or "empty")], str(status))
+        for build in BUILDS:
+            # The loud build writes what the harness prints, then the driver writes the return value.
+            self.assertEqual(results[(build, "printed")], "printed,0,", build)
 
 
 CJSON = pathlib.Path(__file__).resolve().parent / "fixtures" / "cjson"
