@@ -1,0 +1,14 @@
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Rust half of the adapter of a Rust fuzz target (driver/plugin_rust.h is the C half). It has no dependencies, so
+# that it adds only itself to a project's dependency graph and Cargo.lock.
+[package]
+name = "oft-rust-rt"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "oft_rust_rt"
+path = "src/lib.rs"

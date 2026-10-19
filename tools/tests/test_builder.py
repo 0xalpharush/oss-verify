@@ -1,7 +1,8 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Build tests/fixtures/example, tests/fixtures/cjson and tests/fixtures/python-example with the builder and run what they
-make. Needs Docker and the toolchain images (and, for cJSON and the Python build backend, the network):
+"""Build tests/fixtures/example, tests/fixtures/cjson, tests/fixtures/rust-example and tests/fixtures/python-example with
+the builder and run what they make. Needs Docker and the toolchain images (and, for cJSON, the Rust crates and the
+Python build backend, the network):
 
     OV_DOCKER_TESTS=1 python3 -m unittest discover -s tools/tests
 
@@ -293,6 +294,82 @@ class PythonBuilder(unittest.TestCase):
         for build in BUILDS:
             # The loud build writes what the harness prints, then the driver writes the return value.
             self.assertEqual(results[(build, "printed")], "printed,0,", build)
+
+
+RUST_FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "rust-example"
+RUST_TAG = "oss-verify-test/rust-example:latest"
+# Payload first byte -> exit status in each build (plain, ubsan, asan, asan-ubsan) of the Rust fixture
+# (fixtures/rust-example/crate/src/lib.rs): a panic and a UB check exit 79, an allocation failure 2.
+RUST_EXPECTED = {
+    "": (0, 0, 0, 0),
+    "r": (0, 0, 0, 0),  # Corpus::Reject: the fuzz target returns -1
+    "p": (79, 79, 79, 79),
+    "o": (2, 2, 2, 2),
+    "x": (77, 77, 77, 77),
+    "h": (0, 0, 134, 134),
+    "u": (0, 79, 0, 79),
+}
+
+
+@unittest.skipUnless(os.environ.get("OV_DOCKER_TESTS") == "1" and toolchain_ready("rust"),
+                     "set OV_DOCKER_TESTS=1, with Docker and the Rust toolchain image, to build the Rust fixture")
+class RustBuilder(unittest.TestCase):
+    """fixtures/rust-example: a cargo-fuzz fuzz target, built with rust/recipes.sh in each build. Getting its crates
+    needs the network."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scratch = tempfile.TemporaryDirectory(prefix="ov-test-rust.")
+        cls.work = pathlib.Path(cls.scratch.name)
+        job = check_build.Job(name="rust-example", directory=RUST_FIXTURE, repo="https://example.invalid/rust-example",
+                              ref="", dockerfile="", builds=BUILDS, fuzz_targets=["example_fuzzer"], language="rust")
+        builder = check_build.build_builder(check_build.newest_toolchain("rust"))
+        check_build.build_project(job, "0" * 40, builder, RUST_TAG, cls.work)
+        cls.raw = {}
+        for build in BUILDS:
+            cls.raw[build] = cls.work / "raw" / build
+            check_build.compile_build(RUST_TAG, build, validate.BUILDS[build], cls.raw[build])
+        found = {build: manifest.discover(directory) for build, directory in cls.raw.items()}
+        cls.targets, cls.problems = manifest.resolve_targets(found, job.fuzz_targets)
+        cls.entries, cls.missing = manifest.collect(cls.raw, cls.targets, cls.work / "out")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.scratch.cleanup()
+        subprocess.run(["docker", "image", "rm", RUST_TAG], capture_output=True)
+
+    def test_discovery(self):
+        self.assertEqual((self.problems, self.missing, self.targets), ([], [], ["example_fuzzer"]))
+
+    @unittest.skipUnless(QEMU, "no qemu-riscv64 on this machine")
+    def test_exit_statuses(self):
+        inputs = self.work / "in"
+        inputs.mkdir()
+        for case in RUST_EXPECTED:
+            (inputs / f"case-{case or 'empty'}").write_bytes(b"\0" * 6 + case.encode())
+        binaries = self.work / "bin"
+        binaries.mkdir()
+        for build in BUILDS:
+            shutil.copy(self.work / "out" / "example_fuzzer" / f"example_fuzzer.{build}", binaries)
+        # An AddressSanitizer detection in a Rust fuzz target takes minutes under qemu (about 160 s here), where a C
+        # fuzz target's takes seconds: the time limit is 600 s.
+        runner = ('for b in plain ubsan asan asan-ubsan; do for c in /in/*; do '
+                  'timeout 600 /qemu /bin2/example_fuzzer.$b "$c" > /dev/null 2>&1; echo "$b ${c#/in/case-} $?"; done; '
+                  'printf "%s " "$b printed"; timeout 60 /qemu /bin2/example_fuzzer.$b /in/case-r | tr "\\n" ,; echo; '
+                  'done')
+        done = subprocess.run(
+            ["docker", "run", "--rm", "--network=none", "-v", f"{QEMU}:/qemu:ro", "-v", f"{inputs}:/in:ro",
+             "-v", f"{binaries}:/bin2:ro", "--entrypoint", "sh", RUST_TAG, "-c", runner],
+            capture_output=True, text=True, check=True,
+        )
+        results = {tuple(line.split(" ", 2)[:2]): line.split(" ", 2)[2] for line in done.stdout.splitlines()}
+        for case, statuses in RUST_EXPECTED.items():
+            for build, status in zip(BUILDS, statuses):
+                with self.subTest(build=build, case=case):
+                    self.assertEqual(results[(build, case or "empty")], str(status))
+        for build in BUILDS:
+            # The driver writes each return value: -1 for Corpus::Reject.
+            self.assertEqual(results[(build, "printed")], "-1,", build)
 
 
 CJSON = pathlib.Path(__file__).resolve().parent / "fixtures" / "cjson"

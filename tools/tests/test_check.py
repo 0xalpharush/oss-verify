@@ -185,6 +185,8 @@ class Toolchains(unittest.TestCase):
     def test_the_newest_for_a_language(self):
         self.assertEqual(check_build.newest_toolchain(), check_build.newest_toolchain("c"))
         self.assertEqual(check_build.newest_toolchain("c"), check_build.newest_toolchain("c++"))
+        self.assertIn("oss-fuzz-theorems-toolchain-rust@sha256:", check_build.newest_toolchain("rust"))
+        self.assertEqual(check_build.languages_of(check_build.newest_toolchain("rust")), ("rust",))
         self.assertIn("oss-fuzz-theorems-toolchain-python@sha256:", check_build.newest_toolchain("python"))
         self.assertEqual(check_build.languages_of(check_build.newest_toolchain("python")), ("python",))
         self.assertIsNone(check_build.languages_of("example.org/not-listed:1"))

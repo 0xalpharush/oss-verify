@@ -24,6 +24,11 @@ trees out under /work, where the release's build had them.
                                               with a path component matching NAME; !DIR/ leaves out that subtree. A
                                               member already present must have exactly its bytes
     copy     <path>  <project file>           one of the project's files, under another name
+    crates   <path>  <lock>  <tree>  <fuzz directory>  <bin>
+                                              the crates that a Rust fuzz target's Cargo.lock (laid out before)
+                                              names, for the cargo-fuzz [[bin]] <bin> of <tree> (laid out before), as
+                                              cargo vendor lays them out: downloaded by cargo, and checked against
+                                              the lock's sha256s
     corpus   <path>  <project file>           the inputs of one of the project's seed corpora (a zip file of files),
                                               each in the directory <path>
     patch    <path>  <project file>           a build-only patch, applied to the tree at <path> with git apply
@@ -40,6 +45,7 @@ import hashlib
 import io
 import os
 import pathlib
+import re
 import shutil
 import stat
 import subprocess
@@ -231,6 +237,37 @@ def copy(path, name, files):
     shutil.copy2(files / name, path)
 
 
+RUST = pathlib.Path("/usr/local/lib/oss-verify/rust")
+# What cargo vendor prints beyond the [source."git+..."] stanzas: crates.io and the directory it vendored to, which
+# the build replaces with its own (rust/recipes.sh).
+GIT_SOURCE = re.compile(r'\n(?=\[)')
+
+
+def crates(path, lock, tree, fuzz_dir, bin_name, root):
+    lock, tree = under(root, lock), under(root, tree)
+    if not lock.is_file() or not tree.is_dir():
+        raise Failed(f"crates {path}: lay out the lock ({lock}) and the tree ({tree}) before it")
+    fresh(path)
+    with tempfile.TemporaryDirectory() as scratch:
+        scratch = pathlib.Path(scratch)
+        without_git(tree, scratch / "src")
+        (scratch / "src" / ".oft-scratch-copy").touch()
+        subprocess.run([sys.executable, str(RUST / "gen-shim.py"), "--src", str(scratch / "src"), "--fuzz-dir",
+                        fuzz_dir, "--bin", bin_name, "--out", str(scratch / "shim"), "--rt", str(RUST / "oft-rust-rt")],
+                       check=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        shutil.copyfile(lock, scratch / "shim" / "Cargo.lock")
+        made = subprocess.run(["cargo", "vendor", "--locked", "--versioned-dirs", "--manifest-path",
+                               str(scratch / "shim" / "Cargo.toml"), str(path)],
+                              env={**os.environ, "CARGO_HOME": str(scratch / "cargo-home")}, check=True,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        if (scratch / "shim" / "Cargo.lock").read_bytes() != lock.read_bytes():
+            raise Failed(f"crates {path}: cargo vendor changed the lock")
+    stanzas = [block.strip() for block in GIT_SOURCE.split(made.stdout) if block.strip().startswith('[source."git+')]
+    (path / ".oft-git-sources.toml").write_text("\n\n".join(stanzas) + ("\n" if stanzas else ""))
+    (path / ".oft-vendor-lock-sha256").write_text(hashlib.sha256(lock.read_bytes()).hexdigest() + "\n")
+    print(f"lay-out-sources: crates {path}: {sum(1 for entry in path.iterdir() if entry.is_dir())} crate(s)")
+
+
 def corpus(path, name, files):
     fresh(path)
     path.mkdir()
@@ -273,6 +310,8 @@ def main():
                 file(destination, *args)
             elif kind == "archive" and len(args) >= 3:
                 archive(destination, *args)
+            elif kind == "crates" and len(args) == 4:
+                crates(destination, *args, root)
             elif kind == "corpus" and len(args) == 1:
                 corpus(destination, args[0], files)
             elif kind == "copy" and len(args) == 1:

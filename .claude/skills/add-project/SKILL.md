@@ -125,7 +125,9 @@ Give each file a header that tells what it is and its licence. A file copied fro
 
 ## 4. Port the build
 
-Today the builder builds `c`, `c++` and `python` projects (`docs/project-yaml.md`, "language"). For another language, tell the maintainer that its builder is pending. Then stop.
+Today the builder builds `c`, `c++`, `rust` and `python` projects (`docs/project-yaml.md`, "language"). For another language, tell the maintainer that its builder is pending. Then stop.
+
+For a `rust` project, the fuzz targets are cargo-fuzz `[[bin]]`s in the project's repository. Write the build files in the form of a ported Rust build, for example `tools/seeds/bincode/`. Put the `Cargo.lock` of each fuzz target in the project directory, and get its crates with a `crates` line in `sources`. Do not set `ubsan_checks`.
 
 For a `python` project, the fuzz targets are atheris harnesses. Write the build files in the form of a ported Python build, for example `tools/seeds/mdurl/`. Pin each file that `pip install` uses with a `file` line in `sources`. The seed corpus of each fuzz target is an input of its build.
 

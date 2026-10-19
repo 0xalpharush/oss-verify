@@ -25,8 +25,8 @@
 # $LIB_ALLOCATION_COUNTING_ENGINE makes the same, with counting mode on (allocation_counting.o), for sweep and test
 # builds.
 #
-# A recipe that compiles its own adapter (python/recipes.sh, with python_tier_plugin.h) names it in OV_ADAPTER: it
-# takes the place of adapter.o.
+# A recipe that compiles its own adapter (rust/recipes.sh, with plugin_rust.h; python/recipes.sh, with
+# python_tier_plugin.h) names it in OV_ADAPTER: it takes the place of adapter.o.
 set -euo pipefail
 
 # shellcheck source=/dev/null

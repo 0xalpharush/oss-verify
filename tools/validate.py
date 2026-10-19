@@ -119,9 +119,10 @@ SOURCE_SUFFIXES = tuple(dict.fromkeys(suffix for suffixes in LANGUAGES.values() 
 PLAIN_ONLY = ("go", "jvm")
 # The languages that the builder builds today: those of the toolchains in infra/toolchains.tsv. The builders of the
 # others are pending.
-BUILT_TODAY = ("c", "c++", "python")
+BUILT_TODAY = ("c", "c++", "rust", "python")
 # The languages whose UBSan builds are clang's UndefinedBehaviorSanitizer, which ubsan_checks changes (a python
-# project's builds compile CPython with it).
+# project's builds compile CPython with it). A rust project's ubsan build is rustc's UB checks
+# (docs/build-contract.md#rust-fuzz-targets).
 UBSAN_CHECK_LANGUAGES = ("c", "c++", "python")
 SANITIZERS = ("address", "undefined")
 PUBLISH = ("eager", "after_fixes", "never")

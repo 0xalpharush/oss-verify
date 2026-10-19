@@ -70,9 +70,9 @@ This table is the only list of languages in these documents. It gives the status
 | | R | pending, likely address-only (pending): `tools/validate.py` does not accept it yet | |
 | | Swift | not possible: RISC-V LLVM has no Swift calling convention | |
 
-Our builder builds `c`, `c++` and `python` projects today. `tools/validate.py` warns about the other languages, and `tools/check` refuses them. The builders of the other languages are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
+Our builder builds `c`, `c++`, `rust` and `python` projects today. `tools/validate.py` warns about the other languages, and `tools/check` refuses them. The builders of the other languages are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
 
-A `python` project has all four builds: each build compiles CPython with its own flags.
+A `rust` project has all four builds. Its `ubsan` build uses rustc's UB checks, not UndefinedBehaviorSanitizer. A `python` project has all four builds: each build compiles CPython with its own flags.
 
 A `go` or `jvm` project has only the plain build, because it has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`.
 
@@ -220,7 +220,7 @@ The build files of a draft branch come from the build recipe of that release (`t
 | fuzz target sources | optional: your own fuzz targets and their helpers, with the suffixes of your language ([above](#language)) |
 | `*.patch` and `series` | optional: build patches |
 | `sources` | optional: other source trees and files of the build, each pinned by commit or SHA-256 ([build-contract.md](build-contract.md#builds-ported-from-oss-fuzz-theorems)) |
-| a file that `sources` copies | optional: a file that the build needs, under any name |
+| a file that `sources` copies | optional: a file that the build needs, under any name, for example the `Cargo.lock` of a Rust fuzz target |
 | `<target>_seed_corpus.zip` | optional: example inputs of the fuzz target `<target>` ([below](#seed-corpora)) |
 
 ### Seed corpora

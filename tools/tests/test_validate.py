@@ -137,6 +137,7 @@ class Languages(unittest.TestCase):
 
     def test_the_languages_built_today(self):
         self.assertEqual(check(MINIMAL)[1], [])
+        self.assertEqual(check(MINIMAL.replace("language: c", "language: rust"))[1], [])
         self.assertEqual(check(MINIMAL.replace("language: c", "language: python"))[1], [])
         _, warnings, _ = check(MINIMAL.replace("language: c", "language: javascript"))
         self.assertTrue(any("the builder cannot build it yet" in warning for warning in warnings), warnings)
@@ -146,7 +147,7 @@ class Languages(unittest.TestCase):
 
     def test_ubsan_checks_are_for_c_and_cxx(self):
         changes = "ubsan_checks: {remove: [shift], reason: shifts of negative values are intended}\n"
-        problems, _, _ = check(MINIMAL.replace("language: c", "language: javascript") + changes)
+        problems, _, _ = check(MINIMAL.replace("language: c", "language: rust") + changes)
         self.assertTrue(any("applies only to C, C++ and Python" in problem for problem in problems), problems)
         for language in ("c", "python"):
             problems, _, _ = check(MINIMAL.replace("language: c", f"language: {language}") + changes)
