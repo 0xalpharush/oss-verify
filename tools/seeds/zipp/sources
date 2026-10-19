@@ -1,6 +1,8 @@
 # Ported from the Python build of the oss-fuzz-theorems 2026.10 release (tools/seeds/languages.tsv); do not edit.
 # kind	path	arguments: see lay-out-sources
 tree	ext/zipp-fuzz_zipp/src	upstream/zipp
+# zipp builds with coherent.licensed, which fetches a LICENSE when the tree has none: a pinned one, which no binary holds
+file	ext/zipp-fuzz_zipp/src/LICENSE	https://raw.githubusercontent.com/spdx/license-list-data/31ba1a50e5397e00a304dbadc76531740e89ee48/text/MIT.txt	b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5
 copy	targets/zipp-fuzz_zipp/fuzz_zipp.py	fuzz_zipp.py
 corpus	targets/zipp-fuzz_zipp/seeds	fuzz_zipp_seed_corpus.zip
 file	ext/zipp-fuzz_zipp/pydist/coherent_licensed-0.5.2-py3-none-any.whl	https://files.pythonhosted.org/packages/29/0f/01883ea2dc014314a785e5bf5b8c709a6cc4a22442d780c09bb1adb3eee1/coherent_licensed-0.5.2-py3-none-any.whl	edccc5193ca2786f8fb3f0c7374637a143985f781f7eaa21aca3af2bd634b82f

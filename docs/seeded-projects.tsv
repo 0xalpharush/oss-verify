@@ -55,7 +55,7 @@ arrow	yes	arrow-csv-fuzz,arrow-ipc-file-fuzz,arrow-ipc-stream-fuzz,parquet-arrow
 arrow-java	no	-	-	-	the release did not build it (status language-pending: jvm)
 arrow-py	no	-	-	-	the release did not build it (status language-pending: python)
 askama	no	-	-	-	the release did not build it (status language-pending: rust)
-asn1crypto	yes	fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+asn1crypto	yes	fuzz_parse	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 aspectj	no	-	-	-	the release did not build it (status language-pending: jvm)
 aspell	yes	aspell_fuzzer	reproduces	all binaries match the release's	aspell_fuzzer: the release modified this harness
 assimp	no	-	-	-	the release did not build it (status too-large: size)
@@ -136,7 +136,7 @@ cfengine	yes	string_fuzzer	reproduces	all binaries match the release's	string_fu
 cffi	no	-	-	-	the release did not build it (status language-pending: python)
 cgif	yes	cgif_file_fuzzer,cgif_fuzzer,cgif_rgb_fuzzer	reproduces	all binaries match the release's	-
 cglib	no	-	-	-	the release did not build it (status language-pending: jvm)
-chardet	yes	fuzz_detector	checking	-	the release built it in its Python build, which it did not publish
+chardet	yes	fuzz_detector	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 charset_normalizer	no	-	-	-	the release did not build it (status language-pending: python)
 checker-framework	no	-	-	-	the release did not build it (status language-pending: jvm)
 checkstyle	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -186,7 +186,7 @@ crow	yes	json_fuzzer	reproduces	all binaries match the release's	-
 cryptofuzz	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 cryptography	no	-	-	-	the release did not build it (status language-pending: python)
 cryptsetup	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
-cssselect	yes	fuzz_parse,fuzz_xpath	checking	-	the release built it in its Python build, which it did not publish
+cssselect	yes	fuzz_parse,fuzz_xpath	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 cubefs	no	-	-	-	the release did not build it (status language-pending: go)
 cups	no	-	-	-	the release did not build it (status too-large: size)
 cups-filters	no	-	-	-	no harness to seed: fuzz_cupsfilters_image_png_decoder (the release's patch 0001-ppdgenerator-private-cups-symbol-clash.patch edits cupsfilters/ppdgenerator.c, the library's own source)
@@ -207,7 +207,7 @@ dbus-broker	yes	fuzz-message	reproduces	all binaries match the release's	fuzz-me
 dbus-sensors	yes	utils_fuzzer	reproduces	all binaries match the release's	utils_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
 dcmtk	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 decorator	no	-	-	-	the release did not build it (status language-pending: python)
-defusedxml	yes	fuzz_etree_parse,fuzz_parse_string	checking	-	the release built it in its Python build, which it did not publish
+defusedxml	yes	fuzz_etree_parse,fuzz_parse_string	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 demangle	no	-	-	-	the release did not build it (status language-pending: go)
 deno	no	-	-	-	the release did not build it (status language-pending: rust)
 dgraph	no	-	-	-	the release did not build it (status language-pending: go)
@@ -460,7 +460,7 @@ ibmswtpm2	no	-	-	-	the release did not build it (status too-large: size)
 ical4j	no	-	-	-	the release did not build it (status language-pending: jvm)
 icalendar	no	-	-	-	the release did not build it (status language-pending: python)
 icu	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
-idna	yes	fuzz_encode_decode,fuzz_idna_api,fuzz_idna_codec	checking	-	the release built it in its Python build, which it did not publish
+idna	yes	fuzz_encode_decode,fuzz_idna_api,fuzz_idna_codec	reproduces	all binaries match the release's	the release built it in its Python build, which it did not publish
 igraph	yes	basic_properties_directed	reproduces	all binaries match the release's	basic_properties_directed: the release applied 1 patch(es) to the library's tree (reproducible build), none to its own source
 ijson	no	-	-	-	the release did not build it (status language-pending: python)
 image-png	no	-	-	-	the release did not build it (status language-pending: rust)
@@ -471,7 +471,7 @@ immer	no	-	-	-	the release did not build it (status not-yet-built: not-attempted
 importlib_metadata	no	-	-	-	the release did not build it (status language-pending: python)
 inchi	yes	molfile_fuzzer	reproduces	all binaries match the release's	molfile_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
 influxdb	no	-	-	-	the release did not build it (status language-pending: go)
-iniconfig	yes	fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+iniconfig	yes	fuzz_parse	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 inih	yes	inihfuzz	reproduces	all binaries match the release's	inihfuzz: the harness is in OSS-Fuzz's repository, not the project's
 iniparser	no	-	-	-	the release did not build it (status no-harness: none-at-commit)
 ion-java	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -484,7 +484,7 @@ ipykernel	no	-	-	-	the release did not build it (status language-pending: python
 ipython	no	-	-	-	the release did not build it (status language-pending: python)
 iroha	no	-	-	-	the release did not build it (status language-pending: rust)
 irssi	no	-	-	-	the release did not build it (status too-large: size)
-isodate	yes	fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+isodate	yes	fuzz_parse	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 istio	no	-	-	-	the release did not build it (status language-pending: go)
 istio-ztunnel	no	-	-	-	the release did not build it (status language-pending: rust)
 itext7	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -534,7 +534,7 @@ jimfs	no	-	-	-	the release did not build it (status language-pending: jvm)
 jimp	no	-	-	-	the release did not build it (status language-pending: javascript)
 jinja2	no	-	-	-	the release did not build it (status language-pending: python)
 jline3	no	-	-	-	the release did not build it (status language-pending: jvm)
-jmespathpy	yes	fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+jmespathpy	yes	fuzz_parse	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 jmh	no	-	-	-	the release did not build it (status language-pending: jvm)
 joblib	no	-	-	-	the release did not build it (status language-pending: python)
 joda-convert	no	-	-	-	the release did not build it (status language-pending: jvm)
@@ -762,7 +762,7 @@ md4c	yes	fuzz-mdhtml	reproduces	all binaries match the release's	-
 mdbook-i18n-helpers	no	-	-	-	the release did not build it (status language-pending: rust)
 mdbtools	yes	fuzz_mdb	reproduces	all binaries match the release's	-
 mdit-py-plugins	no	-	-	-	the release did not build it (status language-pending: python)
-mdurl	yes	fuzz_mdurl	checking	-	the release built it in its Python build, which it did not publish
+mdurl	yes	fuzz_mdurl	reproduces	all binaries match the release's	the release built it in its Python build, which it did not publish
 memcached	yes	fuzzer_proxy	reproduces	all binaries match the release's	fuzzer_proxy: the harness is in OSS-Fuzz's repository, not the project's
 mercurial	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 meshoptimizer	yes	clusterfuzz,codecfuzzer,simplifyfuzz	reproduces	all binaries match the release's	-
@@ -781,7 +781,7 @@ model-transparency	no	-	-	-	the release did not build it (status language-pendin
 monero	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 mongo-go-driver	no	-	-	-	the release did not build it (status language-pending: go)
 mongoose	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
-more-itertools	yes	fuzz_mi	checking	-	the release built it in its Python build, which it did not publish
+more-itertools	yes	fuzz_mi	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 mosh	yes	terminal_fuzzer,terminal_parser_fuzzer	reproduces	all binaries match the release's	-
 mosquitto	no	-	-	-	the release did not build it (status held: held)
 mp4parse-rust	no	-	-	-	the release did not build it (status language-pending: rust)
@@ -819,7 +819,7 @@ neomutt	yes	cli-fuzz	reproduces	all binaries match the release's	-
 neqo	no	-	-	-	the release did not build it (status language-pending: rust)
 nestegg	yes	fuzz	reproduces	all binaries match the release's	-
 net-snmp	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
-netaddr-py	yes	fuzz_parsing	checking	-	the release built it in its Python build, which it did not publish
+netaddr-py	yes	fuzz_parsing	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 netcdf	yes	fuzz_open	reproduces	all binaries match the release's	-
 netdata	no	-	-	-	the release did not build it (status no-harness: none-at-commit)
 nettle	yes	fuzz_dsa_openssl_private_key_from_der,fuzz_dsa_sha1_keypair_from_sexp,fuzz_dsa_sha256_keypair_from_sexp,fuzz_dsa_signature_from_sexp,fuzz_rsa_keypair_from_der,fuzz_rsa_keypair_from_sexp,fuzz_rsa_public_key_from_der	reproduces	all binaries match the release's	fuzz_dsa_openssl_private_key_from_der: the harness is in OSS-Fuzz's repository, not the project's; fuzz_dsa_sha1_keypair_from_sexp: the harness is in OSS-Fuzz's repository, not the project's; fuzz_dsa_sha256_keypair_from_sexp: the harness is in OSS-Fuzz's repository, not the project's; fuzz_dsa_signature_from_sexp: the harness is in OSS-Fuzz's repository, not the project's; fuzz_rsa_keypair_from_der: the harness is in OSS-Fuzz's repository, not the project's; fuzz_rsa_keypair_from_sexp: the harness is in OSS-Fuzz's repository, not the project's; fuzz_rsa_public_key_from_der: the harness is in OSS-Fuzz's repository, not the project's
@@ -915,12 +915,12 @@ oxia	no	-	-	-	the release did not build it (status language-pending: go)
 p11-kit	yes	conf_fuzzer	reproduces	all binaries match the release's	conf_fuzzer: the release applied 2 patch(es) to the library's tree (build adaptation, harness output), none to its own source; conf_fuzzer: the release modified this harness
 p9	no	-	-	-	the release did not build it (status language-pending: go)
 pacemaker	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
-packaging	yes	fuzz_packaging	checking	-	the release built it in its Python build, which it did not publish
+packaging	yes	fuzz_packaging	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 pako	no	-	-	-	the release did not build it (status language-pending: javascript)
 pam-ipmi	no	-	-	-	the release did not build it (status too-large: size)
 pandas	no	-	-	-	the release did not build it (status language-pending: python)
 paramiko	no	-	-	-	the release did not build it (status language-pending: python)
-parse	yes	fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+parse	yes	fuzz_parse	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 parsimonious	no	-	-	-	the release did not build it (status language-pending: python)
 parso	no	-	-	-	the release did not build it (status language-pending: python)
 pasta	no	-	-	-	the release did not build it (status language-pending: python)
@@ -992,22 +992,22 @@ pulldown-cmark	no	-	-	-	the release did not build it (status language-pending: r
 pulumi	no	-	-	-	the release did not build it (status language-pending: go)
 pupnp	yes	FuzzHttp,FuzzIxml	reproduces	all binaries match the release's	-
 py-serde	no	-	-	-	the release did not build it (status language-pending: python)
-pyasn1	yes	fuzz_decode	checking	-	the release built it in its Python build, which it did not publish
+pyasn1	yes	fuzz_decode	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 pyasn1-modules	no	-	-	-	the release did not build it (status language-pending: python)
 pybind11	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
-pycparser	yes	fuzz_c_parser	checking	-	the release built it in its Python build, which it did not publish
+pycparser	yes	fuzz_c_parser	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 pycrypto	no	-	-	-	the release did not build it (status language-pending: python)
 pycryptodome	yes	aes_fuzzer	reproduces	all binaries match the release's	aes_fuzzer: the release modified this harness; its copy is not published yet
 pycups	no	-	-	-	the release did not build it (status language-pending: python)
 pydantic	no	-	-	-	the release did not build it (status language-pending: python)
 pydateutil	no	-	-	-	the release did not build it (status language-pending: python)
 pygments	no	-	-	-	the release did not build it (status language-pending: python)
-pyjson5	yes	fuzz_json	checking	-	the release built it in its Python build, which it did not publish
+pyjson5	yes	fuzz_json	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 pyjwt	no	-	-	-	the release did not build it (status language-pending: python)
 pymysql	no	-	-	-	the release did not build it (status language-pending: python)
 pynacl	no	-	-	-	the release did not build it (status language-pending: python)
 pyodbc	no	-	-	-	the release did not build it (status language-pending: python)
-pyparsing	yes	fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+pyparsing	yes	fuzz_parse	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 pypy3	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 pyrsistent	no	-	-	-	the release did not build it (status language-pending: python)
 pytables	no	-	-	-	the release did not build it (status language-pending: python)
@@ -1020,18 +1020,18 @@ python-graphviz	no	-	-	-	the release did not build it (status language-pending: 
 python-hyperlink	no	-	-	-	the release did not build it (status language-pending: python)
 python-jose	no	-	-	-	the release did not build it (status language-pending: python)
 python-lz4	no	-	-	-	the release did not build it (status language-pending: python)
-python-markdown	yes	fuzz_convert	checking	-	the release built it in its Python build, which it did not publish
+python-markdown	yes	fuzz_convert	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 python-markdownify	no	-	-	-	the release did not build it (status language-pending: python)
 python-multipart	no	-	-	-	the release did not build it (status language-pending: python)
 python-nameparser	no	-	-	-	the release did not build it (status language-pending: python)
 python-nvd3	no	-	-	-	the release did not build it (status language-pending: python)
-python-pathspec	yes	fuzz_pathspec	checking	-	the release built it in its Python build, which it did not publish
+python-pathspec	yes	fuzz_pathspec	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 python-phonenumbers	no	-	-	-	the release did not build it (status language-pending: python)
 python-prompt-toolkit	no	-	-	-	the release did not build it (status language-pending: python)
 python-pypdf	no	-	-	-	the release did not build it (status language-pending: python)
-python-rison	yes	fuzz_decode,fuzz_roundtrip	checking	-	the release built it in its Python build, which it did not publish
+python-rison	yes	fuzz_decode,fuzz_roundtrip	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 python-rsa	no	-	-	-	the release did not build it (status language-pending: python)
-python-tabulate	yes	fuzz_tabulate	checking	-	the release built it in its Python build, which it did not publish
+python-tabulate	yes	fuzz_tabulate	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 python3-libraries	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 python3-openid	no	-	-	-	the release did not build it (status language-pending: python)
 pytz	no	-	-	-	the release did not build it (status language-pending: python)
@@ -1128,7 +1128,7 @@ simd	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 simdjson	yes	fuzz_atpointer,fuzz_dump,fuzz_dump_raw_tape,fuzz_element,fuzz_implementations,fuzz_minify,fuzz_minifyimpl,fuzz_ndjson,fuzz_ondemand,fuzz_padded,fuzz_parser,fuzz_print_json,fuzz_utf8	reproduces	all binaries match the release's	fuzz_atpointer: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_dump: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_dump_raw_tape: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_element: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_implementations: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_minify: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_minifyimpl: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_ndjson: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_ndjson: the release modified this harness; fuzz_ondemand: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_padded: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_parser: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_print_json: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; fuzz_utf8: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source
 simdutf	no	-	-	-	no harness to seed: base64 (the release's patch 0001-no-riscv-hwprobe-on-rv64g.patch edits include/simdutf/internal/isadetection.h, the library's own source)
 simplejson	no	-	-	-	the release did not build it (status language-pending: python)
-six	yes	fuzz_six	checking	-	the release built it in its Python build, which it did not publish
+six	yes	fuzz_six	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 skcms	yes	iccprofile_atf,iccprofile_info,iccprofile_transform	reproduces	all binaries match the release's	iccprofile_atf: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; iccprofile_info: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; iccprofile_transform: the release applied 1 patch(es) to the library's tree (harness reporting), none to its own source; iccprofile_transform: the release modified this harness
 sketches-core	no	-	-	-	the release did not build it (status language-pending: jvm)
 skia	yes	parse_path,skjson	reproduces	all binaries match the release's	parse_path: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; parse_path: the release modified this harness; skjson: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; skjson: the release modified this harness
@@ -1181,7 +1181,7 @@ sqlalchemy-utils	no	-	-	-	the release did not build it (status language-pending:
 sqlalchemy_jsonfield	no	-	-	-	the release did not build it (status language-pending: python)
 sqlite-jdbc	no	-	-	-	the release did not build it (status language-pending: jvm)
 sqlite3	no	-	-	-	the release records no full commit for its library
-sqlparse	yes	fuzz_format,fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+sqlparse	yes	fuzz_format,fuzz_parse	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 stack_data	no	-	-	-	the release did not build it (status language-pending: python)
 starlark-rust	no	-	-	-	the release did not build it (status language-pending: rust)
 starnix-netlink	no	-	-	-	the release did not build it (status language-pending: rust)
@@ -1232,7 +1232,7 @@ tidy-html5	yes	tidy_config_fuzzer,tidy_fuzzer,tidy_parse_string_fuzzer,tidy_xml_
 time	no	-	-	-	the release did not build it (status language-pending: go)
 timestamp-authority	no	-	-	-	the release did not build it (status language-pending: go)
 tink-cc	yes	tink_encrypt_fuzzer	reproduces	all binaries match the release's	tink_encrypt_fuzzer: the release applied 1 patch(es) to the library's tree (build adaptation), none to its own source; tink_encrypt_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
-tinycss2	yes	fuzz_components,fuzz_parse	checking	-	the release built it in its Python build, which it did not publish
+tinycss2	yes	fuzz_components,fuzz_parse	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 tinygltf	yes	fuzz_gltf_v3_c	reproduces	all binaries match the release's	-
 tinyobjloader	yes	fuzz_tobj_c	reproduces	all binaries match the release's	-
 tinysparql	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
@@ -1244,10 +1244,10 @@ tomcat	no	-	-	-	the release did not build it (status language-pending: jvm)
 toml	no	-	-	-	the release did not build it (status language-pending: python)
 toml_edit	no	-	-	-	the release did not build it (status language-pending: rust)
 tomli	no	-	-	-	the release did not build it (status language-pending: python)
-tomlkit	yes	fuzz_dumps,fuzz_parser	checking	-	the release built it in its Python build, which it did not publish
+tomlkit	yes	fuzz_dumps,fuzz_parser	reproducible	8 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 tomlplusplus	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 toolbelt	no	-	-	-	the release did not build it (status language-pending: python)
-toolz	yes	fuzz_itertoolz	checking	-	the release built it in its Python build, which it did not publish
+toolz	yes	fuzz_itertoolz	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 tor	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 tpm2	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 tpm2-tss	no	-	-	-	the release did not build it (status not-yet-built: setup-fails)
@@ -1263,7 +1263,7 @@ twelve-monkeys	no	-	-	-	the release did not build it (status language-pending: j
 twitter4j	no	-	-	-	the release did not build it (status language-pending: jvm)
 typescript	no	-	-	-	the release did not build it (status language-pending: javascript)
 typescript-example	no	-	-	-	the release did not build it (status language-pending: javascript)
-typing_extensions	yes	fuzz_typing_extensions	checking	-	the release built it in its Python build, which it did not publish
+typing_extensions	yes	fuzz_typing_extensions	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 typst	no	-	-	-	the release did not build it (status language-pending: rust)
 tyrus	no	-	-	-	the release did not build it (status language-pending: jvm)
 u-boot	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
@@ -1283,7 +1283,7 @@ univocity-parsers	no	-	-	-	the release did not build it (status language-pending
 unsafe-libyaml	no	-	-	-	the release did not build it (status language-pending: rust)
 upx	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
 uriparser	yes	uri_dissect_query_malloc_fuzzer	reproduces	all binaries match the release's	-
-uritemplate	yes	fuzz_expand	checking	-	the release built it in its Python build, which it did not publish
+uritemplate	yes	fuzz_expand	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 urlextract	no	-	-	-	the release did not build it (status language-pending: python)
 urllib3	no	-	-	-	the release did not build it (status language-pending: python)
 usbguard	no	-	-	-	the release did not build it (status too-large: size-unmeasured)
@@ -1294,7 +1294,7 @@ utf8proc	yes	utf8proc_fuzzer	reproduces	all binaries match the release's	-
 util-linux	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 uwebsockets	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
 v8	no	-	-	-	the release did not build it (status not-yet-built: not-attempted)
-validators	yes	fuzz_validators	checking	-	the release built it in its Python build, which it did not publish
+validators	yes	fuzz_validators	reproducible	4 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 valijson	yes	fuzzer	reproduces	all binaries match the release's	-
 varnish	yes	esi_parse_fuzzer	fails	docker build of the project's Dockerfile failed | 11.66 error: Unable to find 5177f315088f383b2505bbfe9f4bd6d161165b5e under https://code.vinyl-cache.org/vinyl-cache/vinyl-cache | 11.66 error: fetch failed. | ERROR: failed to build: failed to solve: process "/bin/sh -c fetch-commit $SRC/upstream/varnish" did not complete successfully: exit code: 128 | BUILD FAILED: docker build of the project's Do	-
 vitess	no	-	-	-	the release did not build it (status language-pending: go)
@@ -1304,7 +1304,7 @@ vorbis	yes	decode_fuzzer,encode_fuzzer	reproduces	all binaries match the release
 vtpm-td	no	-	-	-	the release did not build it (status language-pending: rust)
 vulkan-loader	yes	json_load_fuzzer	reproduces	all binaries match the release's	json_load_fuzzer: the harness is in OSS-Fuzz's repository, not the project's
 vulnerable-project	no	-	-	-	the release did not build it (status no-harness: none-at-commit)
-w3lib	yes	fuzz_parse_data_uri,fuzz_safe_download_url,fuzz_url_safe	checking	-	the release built it in its Python build, which it did not publish
+w3lib	yes	fuzz_parse_data_uri,fuzz_safe_download_url,fuzz_url_safe	reproducible	12 binaries; a second build is identical; the release has none to compare	the release built it in its Python build, which it did not publish
 w3m	yes	fuzz_conv	reproduces	all binaries match the release's	-
 wabt	yes	read_binary_ir_fuzzer,wasm2wat-fuzz,wat2wasm_fuzzer	reproduces	all binaries match the release's	left out: read_binary_interp_fuzzer (built from another commit of the library, c886b0a74290)
 wamr	no	-	-	-	the release did not build it (status too-large: size)
