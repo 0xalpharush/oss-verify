@@ -74,7 +74,7 @@ Our builder builds `c`, `c++`, `rust`, `python` and `go` projects today. `tools/
 
 A `rust` project has all four builds. Its `ubsan` build uses rustc's UB checks, not UndefinedBehaviorSanitizer. A `python` project has all four builds: each build compiles CPython with its own flags.
 
-A `go` or `jvm` project has only the plain build, because it has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`.
+A `go` or `jvm` project has only the plain build, because it has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`. A `go` project's fuzz targets are its OSS-Fuzz Go fuzz targets, which OSS-Fuzz's Go helpers build ([build-contract.md](build-contract.md#go-fuzz-targets)).
 
 A fuzz target source in the project directory has a suffix of C or C++: `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp`. Each other language also permits the suffixes that the table gives.
 

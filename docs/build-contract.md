@@ -171,9 +171,11 @@ Thus an OSS-Fuzz testcase needs six zero bytes in front of it: `00 00 00 00 00 0
 | status | meaning |
 |---:|---|
 | 0 | each call of the fuzz target returned 0 or -1 |
-| 2 | the driver refused the input and did not call the fuzz target |
+| 2 | the driver refused the input and did not call the fuzz target, or the system refused memory to the Go runtime ([below](#go-fuzz-targets)) |
 | 77 | the fuzz target called `exit()` |
 | 78 | a call of the fuzz target returned a value that is not 0 or -1 |
+| 79 | a Go fuzz target panicked: a `panic`, a runtime error, or `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test ([below](#go-fuzz-targets)) |
+| 80 | the Go runtime stopped with a fatal error that is not out of memory, for example a deadlock or a stack overflow ([below](#go-fuzz-targets)) |
 | 132 | `SIGILL`: an UndefinedBehaviorSanitizer check failed (the check traps in these builds) |
 | 134 | `abort()`: a failed `assert()`, an AddressSanitizer detection, or an uncaught C++ exception |
 | 139 | `SIGSEGV`: a crash |
@@ -254,7 +256,7 @@ To find which allocations an input makes, link a sweep or test build with `$LIB_
 
 ## The fuzz targets
 
-A fuzz target is an executable in the `$OUT` of a build whose ELF symbol table defines `LLVMFuzzerTestOneInput`. This is the OSS-Fuzz rule, but we read the symbol table in place of the bytes of the file. A fuzz target must be in each build.
+A fuzz target is an executable in the `$OUT` of a build whose ELF symbol table defines `LLVMFuzzerTestOneInput`. This is the OSS-Fuzz rule, but we read the symbol table in place of the bytes of the file. A fuzz target must be in each build. A Go program has no `LLVMFuzzerTestOneInput`. Thus `compile` lists the Go fuzz targets in `$OUT/.go-fuzz-targets`, and `tools/check` reads that list ([below](#go-fuzz-targets)).
 
 `fuzz_targets` in `project.yaml` names the fuzz targets to verify. Without it, we verify each fuzz target that we find. `tools/check` copies the published binary of each fuzz target to `out/<target>/<target>.<build>`. It ignores each other file in `$OUT`.
 
@@ -268,6 +270,29 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
 * `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+
+## Go fuzz targets
+
+<!-- draft: policy to review -->
+A Go fuzz target is an OSS-Fuzz Go fuzz target, as it is. OSS-Fuzz's Go helpers build it: `compile_go_fuzzer` for a go-fuzz `Fuzz(data []byte) int` function, and `compile_native_go_fuzzer` or `compile_native_go_fuzzer_v2` for a `testing.F` fuzz test. The Go toolchain image adds Go 1.27.1 and these helpers to the C and C++ toolchain. Its row in infra/toolchains.tsv names it. The oss-fuzz-theorems 2026.10 release built its Go binaries in this image, but did not publish them. Our builds make them again, byte for byte.
+
+`build.sh` is the project's OSS-Fuzz `build.sh`, as it is. `compile` runs it with the environment that OSS-Fuzz gives the `build.sh` of a Go project: `SANITIZER=address`, `FUZZING_ENGINE=libfuzzer`, `ARCHITECTURE=x86_64` and `FUZZING_LANGUAGE=go` ([go/compile-go](../infra/base-builder/go/compile-go)). The helpers do OSS-Fuzz's steps until the build. Then they build a static riscv64 program from the fuzz target and a driver in Go, with no cgo. A Go project has the plain build only.
+
+A `go.lock` in the project directory pins the modules. It has one row for each `.mod`, `.zip` and `.info` file of the module proxy, with the SHA-256 of each `.mod` and `.zip` file. The `gomodules` line of the `sources` file gets these files from proxy.golang.org while the `Dockerfile` builds, and checks them. `compile` then builds with `GOPROXY` set to these files, with no network.
+
+These items are different from a Go fuzz target in OSS-Fuzz:
+
+* The build uses a patched Go runtime. The patches are an overlay of the standard library (the `-overlay` flag of `go build`), and a rebuilt compiler. The Go toolchain itself does not change. The patches remove what the process model does not have: signal handlers, the second thread of the scheduler, reads of the environment, of `/proc` and of `/sys`, and the vector instructions of riscv64. They also give the exit statuses below.
+* A load through a nil pointer is a segmentation fault (status 139), not a panic, because the runtime installs no signal handler. A statement counts 139 as a failure, as it counts a panic.
+* A panic, a runtime error, and `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test exit with status 79. In OSS-Fuzz, they crash the fuzz target.
+* `os.Exit` during a call of the fuzz target exits with status 77.
+* A fatal error of the runtime that is not out of memory exits with status 80. Examples are a deadlock, a stack overflow and a write to a map from two goroutines. Stock Go exits with status 2.
+* The runtime exits with status 2 only after the system refused it memory: an `mmap` for the heap, a stack or the runtime's own data failed. The premise of a statement excludes this. A request larger than the runtime's limit for one allocation (2^48 bytes), for example a `make()` that is too large, panics without asking the system (status 79).
+* `os.Getenv` returns `""` for each variable, and `GOGC`, `GODEBUG`, `GOMAXPROCS` and `GOMEMLIMIT` have no effect.
+* The program runs on one CPU.
+* The return value of a `Fuzz` function does not change the exit status. OSS-Fuzz also ignores it. The driver writes it on standard output.
+* All builds use Go 1.27.1. The `Dockerfile` of some OSS-Fuzz projects installs an older Go, which we do not install.
+* The target is riscv64 without the C extension (RV64G), and libFuzzer is not linked: the driver calls the fuzz target.
 
 ## Run a binary
 
