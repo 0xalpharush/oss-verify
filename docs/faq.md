@@ -25,7 +25,7 @@ Usually we do not accept a fork, a new project, or a project that nobody maintai
 
 ## How do I enroll a project?
 
-Follow the steps in the [README](../README.md#enroll-a-project). A coding agent can do most of the work with you. Tell it to read [AGENTS.md](../AGENTS.md). You open the pull request yourself.
+Follow the steps in the [README](../README.md#enroll-a-project). A coding agent can do most of the work with you. Paste the prompt in [Enroll with a coding agent](../README.md#enroll-with-a-coding-agent) into it. You open the pull request yourself.
 
 ## What do maintainers receive?
 

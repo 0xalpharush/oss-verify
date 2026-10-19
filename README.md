@@ -7,6 +7,25 @@ OSS Verifier is a Theorem program that verifies open-source software. We prove t
 
 A core maintainer of an established open-source project can enroll it. The project needs at least one fuzz target and a build that our builder can do. [docs/faq.md](docs/faq.md#how-do-you-choose-projects) tells how we choose projects. We seeded some projects already, and a maintainer can adopt one ([docs/project-yaml.md](docs/project-yaml.md#seeded-projects)).
 
+## Enroll with a coding agent
+
+Copy and paste this prompt into your coding agent (Claude Code, Codex, Cursor, etc.). Start the agent in a checkout of your project.
+
+```
+Enroll this project in OSS Verifier by following the instructions here:
+https://raw.githubusercontent.com/theorem-labs/oss-verifier/refs/heads/main/AGENTS.md
+```
+
+The agent asks you what "correct" means for your code, and which findings and patches you want. Then it makes `projects/<name>/` and runs the checks. You open the pull request.
+
+### For coding agents
+
+Get the instructions and follow them:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/theorem-labs/oss-verifier/refs/heads/main/AGENTS.md
+```
+
 ## Enroll a project
 
 > **WARNING:** `tools/check` builds the project's `Dockerfile` with network access. Use it only on a project that you trust ([SECURITY.md](SECURITY.md)).
@@ -17,8 +36,6 @@ A core maintainer of an established open-source project can enroll it. The proje
 4. Run `tools/validate.py projects/<name>`. Correct each problem that it shows.
 5. Run `tools/check --twice <name>`. Make sure that it builds each fuzz target, and that the second build has the same bytes.
 6. Open a pull request. Complete its checklist.
-
-A coding agent can do steps 2 to 5 with you. Tell it to read [AGENTS.md](AGENTS.md).
 
 ## After we merge
 
