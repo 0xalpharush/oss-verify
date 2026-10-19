@@ -67,12 +67,14 @@ class Text(unittest.TestCase):
 
     def test_accepted_limits(self):
         self.assertEqual(triage.accepted_limit("project.yaml"), validate.MAX_CONFIG_BYTES)
-        for name in ("Dockerfile", "build.sh", "series", "patch_style.md"):
+        for name in ("Dockerfile", "series", "sources", "patch_style.md"):
             self.assertEqual(triage.accepted_limit(name), validate.MAX_FILE_BYTES, name)
-        for name in ("driver.c", "x.cc", "y.hpp", "0001-static.patch"):
+        for name in ("build.sh", "driver.c", "x.cc", "y.hpp", "fuzz_parse.rs", "fuzz.py", "0001-static.patch"):
             self.assertEqual(triage.accepted_limit(name), validate.MAX_SOURCE_BYTES, name)
         for name in ("threat_model.md", "notes.txt", "CMakeLists.txt"):
             self.assertIsNone(triage.accepted_limit(name), name)
+        self.assertEqual(triage.accepted_limit("CMakeLists.txt", frozenset({"CMakeLists.txt"})),
+                         validate.MAX_SOURCE_BYTES)
 
 
 class Rows(unittest.TestCase):
@@ -184,6 +186,20 @@ class FetchProject(unittest.TestCase):
         problems, _, _ = validate.check_project(self.directory)
         self.assertEqual(len(problems), 1)
         self.assertIn("notes.txt: only project.yaml", problems[0])
+
+    def test_the_files_that_sources_copies_are_downloaded(self):
+        sources = b"copy\tsrc/CMakeLists.txt\tdep.CMakeLists.txt\n"
+        listing, entries, raw = listing_for({
+            "project.yaml": SEEDED.encode(), "Dockerfile": b"FROM x\n", "build.sh": b"#!/bin/bash\n" + bytes(70000),
+            "sources": sources, "dep.CMakeLists.txt": b"project(dep)\n",
+        })
+        gh = FakeGitHub({listing: entries}, files=raw)
+        triage.fetch_project(gh, REPO, "0" * 40, "example", self.directory)
+        self.assertEqual(gh.fetched.count(f"{listing}/sources"), 1)
+        self.assertEqual((self.directory / "sources").read_bytes(), sources)
+        self.assertEqual((self.directory / "dep.CMakeLists.txt").read_bytes(), b"project(dep)\n")
+        self.assertEqual(len((self.directory / "build.sh").read_bytes()), 70012)
+        self.assertEqual(validate.check_project(self.directory)[0], [])
 
     def test_links_directories_and_oversize_files_are_refused(self):
         listing, entries, raw = listing_for(

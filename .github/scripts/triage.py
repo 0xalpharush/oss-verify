@@ -344,12 +344,15 @@ def split_paths(paths: list[str]) -> tuple[list[str], list[str]]:
     return sorted(names), outside
 
 
-def accepted_limit(name: str) -> int | None:
+def accepted_limit(name: str, copied: frozenset[str] = frozenset()) -> int | None:
     """The size above which validate.py refuses a file of this name beside project.yaml, or None if it refuses the
-    name itself (so that only the name matters, not the bytes)."""
+    name itself (so that only the name matters, not the bytes). `copied` names the files that `sources` copies, which
+    may have any name. A harness source of any language counts: validate.py then judges it by the project's."""
     if name == "project.yaml":
         return validate.MAX_CONFIG_BYTES
-    if name in validate.FILE_KEYS or name in ("build.sh", validate.SERIES):
+    if name in copied or name == "build.sh":
+        return validate.MAX_SOURCE_BYTES
+    if name in validate.FILE_KEYS or name in (validate.SERIES, validate.SOURCES):
         return validate.MAX_FILE_BYTES
     if name.endswith(validate.SOURCE_SUFFIXES) or name.endswith(validate.PATCH_SUFFIX):
         return validate.MAX_SOURCE_BYTES
@@ -369,11 +372,19 @@ def fetch_project(gh: GitHub, repo: str, sha: str, name: str, directory: pathlib
         return False
     directory.mkdir()
     download = len(entries) <= validate.MAX_FILES + 1  # the files and project.yaml
+    # The sources file first: the files it copies may have any name.
+    fetched, copied = {}, frozenset()
+    for entry in entries:
+        if download and entry["name"] == validate.SOURCES and entry["type"] == "file" \
+                and entry["size"] <= validate.MAX_FILE_BYTES:
+            fetched[validate.SOURCES] = gh.fetch(f"{listing}/{validate.SOURCES}", accept=RAW, ref=sha)[0]
+            copied = frozenset(validate.copied_by_sources(
+                {validate.SOURCES: fetched[validate.SOURCES].decode("utf-8", "replace")}))
     for entry in entries:
         # The name becomes a path here. Git allows none of these as a name, so this only guards against surprises.
         if "/" in entry["name"] or "\\" in entry["name"] or entry["name"] in (".", ".."):
             continue
-        target, limit = directory / entry["name"], accepted_limit(entry["name"])
+        target, limit = directory / entry["name"], accepted_limit(entry["name"], copied)
         if entry["type"] in ("dir", "submodule"):
             target.mkdir()
         elif entry["type"] != "file":
@@ -382,6 +393,8 @@ def fetch_project(gh: GitHub, repo: str, sha: str, name: str, directory: pathlib
             target.touch()  # not a file we accept, or one too many: only its name matters
         elif entry["size"] > limit:
             target.write_bytes(bytes(limit + 1))  # too large to accept, so not worth downloading
+        elif entry["name"] in fetched:
+            target.write_bytes(fetched[entry["name"]])
         else:
             target.write_bytes(gh.fetch(f"{listing}/{quote(entry['name'], safe='')}", accept=RAW, ref=sha)[0])
     return True
