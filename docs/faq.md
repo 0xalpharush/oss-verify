@@ -6,7 +6,7 @@ This page answers the questions that [theorem.dev/oss-verifier](https://theorem.
 
 ## How do you choose projects?
 
-<!-- draft: Jason/Archana to review -->
+<!-- draft: policy to review -->
 
 **Enrollment.** We accept an established project that has a critical effect on the security of infrastructure and users. Our criteria are like those of OSS-Fuzz, and we decide case by case. We consider how much untrusted input the project gets, and how many users and dependent projects it has. A project must also obey these conditions:
 

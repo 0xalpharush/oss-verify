@@ -66,6 +66,7 @@ This table is the only list of languages in these documents. It gives the status
 | `jvm` | Java, Kotlin and the other JVM languages | halts statements only; JVM binaries are not byte-reproducible yet | `*.java` `*.kt` |
 | `javascript` | JavaScript | held | `*.js` `*.mjs` `*.cjs` `*.ts` |
 | | Ruby, Lua | in progress: `tools/validate.py` does not accept them yet | |
+| | R | pending, likely address-only (pending): `tools/validate.py` does not accept it yet | |
 | | Swift | not possible: RISC-V LLVM has no Swift calling convention | |
 
 Our builder has only the C and C++ toolchain today. Thus `tools/check` builds only `c` and `c++` projects, and `tools/validate.py` warns about the other languages. The builders for Rust and Python are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
