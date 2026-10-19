@@ -188,7 +188,7 @@ Today's driver counts a return value of -1 as 0. It also writes each return valu
 > | 3 | one or more calls returned -1, and no call returned another value |
 > | 78 | a call of the fuzz target returned a value that is not 0 or -1 |
 >
-> The statuses 2 and 77, and the statuses of the signals, do not change. A call of `exit()` during `LLVMFuzzerInitialize` with a status other than 0 or 2 becomes status 77. A halts statement then accepts the statuses 0, 2 and 3. A project with proofs keeps today's driver, through the vintage that its lock pins ([Toolchains](#toolchains)).
+> The statuses 2 and 77, and the statuses of the signals, do not change. A call of `exit()` during `LLVMFuzzerInitialize` with a status other than 0 or 2 becomes status 77. For a fuzz target in C, C++ or Rust, and for a DSL fuzz target, a halts statement then accepts the statuses 0, 2 and 3. The drivers for Python, JavaScript, Go and JVM fuzz targets do not give status 3, so a halts statement for them accepts only 0 and 2. A project with proofs keeps today's driver, through the vintage that its lock pins ([Toolchains](#toolchains)).
 
 > **WARNING:** Do not return -1 for a failed property. The driver counts -1 as a pass: status 0 today, and status 3 in the next toolchain version. A halts statement accepts both. For a failed property, call `abort()`. Return -1 only for a failed expectation that the input chooses, or for an input outside a property's domain. Step 3.7 of [the add-project skill](../.claude/skills/add-project/SKILL.md) tells why.
 

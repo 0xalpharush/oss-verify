@@ -23,7 +23,7 @@ The project's branch in the proofs repository lists the statements of each fuzz 
 
 A statement accepts only the exit statuses **0 and 2** ([build-contract.md](build-contract.md#exit-statuses)). Status 0 tells that each call of the fuzz target returned 0 or -1. Status 2 tells that the driver refused the input, for example a file of 64 MiB or more.
 
-**Next toolchain version.** Its driver exits with status 3 when one or more calls returned -1. A halts statement then accepts 0, 2 and 3. A project with proofs keeps today's driver ([build-contract.md](build-contract.md#exit-statuses)).
+**Next toolchain version.** For a fuzz target in C, C++ or Rust, and for a DSL fuzz target, the driver exits with status 3 when one or more calls returned -1. A halts statement for such a fuzz target then accepts 0, 2 and 3. The drivers for Python, JavaScript, Go and JVM fuzz targets do not give status 3, so their halts statements accept only 0 and 2. A project with proofs keeps today's driver ([build-contract.md](build-contract.md#exit-statuses)).
 
 Thus each expected outcome must end as `return 0`. Examples of expected outcomes are malformed input that the library rejects, a size limit, and an error code from the library.
 
