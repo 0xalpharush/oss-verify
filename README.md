@@ -5,7 +5,7 @@ OSS Verifier is a Theorem program that verifies open-source software. We prove t
 
 ## Who can enroll
 
-A core maintainer of an open-source project can enroll it. The project needs at least one fuzz target and a build that our builder can do. [docs/faq.md](docs/faq.md#which-projects-can-enroll) gives each condition. We seeded some projects already, and a maintainer can adopt one ([docs/project-yaml.md](docs/project-yaml.md#seeded-projects)).
+A core maintainer of an established open-source project can enroll it. The project needs at least one fuzz target and a build that our builder can do. [docs/faq.md](docs/faq.md#how-do-you-choose-projects) tells how we choose projects. We seeded some projects already, and a maintainer can adopt one ([docs/project-yaml.md](docs/project-yaml.md#seeded-projects)).
 
 ## Enroll a project
 

@@ -4,18 +4,24 @@ This page answers the questions that [theorem.dev/oss-verifier](https://theorem.
 
 <!-- One home for each fact: when theorem.dev/oss-verifier answers a question, remove that question here. -->
 
-## Which projects can enroll?
+## How do you choose projects?
 
-A core maintainer can enroll an open-source project that has all of these:
+<!-- draft: Jason/Archana to review -->
 
-1. **A public git repository.** We get the source anonymously over `https`. One project directory names one repository.
-2. **At least one fuzz target.** A fuzz target is a function `LLVMFuzzerTestOneInput`. Use the project's own fuzz targets, its OSS-Fuzz fuzz targets, or new ones.
-3. **A build that our builder can do.** The [language table](project-yaml.md#language) tells which languages it builds today.
-4. **A security contact.** We send each finding to this address.
+**Enrollment.** We accept an established project that has a critical effect on the security of infrastructure and users. Our criteria are like those of OSS-Fuzz, and we decide case by case. We consider how much untrusted input the project gets, and how many users and dependent projects it has. A project must also obey these conditions:
 
-A person reviews each enrollment. The triage comment on the pull request helps the review. It shows the licence, the activity and the criticality score of the project, for example. We can decline a project that we cannot build, or that we cannot verify with the tools that we have today. Then we tell you why in the pull request.
+1. The person who enrolls the project is a core maintainer of it.
+2. The project has a licence that the Open Source Initiative approves.
+3. The project has a public git repository, which we get anonymously over `https`. One project directory names one repository.
+4. The project has at least one fuzz target: its own, its OSS-Fuzz fuzz targets, or new ones.
+5. Our builder can build the project. The [language table](project-yaml.md#language) tells which languages it builds today.
+6. The project has a security contact. We send each finding to this address.
 
-We seeded some projects ourselves. A core maintainer can adopt one ([project-yaml.md](project-yaml.md#seeded-projects)).
+Usually we do not accept a fork, a new project, or a project that nobody maintains. A person reviews each enrollment. The triage comment on the pull request helps the review: for example, it shows the licence, the activity and the criticality score of the project. If we decline a project, we tell you why in the pull request.
+
+**Seeding.** We seeded the projects of OSS-Fuzz, at its commit `bd2ce21991a94a362b92fb1bf25f86d5a1a60842`, that our builder can build and that we can describe honestly. A seeded `project.yaml` gives only what the recorded build data tells, and no guess. [seeded-projects.tsv](seeded-projects.tsv) lists each of the 1,381 projects of OSS-Fuzz at that commit. For a project that we did not seed, it gives the reason. We publish a seeded project only while it has no findings. A core maintainer can adopt a seeded project ([project-yaml.md](project-yaml.md#seeded-projects)).
+
+**Order of work.** We work first on libraries that many programs depend on, and on the components from which secure sandboxes are built.
 
 ## How do I enroll a project?
 
