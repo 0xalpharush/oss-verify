@@ -1,6 +1,6 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for tools/check that need no Docker, with the builds replaced:  python3 -m unittest discover -s tools/tests"""
+"""Tests for tools/check that need no Docker, with the builds replaced:  python3 -m pytest tools/tests"""
 import contextlib
 import importlib.machinery
 import importlib.util

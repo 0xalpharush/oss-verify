@@ -1,6 +1,6 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for .github/scripts/triage.py, offline, with a fake GitHub API:  python3 -m unittest discover -s tools/tests"""
+"""Tests for .github/scripts/triage.py, offline, with a fake GitHub API:  python3 -m pytest tools/tests"""
 import importlib.util
 import pathlib
 import sys

@@ -3,7 +3,8 @@
 # maintainers recognised by their association with it rather than by a list of logins.
 name: "Terms"
 # An enrollment pull request must accept the OSS Verify terms: the box in the pull request template, ticked in the
-# description. This check fails until it is, and runs again whenever the description is edited.
+# description. This check fails until it is, and runs again whenever the description is edited. A branch of this
+# repository needs no box: only an account with write access, including a GitHub App, can push one.
 #
 # pull_request_target, not pull_request: with pull_request the workflow file is taken from the pull request itself, so
 # a contributor could edit this check away. This job reads only the event's description, never the pull request's
@@ -17,6 +18,7 @@ permissions: {}
 
 jobs:
   terms-accepted:
+    name: terms-accepted
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -25,7 +27,13 @@ jobs:
           BODY: ${{ github.event.pull_request.body }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
           ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
+          # A same-repository branch can only be pushed by an account with write access, including a GitHub App.
+          if [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
+            echo "Opened from this repository: no terms box needed."; exit 0
+          fi
           # Bots, and the repository's own maintainers (as GitHub relates them to it), do not enroll through this form.
           case "$AUTHOR" in
             dependabot\[bot\]|github-actions\[bot\])

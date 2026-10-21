@@ -1,0 +1,104 @@
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+name: "Tests"
+# tests runs this repository's tests and checks every project with tools/validate.py, on main and on pull requests
+# from branches of this repository. It runs that branch's code, so for a pull request from a fork it checks out and
+# runs nothing, and passes with "not run" in its summary: a fork's pull request may change only one projects/<name>/,
+# and enrollment (validate.yaml) and project-builds (build.yaml) are the checks that judge it.
+#
+# tests is a required check, so the job always runs, under the static name tests: GitHub does not evaluate the name:
+# expression of a job it skips, so a skipped job, or one named by an expression, may never report tests. The fork
+# condition is on the steps instead.
+#
+# On a pull request the checkout is GitHub's merge of it into its base branch. It fails for a pull request into any
+# branch but the default one, as enrollment and project-builds do (build.yaml says why), and runs on edited too, so
+# that changing the base runs it again. A title or description edit runs it again as well. After a change of base, the
+# edited event may still name the merge into the old base (https://github.com/actions/checkout/issues/919), so the job
+# also fails unless the merge's first parent is on the base branch, and says to push a commit: a rerun checks out the
+# same merge.
+#
+# The job gets no secret, cache, artifact or write permission. Never add one. Its contents: read token goes to
+# actions/checkout and to the step that asks the API where the merge's first parent is, never to a step that runs the
+# branch's code.
+#
+# To run it on a branch:
+#   gh workflow run tests.yaml --ref <branch>
+# Such a run reports a check named tests too, but a check from a workflow_dispatch run never satisfies a ruleset's
+# required check (https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#checks-from-some-workflow-jobs-are-not-evaluated).
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: tests-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+    steps:
+      - name: The pull request targets the default branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+          DEFAULT: ${{ github.event.pull_request.base.repo.default_branch }}
+        run: |
+          if [ "$BASE" != "$DEFAULT" ]; then
+            echo "::error::This pull request targets $BASE, not $DEFAULT: its checks are for $DEFAULT only. Changing its base to $DEFAULT runs them again."
+            exit 1
+          fi
+
+      - name: A pull request from a fork runs nothing here
+        if: env.FORK == 'true'
+        run: |
+          message="Not run: this pull request is from a fork, whose code this job does not run. enrollment and project-builds check its projects/<name>/."
+          echo "$message"
+          echo "$message" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
+        if: env.FORK != 'true'
+        with:
+          persist-credentials: false
+
+      - name: The checkout is the merge into the base branch
+        if: github.event_name == 'pull_request' && env.FORK != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # The merge's first parent is the base branch's commit it was made on. HEAD^1 does not resolve in this
+          # depth-1 checkout, so the parent is read from the commit itself.
+          parent=$(git cat-file commit HEAD | awk '$1 == "parent" { print $2; exit }')
+          status=$(gh api "repos/$REPO/compare/$parent...$(jq -rn --arg b "$BASE" '$b | @uri')" --jq .status)
+          case $status in
+            identical|ahead) ;;
+            # A rerun uses the event's GITHUB_SHA (https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs).
+            *) echo "::error::This run checked out GitHub's merge into an earlier base, not $BASE (its first parent $parent is $status from $BASE). Push a commit to the branch to run it again: a rerun checks out the same merge."
+               exit 1 ;;
+          esac
+
+      - name: Install PyYAML and pytest
+        if: env.FORK != 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml python3-pytest
+
+      # The Docker tests (tools/tests/test_builder.py) need the toolchain image and are skipped here.
+      - name: The tests in tools/tests
+        if: env.FORK != 'true'
+        run: python3 -m pytest -q -p no:cacheprovider tools/tests
+
+      - name: Every project passes tools/validate.py
+        if: env.FORK != 'true'
+        run: python3 tools/validate.py < /dev/null

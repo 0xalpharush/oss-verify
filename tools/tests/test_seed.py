@@ -1,6 +1,6 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for tools/seed.py:  python3 -m unittest discover -s tools/tests
+"""Tests for tools/seed.py:  python3 -m pytest tools/tests
 
 They run offline, on fixtures/seed: a made-up release checkout (release/) and build recipe (recipe/).
 """

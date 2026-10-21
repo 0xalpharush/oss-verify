@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# Adapted from the step of OSS Scanner's .github/workflows/build.yaml (https://github.com/anthropics/oss-scanner) that
+# takes a project from a pull request, Copyright 2026 Anthropic PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC:
+# OSS Verify's file names, every page of the changed files, and pull requests from branches of this repository that
+# are not enrollments.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Takes projects/<name>/ from an enrollment pull request into the checkout of the base branch, and nothing else:
+#
+#   GH_TOKEN=... REPO=<owner>/<name> PR=<number> [HEAD_SHA=<commit>] .github/scripts/take-project build|validate
+#
+# build.yaml and validate.yaml run it from the base branch's checkout, never the pull request's. The pull request's
+# files are read from git's object store and written as regular files: nothing from it is checked out or run. The
+# token authorizes only the one `git fetch` of the pull request's commit, and is never saved in git's configuration.
+#
+# Every check is for the pull request as it targets the default branch. A pull request into another branch fails with
+# "This pull request targets <base>, not <default>", so that a result judged against another branch never stands as
+# a pass on the head commit once the base is changed to the default branch. Changing the base sends GitHub's edited
+# action, on which build.yaml and validate.yaml run again.
+#
+# An enrollment changes only files directly inside one projects/<name>/. A path at any depth inside projects/<name>/
+# counts as a change to that project. A path not directly inside one projects/<name>/, a file in a subdirectory of a
+# project included, is outside it.
+#   - A pull request that changes no file, or removes its one project, passes with nothing to build or validate.
+#   - A pull request from a fork, a deleted fork included, is judged on the files GitHub lists for it. It fails if it
+#     changes any path outside one projects/<name>/: a file outside projects/, a file in a subdirectory of a project,
+#     or a second project, one it renames or removes included. Otherwise its project is taken.
+#   - A pull request from a branch of this repository, which only an account with write access can push, is judged on
+#     what merging it into the base branch changes. GitHub's list is the three-dot diff from the merge base, so it can
+#     name a project that merging leaves as it is: a stacked branch's parent once the parent is squash-merged, or a
+#     file that the base branch already has with this change and more. So this asks git: it merges the head into the
+#     base branch's checkout with `git merge-tree`, from the merge base GitHub reports, and fails if the merge
+#     conflicts, as GitHub's would. The paths the merge changes then decide, and a project the merge removes is not
+#     counted:
+#       - one project changed: that project is taken, as from a fork. The other files are not taken, and the log and
+#         step summary say how many there are; the project is checked with the base branch's tools.
+#       - no project, or several: it is not an enrollment. It passes with nothing to build or validate, and the log
+#         and step summary say so. The tests job (tests.yaml) runs this repository's tests and validates every
+#         project on such a pull request.
+#     Above the API's limit of LISTED files the list is cut short, so the count of listed projects that merging
+#     leaves alone is not reported; what merging changes still decides, because git reads the whole commit. A fork
+#     over that limit fails: its only rule is the list.
+#     The merge uses the one merge base GitHub reports. Where a branch and the base branch have several merge bases
+#     (a criss-cross), git's own merge builds a virtual base from them and may differ. This assumes the default branch
+#     stays linear (no merge commits), so that a pull request has one merge base with it. That holds once
+#     theorem-labs/agent-infra's default-branch ruleset for this repository, which requires linear history, is applied.
+#     The pull request's merge button squashes, which is the tree this judges: rebase merging and merge commits are
+#     off for this repository. Turning either on would let a tree this never judged reach the default branch.
+#   - The project's files are a fork's at its head commit, and a branch of this repository's as the merge has them, so
+#     a project the base branch renamed since the branch left it is built under its new name with the branch's
+#     changes. They must be regular files with plain names, or this fails: no subdirectory, symbolic link or submodule.
+#
+# The commit is HEAD_SHA, the event's head on a pull_request_target run, or the API's head on a run started by hand.
+# The API lists the files of whatever the pull request's head and base are when it is asked. If the head is another
+# commit, or the base another branch, before or after the list is read, this fails rather than pair one commit's list
+# with another's files; the run for the newest commit or base checks it.
+#
+# Writes to $GITHUB_OUTPUT: name (empty when there is nothing to build or validate), sha, and same_repository (true
+# for a branch of this repository).
+set -euo pipefail
+export LC_ALL=C  # a-z below is ASCII only
+
+case ${1:-} in
+  build) doing=Building ;;
+  validate) doing=Validating ;;
+  *) echo "usage: take-project build|validate" >&2; exit 2 ;;
+esac
+action=$1
+# The most files GitHub lists for a pull request.
+LISTED=3000
+
+fail() { echo "::error::$1"; exit 1; }
+say() { echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
+nothing() { say "$1"; exit 0; }
+count() { if (( $1 == 1 )); then echo "1 $2"; else echo "$1 ${2}s"; fi; }
+moved() { fail "The pull request's head moved while this run read it. The run for its newest commit checks it."; }
+# Print only plain paths: the runner could read any other as a workflow command.
+print_path() {
+  if [[ $2 =~ ^[A-Za-z0-9._/-]+$ ]]; then echo "$1: $2"; else echo "$1: (a path with unusual characters)"; fi
+}
+# The pull request as the API gives it ($1) has the head this run takes, and targets the default branch. A branch name
+# holds no colon or control character (git check-ref-format), so it is printed as it is.
+current() {
+  [ "$(jq -r .head.sha <<< "$1")" = "$sha" ] || moved
+  local base default
+  base=$(jq -r .base.ref <<< "$1")
+  default=$(jq -r .base.repo.default_branch <<< "$1")
+  [ "$base" = "$default" ] || fail "This pull request targets $base, not $default: its checks are for $default only. Changing its base to $default runs them again."
+}
+
+[[ $PR =~ ^[0-9]+$ ]] || fail "Not a pull request number."
+pull=$(gh api "repos/$REPO/pulls/$PR")
+sha=${HEAD_SHA:-$(jq -r .head.sha <<< "$pull")}
+[[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Could not read the pull request's head commit."
+current "$pull"
+# The comparison terms.yaml makes. A deleted fork's pull request has no head repository.
+same_repository=false
+if [ "$(jq -r '.head.repo.full_name // ""' <<< "$pull")" = "$REPO" ]; then
+  same_repository=true
+fi
+echo "sha=$sha" >> "$GITHUB_OUTPUT"
+echo "same_repository=$same_repository" >> "$GITHUB_OUTPUT"
+
+changed=$(jq -r .changed_files <<< "$pull")
+[[ $changed =~ ^[0-9]+$ ]] || fail "Could not read how many files the pull request changes."
+truncated=false
+if (( changed > LISTED )); then
+  # A fork is judged on the list, so a list that cannot hold its files decides nothing.
+  [ "$same_repository" = true ] || fail "This pull request changes $changed files. An enrollment changes only projects/<name>/."
+  truncated=true
+fi
+
+# Every changed path, a renamed file under both names, from every page of the list.
+gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[] | .filename, (.previous_filename // empty)' \
+  > "$RUNNER_TEMP/paths"
+# The list is of the head and base as they were when the list was read.
+now=$(gh api "repos/$REPO/pulls/$PR")
+current "$now"
+names=() outside=0
+while IFS= read -r path; do
+  if [[ $path =~ ^projects/([^/]+)/. ]]; then
+    names+=("${BASH_REMATCH[1]}")
+  fi
+  [[ $path =~ ^projects/[^/]+/[^/]+$ ]] && continue
+  outside=$((outside + 1))
+  [ "$same_repository" = true ] || print_path "outside projects/<name>/" "$path"
+done < "$RUNNER_TEMP/paths"
+projects=$(if (( ${#names[@]} )); then printf '%s\0' "${names[@]}" | sort -z -u | grep -z -c .; else echo 0; fi)
+
+# A fork is judged on the list. A branch of this repository is judged on the merge below, which decides even when the
+# list is empty or cut short.
+if [ "$same_repository" = false ] && (( projects + outside == 0 )); then
+  nothing "This pull request changes no file: nothing to $action."
+fi
+
+# Fetch the pull request's commit, and for a branch of this repository the merge base, once. Nothing is checked out.
+fetched=false
+fetch_head() {
+  $fetched && return
+  local auth
+  auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+  git -c http.extraheader="Authorization: Basic $auth" fetch --quiet --no-tags --depth=1 origin "$sha" "$@"
+  unset GH_TOKEN
+  fetched=true
+}
+
+# The tree of projects/$2/ in commit or tree $1, or nothing if it is absent or not a directory there.
+tree_of() {
+  local id
+  id=$(git rev-parse -q --verify "$1:projects/$2") || return 0
+  [ "$(git cat-file -t "$id")" != tree ] || echo "$id"
+}
+
+# A branch of this repository: count what merging changes (see the top of this file). The checkout is the base
+# branch's head.
+if [ "$same_repository" = true ]; then
+  base_head=$(git rev-parse HEAD)
+  compare=$(gh api "repos/$REPO/compare/$base_head...$sha?per_page=1")
+  merge_base=$(jq -r .merge_base_commit.sha <<< "$compare")
+  [[ $merge_base =~ ^[0-9a-f]{40}$ ]] || fail "Could not read the merge base of the pull request and the base branch."
+  fetch_head "$merge_base"
+  code=0
+  git merge-tree --write-tree --no-messages --name-only -z --merge-base="$merge_base" HEAD "$sha" \
+    > "$RUNNER_TEMP/merge" || code=$?
+  if (( code == 1 )); then
+    while IFS= read -r -d '' path; do print_path conflict "$path"; done < <(tail -z -n +2 "$RUNNER_TEMP/merge")
+    fail "This pull request does not merge cleanly into the base branch (the conflicting files are listed above). Update the branch."
+  fi
+  (( code == 0 )) || fail "git merge-tree failed (exit $code)."
+  merged=$(head -z -n 1 "$RUNNER_TEMP/merge" | tr -d '\0')
+  git diff -z --no-renames --name-only HEAD "$merged" > "$RUNNER_TEMP/merged"
+  # Names are NUL-separated throughout: a directory name may hold a newline, and the NAME rule below rejects it only
+  # once it is the one project.
+  : > "$RUNNER_TEMP/listed"
+  if (( ${#names[@]} )); then printf '%s\0' "${names[@]}" | sort -z -u > "$RUNNER_TEMP/listed"; fi
+  names=() outside=0 changes=0
+  while IFS= read -r -d '' path; do
+    changes=$((changes + 1))
+    if [[ $path =~ ^projects/([^/]+)/. ]]; then
+      # A project the merge removes is not counted.
+      if [ -n "$(tree_of "$merged" "${BASH_REMATCH[1]}")" ]; then names+=("${BASH_REMATCH[1]}"); fi
+    fi
+    [[ $path =~ ^projects/[^/]+/[^/]+$ ]] || outside=$((outside + 1))
+  done < "$RUNNER_TEMP/merged"
+  : > "$RUNNER_TEMP/kept"
+  if (( ${#names[@]} )); then printf '%s\0' "${names[@]}" | sort -z -u > "$RUNNER_TEMP/kept"; fi
+  projects=$(grep -z -c . "$RUNNER_TEMP/kept" || true)
+  # The list is of the three-dot diff, so it can name a project the merge leaves alone; over LISTED files it is cut
+  # short, and this count with it.
+  dropped=$(comm -z -23 "$RUNNER_TEMP/listed" "$RUNNER_TEMP/kept" | grep -z -c . || true)
+  if (( dropped )) && [ "$truncated" = false ]; then
+    say "This pull request lists $(count "$dropped" project) that merging removes or leaves as on the base branch: not counted."
+  fi
+  if (( changes == 0 )); then
+    nothing "Merged, this pull request changes no file on the base branch: nothing to $action."
+  fi
+  if (( projects + outside == 0 )); then
+    nothing "Merged, this pull request only removes projects: nothing to $action."
+  fi
+  if (( projects != 1 )); then
+    nothing "Not an enrollment (it changes $(count "$projects" project) and $(count "$outside" file) outside projects/<name>/): nothing to $action. The tests job (tests.yaml) validates every project."
+  fi
+  IFS= read -r -d '' name < "$RUNNER_TEMP/kept"
+  # The files as GitHub's merge would have them: a project the base branch renamed since the branch left it is the
+  # merge's projects/<new name>/, with the branch's changes to it.
+  source=$merged
+  from="merged into the base branch (the head is $sha)"
+else
+  (( outside == 0 )) || fail "This pull request changes files outside projects/<name>/ (listed above). An enrollment changes only the files directly inside one projects/<name>/."
+  (( projects == 1 )) || fail "This pull request changes more than one project. One project per pull request."
+  name=${names[0]}
+  fetch_head
+  source=$sha
+  from="at $sha"
+fi
+# Same rule as NAME in tools/validate.py.
+[[ $name =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || fail "The directory name under projects/ must be a-z 0-9 . _ - (starting with a letter or digit, at most 63)."
+
+git ls-tree -r -z "$source" -- "projects/$name/" > "$RUNNER_TEMP/tree"
+if [ ! -s "$RUNNER_TEMP/tree" ]; then
+  nothing "This pull request removes projects/$name/: nothing to $action."
+fi
+
+# Replace projects/<name>/ with the pull request's files, from git's object store.
+rm -rf "projects/$name"
+mkdir "projects/$name"
+while IFS= read -r -d '' entry; do
+  read -r mode _ blob <<< "${entry%%$'\t'*}"
+  file=${entry#*$'\t'}
+  file=${file#"projects/$name/"}
+  # 100644 and 100755 are regular files. A file in a subdirectory has a / in its name. Same rule as FILE_NAME in
+  # tools/validate.py.
+  if [[ $mode != 100644 && $mode != 100755 ]] || ! [[ $file =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
+    fail "projects/$name/ may hold only regular files with plain names: no directories, symbolic links or submodules."
+  fi
+  git cat-file blob "$blob" > "projects/$name/$file"
+done < "$RUNNER_TEMP/tree"
+
+if (( outside )); then
+  say "This pull request also changes $(count "$outside" file) outside projects/$name/, not taken: projects/$name/ is checked with the base branch's tools."
+fi
+echo "$doing projects/$name/ as it is $from:"
+ls -l "projects/$name"
+echo "name=$name" >> "$GITHUB_OUTPUT"

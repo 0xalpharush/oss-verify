@@ -1,6 +1,6 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for tools/release_tag.py:  python3 -m unittest discover -s tools/tests"""
+"""Tests for tools/release_tag.py:  python3 -m pytest tools/tests"""
 import pathlib
 import sys
 import tempfile

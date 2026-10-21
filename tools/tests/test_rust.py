@@ -1,6 +1,6 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for infra/base-builder/rust/gen-shim.py, which need no Docker:  python3 -m unittest discover -s tools/tests
+"""Tests for infra/base-builder/rust/gen-shim.py, which need no Docker:  python3 -m pytest tools/tests
 
 It writes the static library crate of one cargo-fuzz [[bin]] of tests/fixtures/rust-example's crate.
 """

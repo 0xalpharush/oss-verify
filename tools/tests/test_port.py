@@ -1,7 +1,7 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
 """Tests for tools/port.py, infra/base-builder/lay-out-sources and the vendored recipes.sh:
-python3 -m unittest discover -s tools/tests"""
+python3 -m pytest tools/tests"""
 import hashlib
 import importlib.machinery
 import io

@@ -520,7 +520,7 @@ def check_ubsan_changes(config, changes):
     if "undefined" not in sanitizers_of(config):
         yield "ubsan_checks applies only to the UBSan builds: sanitizers must contain undefined"
     language = config.get("language")
-    if language in LANGUAGES and language not in UBSAN_CHECK_LANGUAGES:
+    if isinstance(language, str) and language in LANGUAGES and language not in UBSAN_CHECK_LANGUAGES:
         yield (f"ubsan_checks applies only to C, C++ and Python: a {language} project's ubsan build does not use "
                "UndefinedBehaviorSanitizer")
 

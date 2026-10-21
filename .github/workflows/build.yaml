@@ -5,29 +5,59 @@ name: "Build"
 # Builds the project an enrollment pull request adds or changes with tools/check --twice: everything is built a second
 # time from scratch, and the two builds must have the same bytes, as they must before we pin a binary. The output is in
 # the run's log.
-# This check is advisory, and a failure is not a verdict:
-#   - GitHub's runner may run out of disk or time on a build that works on a larger machine;
-#   - it cannot succeed until the newest toolchain image in infra/toolchains.tsv is public.
+#
+# project-builds is a required check: it runs on every pull request (.github/scripts/take-project says which project
+# it takes):
+#   - A pull request from a fork is judged on the files GitHub lists for it: it fails if it changes anything but one
+#     project, which is built as it is at the fork's head. A pull request from a branch of this repository is judged
+#     on what merging it into the base branch changes (git merge-tree): it fails if the merge conflicts, and the one
+#     project the merge changes is built as the merge has it, whatever else the pull request changes; those other
+#     files are not taken. So a stacked branch whose parent is merged, a renamed project, or a project the base branch
+#     renamed since the branch left it, still has its one project built.
+#   - It passes with "nothing to build" in the summary for a pull request that changes no file or removes its project,
+#     and for one from a branch of this repository whose merge changes no project or several ("Not an enrollment").
+#     The merge decides for a branch of this repository however many files it changes; a fork that changes more than
+#     the 3000 files the API lists fails, because that list is the fork's only rule.
+#   - It fails for a pull request into any branch but the default one. The ruleset that requires the check guards only
+#     the default branch, so this failure blocks nothing, and it keeps a result judged against another branch from
+#     ever standing as a pass on the head commit if the base is then changed to the default branch.
+#   - It fails if the pull request's head or base moves while the step reads it; the run for the newest commit or
+#     base checks it again.
+# It runs on edited too, so that changing the base runs it again against the new base. edited is also sent when the
+# title or description is edited, and the project is then built again in full: a run that skipped its build would
+# replace an earlier result with a pass.
+# A failure is usually the project's, but it can be the runner's: GitHub's runner may run out of disk or time on a
+# build that works on a larger machine. A maintainer then reruns the failed job (gh run rerun <run> --failed). If it
+# fails again for the runner's reason, the maintainer builds the project with `tools/check --twice <name>` on a larger
+# machine and says so in the pull request; the check stays red until a rerun passes, so merging before then needs a
+# bypass of the ruleset that requires it.
 #
 # pull_request_target, not pull_request, so the pull request cannot edit this workflow or tools/check:
-#   - The checkout is the base branch, never the pull request.
-#   - The pull request may only change files directly inside one projects/<name>/, or the check fails.
-#   - Only those files are taken from it, as regular files written from git's object store.
+#   - The checkout is the base branch, never the pull request, so a project is built with the base branch's tools.
+#   - Only the files directly inside the one projects/<name>/ are taken from it, as regular files written from git's
+#     object store.
 #   - Its Dockerfile runs only inside `docker build`, and its build.sh only inside `docker run --network=none`, never
 #     as a step on the runner.
 #
-# This job builds code from anyone. Never add a secret, a cache, an artifact or a write permission to it.
+# This job builds code from anyone. The toolchain images in infra/toolchains.tsv are private until OSS Verify's launch,
+# so for a pull request from a branch of this repository, and only then, the job signs in to ghcr.io with its
+# packages: read token in a Docker config of its own, pulls the one image tools/check will build FROM, then signs out
+# and deletes that config before the pull request's Dockerfile or build.sh runs. The image's contents do reach that
+# Dockerfile, which is why a pull request from a fork never gets a private image: it pulls without signing in, and its
+# build fails at the pull until the image is public. Once every toolchain image is public, remove the sign-in and
+# packages: read. Never add a secret, a cache, an artifact or a write permission available to pull-request code.
 # Runs do not wait for a maintainer's approval. To build only on request, remove pull_request_target below.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
+# Such a run reports a check named project-builds too, but a check from a workflow_dispatch run never satisfies a
+# ruleset's required check (https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#checks-from-some-workflow-jobs-are-not-evaluated).
 
 run-name: ${{ github.event.pull_request.title || format('Pull request {0}', inputs.pr) }}
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
-    paths: ["projects/**"]
+    types: [opened, reopened, synchronize, edited]
   workflow_dispatch:
     inputs:
       pr:
@@ -38,17 +68,21 @@ on:
 permissions: {}
 
 concurrency:
-  group: build-${{ github.event.pull_request.number || inputs.pr }}
+  # By event too, so that a run started by hand never cancels the pull request's own run of the required check.
+  group: build-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   project-builds:
+    # A static name: GitHub reports the check under it on every run, and a required job has no job-level if:.
+    name: project-builds
     runs-on: ubuntu-latest
     # tools/check has no time limit of its own: this one is the runner's, for two builds.
     timeout-minutes: 240
     permissions:
       contents: read
       pull-requests: read
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
@@ -61,72 +95,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
-        run: |
-          set -euo pipefail
-          export LC_ALL=C  # a-z below is ASCII only
-
-          fail() { echo "::error::$1"; exit 1; }
-
-          [[ $PR =~ ^[0-9]+$ ]] || fail "Not a pull request number."
-          pull=$(gh api "repos/$REPO/pulls/$PR")
-          sha=$(jq -r .head.sha <<< "$pull")
-          [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Could not read the pull request's head commit."
-          # Only one page of changed files is read below.
-          [ "$(jq -r .changed_files <<< "$pull")" -le 100 ] || fail "This pull request changes more than 100 files."
-
-          # Every changed path, a renamed file under both names, must be directly inside one projects/<name>/.
-          gh api "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/paths"
-          name="" outside=0
-          while IFS= read -r path; do
-            if [[ $path =~ ^projects/([^/]+)/[^/]+$ ]]; then
-              [[ -z $name || $name == "${BASH_REMATCH[1]}" ]] || fail "This pull request changes more than one project. One project per pull request."
-              name=${BASH_REMATCH[1]}
-              continue
-            fi
-            outside=1
-            # Print only plain paths: the runner could read any other as a workflow command.
-            if [[ $path =~ ^[A-Za-z0-9._/-]+$ ]]; then
-              echo "outside projects/<name>/: $path"
-            else
-              echo "outside projects/<name>/: (a path with unusual characters)"
-            fi
-          done < "$RUNNER_TEMP/paths"
-
-          if [ -z "$name" ]; then
-            echo "This pull request changes no project: nothing to build."
-            exit 0
-          fi
-          # Same rule as NAME in tools/validate.py.
-          [[ $name =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || fail "The directory name under projects/ must be a-z 0-9 . _ - (starting with a letter or digit, at most 63)."
-          [ "$outside" = 0 ] || fail "This pull request changes files outside projects/$name/ (listed above). An enrollment changes nothing else."
-
-          # Fetch the pull request's commit. Nothing is checked out.
-          git fetch --quiet --no-tags --depth=1 origin "$sha"
-          git ls-tree -r -z "$sha" -- "projects/$name/" > "$RUNNER_TEMP/tree"
-          if [ ! -s "$RUNNER_TEMP/tree" ]; then
-            echo "This pull request removes projects/$name/: nothing to build."
-            exit 0
-          fi
-
-          # Replace projects/<name>/ with the pull request's files.
-          rm -rf "projects/$name"
-          mkdir "projects/$name"
-          while IFS= read -r -d '' entry; do
-            read -r mode _ blob <<< "${entry%%$'\t'*}"
-            file=${entry#*$'\t'}
-            file=${file#"projects/$name/"}
-            # 100644 and 100755 are regular files. A file in a subdirectory has a / in its name. Same rule as
-            # FILE_NAME in tools/validate.py.
-            if [[ $mode != 100644 && $mode != 100755 ]] || ! [[ $file =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
-              fail "projects/$name/ may hold only regular files with plain names: no directories, symbolic links or submodules."
-            fi
-            git cat-file blob "$blob" > "projects/$name/$file"
-          done < "$RUNNER_TEMP/tree"
-
-          echo "Building projects/$name/ as it is at $sha:"
-          ls -l "projects/$name"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          # Empty on a run started by hand, which builds the pull request's head as the API gives it.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/scripts/take-project build
 
       - name: Make room and install PyYAML
         if: steps.project.outputs.name != ''
@@ -134,7 +105,36 @@ jobs:
           # Unused toolchains, removed to free disk for the build: the toolchain image alone is about 6 GB.
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
-          python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+          dpkg -s python3-yaml > /dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+
+      - name: Pull the pinned toolchain image
+        if: steps.project.outputs.name != ''
+        env:
+          NAME: ${{ steps.project.outputs.name }}
+          # Only a branch of this repository gets the token (see the top of this file).
+          GH_TOKEN: ${{ steps.project.outputs.same_repository == 'true' && github.token || '' }}
+        run: |
+          set -euo pipefail
+          # The image is chosen before anything signs in. Until the token is printed again, the runner reads none of
+          # tools/check's output about the project as a workflow command.
+          resume="$(openssl rand -hex 16)"
+          echo "::stop-commands::$resume"
+          image=$(python3 tools/check --print-toolchain "projects/$NAME" < /dev/null)
+          echo "::$resume::"
+          [[ $image == *@sha256:* ]] || { echo "::error::Unpinned toolchain image: $image"; exit 1; }
+          if [ -z "$GH_TOKEN" ]; then
+            echo "A pull request from a fork: pulling $image without signing in. While the image is private, this fails."
+            docker pull "$image"
+            exit 0
+          fi
+          export DOCKER_CONFIG="$RUNNER_TEMP/oss-verify-ghcr"
+          mkdir -p "$DOCKER_CONFIG"
+          trap 'docker --config "$DOCKER_CONFIG" logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
+          echo "$GH_TOKEN" | docker --config "$DOCKER_CONFIG" login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker --config "$DOCKER_CONFIG" pull "$image"
+          docker --config "$DOCKER_CONFIG" logout ghcr.io
+          rm -rf "$DOCKER_CONFIG"
+          trap - EXIT
 
       - name: Build the project twice with tools/check
         if: steps.project.outputs.name != ''
@@ -146,7 +146,9 @@ jobs:
           resume="$(openssl rand -hex 16)"
           echo "::stop-commands::$resume"
           code=0
-          python3 tools/check --no-shell --twice "$NAME" < /dev/null || code=$?
+          # The path, as in the pull step, never the bare name: tools/check reads a bare name as a directory of the
+          # checkout's root when that directory has a project.yaml, as templates/ does.
+          python3 tools/check --no-shell --twice "projects/$NAME" < /dev/null || code=$?
           echo "::$resume::"
 
           case $code in

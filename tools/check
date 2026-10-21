@@ -15,6 +15,8 @@ Build a project's fuzz targets the way we do, collect the binaries, and write th
     tools/check --toolchain <image> <name>
                                         build FROM this toolchain image, not the lock's or the newest
     tools/check --no-shell <name>       stop after the build instead of opening a shell
+    tools/check --print-toolchain <name>
+                                        print the toolchain image `tools/check <name>` builds FROM, and build nothing
 
 It runs these steps:
 
@@ -47,6 +49,7 @@ projects/<name>/ breaks the enrollment rules; 3 if it builds but the bytes diffe
 Requires git, Docker (with the toolchain image available) and PyYAML (pip install pyyaml).
 """
 import argparse
+import contextlib
 import datetime
 import pathlib
 import socket
@@ -96,6 +99,21 @@ def load(project):
         ubsan_checks=validate.ubsan_checks_in_effect(config) if config.get("ubsan_checks") is not None else None,
         language=config["language"],
     )
+
+
+def toolchain_for(project):
+    """The toolchain image that `tools/check <project>`, with no --lock or --toolchain, builds FROM: the newest for the
+    project's language. For a project that it refuses before it builds anything (one that breaks the enrollment rules,
+    or in a language with no builder or no toolchain yet), the builder's default, infra/base-builder/Dockerfile's."""
+    try:
+        # load() prints its warnings on standard output, which holds only the image here.
+        with contextlib.redirect_stdout(sys.stderr):
+            job = load(project)
+        return check_build.newest_toolchain(job.language)
+    except (SystemExit, Failed):
+        print(f"tools/check refuses {project} before it builds anything: the builder's default toolchain",
+              file=sys.stderr)
+        return check_build.toolchain()
 
 
 def ubsan_settings(job, toolchain):
@@ -164,7 +182,13 @@ def main():
     parser.add_argument("--toolchain", help="build FROM this toolchain image (default: the lock's, else the newest)")
     parser.add_argument("--no-shell", action="store_true", help="stop after the build")
     parser.add_argument("--dir", type=pathlib.Path, help=f"where to work (default: {check_build.CACHE}/<name>)")
+    parser.add_argument("--print-toolchain", action="store_true",
+                        help="print the toolchain image the build is FROM, and build nothing (exit 0)")
     options = parser.parse_args()
+
+    if options.print_toolchain:
+        print(toolchain_for(options.project))
+        return 0
 
     job = load(options.project)
     if options.build:

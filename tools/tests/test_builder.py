@@ -4,7 +4,7 @@
 tests/fixtures/go-example with the builder and run what they make. Needs Docker and the toolchain images (and, for cJSON, the Rust crates and the
 Python build backend, the network):
 
-    OV_DOCKER_TESTS=1 python3 -m unittest discover -s tools/tests
+    OV_DOCKER_TESTS=1 python3 -m pytest tools/tests
 
 The fixture's Dockerfile and build.sh are templates/Dockerfile and templates/build.sh (in its C and C++ forms). Its
 fuzz targets do one thing per first input byte, and the test checks the exit status of each in every build against
