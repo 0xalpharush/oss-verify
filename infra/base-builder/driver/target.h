@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * What cli.c needs from an adapter (adapter.c, through ossfuzz_adapter.h).
  * From the oss-fuzz-theorems 2026.10 release recipe (src/target.h). The code is unchanged.

@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * The driver every fuzz target is linked with ($LIB_FUZZING_ENGINE, with adapter.c). It replaces libFuzzer: it
  * reads one input file and hands it to the target once.

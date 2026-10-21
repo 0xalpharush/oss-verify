@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * Output to standard output. With HARNESS_QUIET (not used by the builder) it writes nothing.
  * From the oss-fuzz-theorems 2026.10 release recipe (src/emit.h). The code is unchanged.

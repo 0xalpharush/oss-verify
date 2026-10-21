@@ -149,7 +149,7 @@ A link through `$CC` or `$CXX` that names `$LIB_FUZZING_ENGINE` goes to [link-fu
 
 ## The driver
 
-The driver takes the place of libFuzzer. Each fuzz target is linked with it through `$LIB_FUZZING_ENGINE` ([infra/base-builder/driver/](../infra/base-builder/driver/)). A binary takes one argument, the input file:
+The driver takes the place of libFuzzer. Each fuzz target is linked with it through `$LIB_FUZZING_ENGINE` ([infra/base-builder/driver/](../infra/base-builder/driver/)). Its files are under MIT OR Apache-2.0, so that a program under version 2 of the GNU GPL can be linked with it ([NOTICE](../NOTICE)). A binary takes one argument, the input file:
 
     <binary> <input file>
 

@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * The C half of the adapter of a Rust fuzz target (rust/oft-rust-rt is the Rust half). It adds two exit statuses to
  * ossfuzz_adapter.h's, which it includes unchanged:

@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * The adapter of an allocation-failure fuzz target, which $LIB_ALLOCATION_FAILURE_ENGINE links in place of adapter.c
  * (docs/build-contract.md, Allocation-failure fuzz targets). link-fuzz-target links copies of the object files and

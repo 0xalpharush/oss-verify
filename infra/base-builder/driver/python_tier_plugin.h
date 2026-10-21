@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * The adapter's half of a Python fuzz target (python/atheris_host.c is the harness's). It is compiled with the
  * driver, twice: loud, and with -DHARNESS_QUIET. Thus the description of a failure is here, not in atheris_host.c,

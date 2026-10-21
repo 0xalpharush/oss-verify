@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * Runs an OSS-Fuzz-style fuzz target (LLVMFuzzerTestOneInput) for cli.c. Define OFT_TARGET_NAME, then include this.
  *

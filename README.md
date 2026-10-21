@@ -55,3 +55,7 @@ To pause the project, set `disabled: true` in `project.yaml`. To leave, remove `
 ## Learn more
 
 Visit [theorem.dev/oss-verify](https://theorem.dev/oss-verify/) for answers to common questions, and [docs/faq.md](docs/faq.md) for the questions that it does not answer. [SECURITY.md](SECURITY.md) tells how to report a vulnerability in this repository. Use of OSS Verify is subject to the [OSS Verify terms](https://theorem.dev/oss-verify/terms/). We accept only enrollment pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)).
+
+## Licence
+
+This repository is under the Apache License 2.0 ([LICENSE](LICENSE)). The driver that `$LIB_FUZZING_ENGINE` links into a fuzz target, [infra/base-builder/driver/](infra/base-builder/driver/), is under MIT OR Apache-2.0 ([LICENSES/MIT.txt](LICENSES/MIT.txt)), so that a program under version 2 of the GNU GPL can be linked with it. [NOTICE](NOTICE) says which files and lines have another licence, and why.

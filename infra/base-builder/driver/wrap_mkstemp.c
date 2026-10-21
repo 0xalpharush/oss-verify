@@ -1,5 +1,5 @@
 /* Copyright 2026 Theorem Labs, PBC
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * Linked into every fuzz target with -Wl,--wrap= for mkstemp, mkostemp, mkstemps and mkostemps: the six X's of the
  * template become 000000 and the file is created in the current directory under the template's last component, so
