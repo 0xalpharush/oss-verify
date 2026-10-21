@@ -120,7 +120,8 @@ class Builder(unittest.TestCase):
         cls.raw = {}
         for build in BUILDS:
             cls.raw[build] = cls.work / "raw" / build
-            check_build.compile_build(TAG, build, validate.BUILDS[build], cls.raw[build])
+            check_build.compile_build(TAG, build, validate.BUILDS[build], cls.raw[build],
+                                      labels=check_build.work_label(cls.work))
         cls.found = {build: manifest.discover(directory) for build, directory in cls.raw.items()}
         cls.targets, cls.problems = manifest.resolve_targets(cls.found)
         cls.entries, cls.missing = manifest.collect(cls.raw, cls.targets, cls.work / "out")
@@ -203,7 +204,8 @@ class UbsanChecks(unittest.TestCase):
                 raw = work / "raw"
                 # null only: the null load traps, and the signed overflow, which the fixed flags catch, does not.
                 # The C compiles also leave out function, as a c++ project's do.
-                check_build.compile_build(tag, "ubsan", "undefined", raw, (["null"], ["vptr"], ["function"]))
+                check_build.compile_build(tag, "ubsan", "undefined", raw, (["null"], ["vptr"], ["function"]),
+                                          labels=check_build.work_label(work))
                 inputs = work / "in"
                 inputs.mkdir()
                 for case in "no":
@@ -255,7 +257,8 @@ class PythonBuilder(unittest.TestCase):
         cls.raw = {}
         for build in BUILDS:
             cls.raw[build] = cls.work / "raw" / build
-            check_build.compile_build(PYTHON_TAG, build, validate.BUILDS[build], cls.raw[build])
+            check_build.compile_build(PYTHON_TAG, build, validate.BUILDS[build], cls.raw[build],
+                                      labels=check_build.work_label(cls.work))
         found = {build: manifest.discover(directory) for build, directory in cls.raw.items()}
         cls.targets, cls.problems = manifest.resolve_targets(found, job.fuzz_targets)
         cls.entries, cls.missing = manifest.collect(cls.raw, cls.targets, cls.work / "out")
@@ -331,7 +334,8 @@ class RustBuilder(unittest.TestCase):
         cls.raw = {}
         for build in BUILDS:
             cls.raw[build] = cls.work / "raw" / build
-            check_build.compile_build(RUST_TAG, build, validate.BUILDS[build], cls.raw[build])
+            check_build.compile_build(RUST_TAG, build, validate.BUILDS[build], cls.raw[build],
+                                      labels=check_build.work_label(cls.work))
         found = {build: manifest.discover(directory) for build, directory in cls.raw.items()}
         cls.targets, cls.problems = manifest.resolve_targets(found, job.fuzz_targets)
         cls.entries, cls.missing = manifest.collect(cls.raw, cls.targets, cls.work / "out")
@@ -398,7 +402,7 @@ class GoBuilder(unittest.TestCase):
         builder = check_build.build_builder(check_build.newest_toolchain("go"))
         check_build.build_project(job, "0" * 40, builder, GO_TAG, cls.work)
         cls.raw = {"plain": cls.work / "raw" / "plain"}
-        check_build.compile_build(GO_TAG, "plain", "none", cls.raw["plain"])
+        check_build.compile_build(GO_TAG, "plain", "none", cls.raw["plain"], labels=check_build.work_label(cls.work))
         found = {build: manifest.discover(directory) for build, directory in cls.raw.items()}
         cls.targets, cls.problems = manifest.resolve_targets(found, job.fuzz_targets)
         cls.entries, cls.missing = manifest.collect(cls.raw, cls.targets, cls.work / "out")
@@ -490,7 +494,8 @@ class AllocationFailureOnCjson(unittest.TestCase):
         raw = {}
         for build in BUILDS:
             raw[build] = cls.work / "raw" / build
-            check_build.compile_build(CJSON_TAG, build, validate.BUILDS[build], raw[build])
+            check_build.compile_build(CJSON_TAG, build, validate.BUILDS[build], raw[build],
+                                      labels=check_build.work_label(cls.work))
         found = {build: manifest.discover(directory) for build, directory in raw.items()}
         cls.targets, _ = manifest.resolve_targets(found)
         cls.entries, _ = manifest.collect(raw, cls.targets, cls.work / "out")

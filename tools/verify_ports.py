@@ -39,6 +39,7 @@ import subprocess
 import sys
 import threading
 
+import check_build
 import port
 import release_tag
 import seed
@@ -78,27 +79,32 @@ def locks_for(checkout, name, targets):
     return [checkout / "projects" / name / target / "harness.yaml" for target in targets]
 
 
-def images(name):
-    """The images tools/check made for this project."""
-    return subprocess.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", f"oss-verify-check/{name}"],
-                          capture_output=True, text=True).stdout.split()
+def images(work):
+    """The project images that the tools/check run in `work` built: the tags it recorded, which name its work
+    directory. Never the images of another run of the same project. docker skips a recorded tag that was never built."""
+    return check_build.recorded_images(work / check_build.IMAGES)
 
 
-def remove_images(name):
-    """Remove the images tools/check made for this project (never any other)."""
-    listing = images(name)
+def remove_images(work):
+    """Remove the project images that the tools/check run in `work` built (never any other)."""
+    listing = images(work)
     if listing:
         subprocess.run(["docker", "image", "rm", "-f", *listing], capture_output=True)
 
 
-def stop_containers(name):
-    """Kill the containers still running an image tools/check made for this project (never any other)."""
-    running = set()
-    for image in images(name):
-        running.update(subprocess.run(["docker", "ps", "-q", "--filter", f"ancestor={image}"], capture_output=True,
-                                      text=True).stdout.split())
+def stop_containers(work):
+    """Kill the containers that the tools/check run in `work` started, by their label (never any other)."""
+    label = f"label={check_build.WORK_LABEL}={work.absolute()}"
+    running = subprocess.run(["docker", "ps", "-q", "--filter", label], capture_output=True, text=True).stdout.split()
     if running:
         subprocess.run(["docker", "kill", *sorted(running)], capture_output=True)
+
+
+def clean_up(work):
+    """Stop the containers and remove the images of the tools/check run in `work`: after it ends, and before its work
+    directory is deleted for a new run, for a run that this script did not live to clean up after."""
+    stop_containers(work)
+    remove_images(work)
 
 
 def run_check(arguments, log, timeout):
@@ -119,6 +125,7 @@ def verify(name, options, release):
     directory = options.work / name / "project" / name
     work = options.work / name / "check"
     log_file = options.work / name / "log"
+    clean_up(work)
     shutil.rmtree(options.work / name, ignore_errors=True)
     directory.mkdir(parents=True)
     seeded, text = seed.generate(name, options.checkout, (release.patches, release.harnesses), offline=True)
@@ -138,11 +145,10 @@ def verify(name, options, release):
         code = run_check([str(TOOLS / "check"), "--no-shell", *locks, "--dir", str(work), str(directory)], log,
                          options.timeout)
     if code is None:
-        stop_containers(name)
         result = "fails", f"tools/check was still running after {options.timeout} seconds, and was stopped"
     else:
         result = verdict(code, log_file.read_text(encoding="utf-8", errors="replace"))
-    remove_images(name)
+    clean_up(work)
     shutil.rmtree(work / "raw", ignore_errors=True)
     shutil.rmtree(work / "twice", ignore_errors=True)
     shutil.rmtree(work / "src", ignore_errors=True)

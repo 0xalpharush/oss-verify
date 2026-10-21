@@ -106,7 +106,7 @@ class Twice(unittest.TestCase):
             stack.enter_context(mock.patch.object(check_tool, "build_all", build_all))
             stack.enter_context(mock.patch.object(check_build, "resolve", lambda repo, ref: COMMIT))
             stack.enter_context(mock.patch.object(check_build, "image_id", lambda tag: f"sha256:{tag}"))
-            stack.enter_context(mock.patch.object(check_build, "sources", lambda tag: {}))
+            stack.enter_context(mock.patch.object(check_build, "sources", lambda tag, *, labels: {}))
             stack.enter_context(mock.patch.object(check_build, "oss_verify_state", lambda job: None))
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             code = check_tool.main()
@@ -182,6 +182,90 @@ class UbsanSettings(unittest.TestCase):
     def test_today_s_toolchains_keep_the_fixed_flags(self):
         self.assertEqual(check_build.ubsan_mode(check_build.newest_toolchain()), "fixed")
         self.assertEqual(check_build.ubsan_mode(TOOLCHAIN), "fixed")
+
+
+class ProjectTag(unittest.TestCase):
+    """The project image's tag names the oss-verify tree that builds it and the run's work directory, so two trees, or
+    two runs, on one Docker host keep two images."""
+
+    COMMIT = "0123456789abcdef" * 2 + "01234567"
+    BUILDER = "oss-verify-base-builder:0123456789abcdef-toolchain"
+    HOME = pathlib.Path("/work/demo")
+
+    def tag(self, files, builder=BUILDER, suffix="", home=HOME):
+        with tempfile.TemporaryDirectory() as scratch:
+            directory = pathlib.Path(scratch) / "demo"
+            directory.mkdir()
+            for name, text in files.items():
+                (directory / name).write_text(text)
+            job = check_build.Job(name="demo", directory=directory, repo="https://example.org/demo", ref="",
+                                  dockerfile="", builds=BUILDS, fuzz_targets=None, ubsan_checks=None, language="c")
+            return check_build.project_tag(job, self.COMMIT, builder, home, suffix)
+
+    def test_identical_trees_give_the_same_tag(self):
+        files = {"project.yaml": "repo: x\n", "Dockerfile": "FROM a\n"}
+        self.assertEqual(self.tag(files), self.tag(dict(files)))
+        self.assertTrue(self.tag(files).startswith(f"oss-verify-check/demo:{self.COMMIT[:12]}-"))
+
+    def test_a_different_project_directory_gives_a_different_tag(self):
+        self.assertNotEqual(self.tag({"project.yaml": "repo: x\n", "Dockerfile": "FROM a\n"}),
+                            self.tag({"project.yaml": "repo: x\n", "Dockerfile": "FROM b\n"}))
+        self.assertNotEqual(self.tag({"project.yaml": "repo: x\n"}),
+                            self.tag({"project.yaml": "repo: x\n", "build.sh": "true\n"}))
+
+    def test_a_different_builder_gives_a_different_tag(self):
+        files = {"project.yaml": "repo: x\n"}
+        self.assertNotEqual(self.tag(files), self.tag(files, builder=self.BUILDER + "-other"))
+
+    def test_a_different_work_directory_gives_a_different_tag(self):
+        files = {"project.yaml": "repo: x\n"}
+        self.assertNotEqual(self.tag(files), self.tag(files, home=pathlib.Path("/work/other")))
+
+    def test_build_all_records_the_tag_before_the_build(self):
+        with tempfile.TemporaryDirectory() as scratch, tempfile.TemporaryDirectory() as project:
+            home = pathlib.Path(scratch)
+            record = home / check_build.IMAGES
+            seen = []
+
+            def build_project(job, commit, builder, tag, work, no_cache=False):
+                seen.append(check_build.recorded_images(record))
+                raise check_build.Failed("stop here")
+
+            job = check_build.Job(name="demo", directory=pathlib.Path(project), repo="https://example.org/demo",
+                                  ref="", dockerfile="", builds=BUILDS, fuzz_targets=None, ubsan_checks=None,
+                                  language="c")
+            with mock.patch.object(check_build, "build_builder", lambda *args: self.BUILDER), \
+                    mock.patch.object(check_build, "build_project", build_project):
+                with self.assertRaises(check_build.Failed):
+                    check_tool.build_all(job, self.COMMIT, home / "twice", TOOLCHAIN, home, "-twice")
+            self.assertEqual(seen, [[check_build.project_tag(job, self.COMMIT, self.BUILDER, home, "-twice")]])
+
+    def test_every_container_carries_the_work_label(self):
+        label = check_build.work_label(self.HOME)
+        commands = []
+
+        def run(*argv, quiet=False):
+            commands.append(argv)
+            if "rm" in argv:  # empty_directory's docker rm -rf of a directory that rmtree could not remove
+                out.rmdir()
+            return 0
+
+        with tempfile.TemporaryDirectory() as scratch, \
+                mock.patch.object(check_build, "run", run), \
+                mock.patch.object(check_build, "output", lambda *argv: commands.append(argv) or ""), \
+                mock.patch.object(check_build.shutil, "rmtree", mock.Mock(side_effect=PermissionError)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            out = pathlib.Path(scratch) / "out"
+            out.mkdir()
+            check_build.compile_build("t", "plain", "none", out, None, labels=label)  # empty_directory's rm, then compile
+            check_build.sources("t", labels=label)
+        docker_runs = [argv for argv in commands if argv[:2] == ("docker", "run")]
+        self.assertEqual(len(docker_runs), 3)
+        for argv in docker_runs:
+            self.assertIn(f"{label[0]} {label[1]}", " ".join(argv))
+
+    def test_the_suffix_stays_last(self):
+        self.assertTrue(self.tag({"project.yaml": "repo: x\n"}, suffix="-twice").endswith("-twice"))
 
 
 class Toolchains(unittest.TestCase):

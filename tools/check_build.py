@@ -28,6 +28,10 @@ TOOLCHAIN_ARG = re.compile(r"^ARG TOOLCHAIN=(\S+)$", re.M)
 TOOLCHAINS = ROOT / "infra" / "toolchains.tsv"
 # How a toolchain's UBSan builds choose their checks: the release's fixed flags, or the project's ubsan_checks.
 UBSAN_MODES = ("fixed", "checks")
+# In a tools/check work directory: the tags of the project images that run built, one a line (record_image).
+IMAGES = "images"
+# The label on every container a tools/check run starts: its work directory (work_label).
+WORK_LABEL = "oss-verify-check.work"
 # The git checkouts under $SRC in a project image, and their commits, for the manifest.
 LIST_SOURCES = (
     'find "$SRC" -maxdepth 4 -name .git 2>/dev/null | sort | while read -r g; do d=${g%/.git}; '
@@ -224,6 +228,36 @@ def build_builder(image=None, suffix="", no_cache=False):
     return tag
 
 
+def project_tag(job, commit, builder, home, suffix=""):
+    """The tag of the project image: the upstream commit, and a hash of what this repository puts into the image (the
+    project's directory, and the builder it is built FROM, whose tag hashes infra/base-builder and the toolchain) and
+    of the run's work directory `home`. So no two runs on one Docker host share a tag, and removing one run's tag never
+    takes another's image; the same inputs still reuse docker's layer cache."""
+    inputs = hashlib.sha256(f"{tree_hash(job.directory)}\0{builder}\0{home}".encode()).hexdigest()
+    return f"oss-verify-check/{job.name}:{commit[:12]}-{inputs[:12]}{suffix}"
+
+
+def work_label(home):
+    """The label every container that the run with work directory `home` starts carries, so that a caller
+    (tools/verify_ports.py) stops that run's containers and no other's."""
+    return ["--label", f"{WORK_LABEL}={home}"]
+
+
+def record_image(record, tag):
+    """Add `tag` to the file `record`, one tag a line, before the image is built: the project images this run makes,
+    for a caller (tools/verify_ports.py) to remove those and no other run's."""
+    with open(record, "a", encoding="utf-8") as handle:
+        handle.write(f"{tag}\n")
+
+
+def recorded_images(record):
+    """The tags that record_image() wrote to `record`, in order, each once; [] if the file is not there."""
+    try:
+        return list(dict.fromkeys(record.read_text(encoding="utf-8").split()))
+    except FileNotFoundError:
+        return []
+
+
 def build_project(job, commit, builder, tag, work, no_cache=False):
     """Build the project's Dockerfile on the builder, with network access, into image `tag`."""
     args = ["--build-arg", f"BASE_BUILDER={builder}", "--build-arg", f"REPO={job.repo}", "--build-arg", f"COMMIT={commit}"]
@@ -247,20 +281,20 @@ def build_project(job, commit, builder, tag, work, no_cache=False):
         raise Failed("docker build of the project's Dockerfile failed")
 
 
-def sources(tag):
-    """The git checkouts under $SRC in the project image: {path: commit}."""
-    listing = output("docker", "run", "--rm", "--network=none", "--entrypoint", "sh", tag, "-c", LIST_SOURCES)
+def sources(tag, *, labels):
+    """The git checkouts under $SRC in the project image: {path: commit}. `labels`: docker run arguments, work_label()."""
+    listing = output("docker", "run", "--rm", "--network=none", *labels, "--entrypoint", "sh", tag, "-c", LIST_SOURCES)
     return dict(line.split(" ", 1) for line in listing.splitlines() if " " in line)
 
 
-def empty_directory(path, tag):
+def empty_directory(path, tag, *, labels):
     """Make `path` an empty directory, removing what an earlier root-owned run may have left in it."""
     if path.exists():
         try:
             shutil.rmtree(path)
         except PermissionError:
-            run("docker", "run", "--rm", "--network=none", "-v", f"{path.parent}:/parent", "--entrypoint", "rm", tag,
-                "-rf", f"/parent/{path.name}", quiet=True)
+            run("docker", "run", "--rm", "--network=none", *labels, "-v", f"{path.parent}:/parent", "--entrypoint", "rm",
+                tag, "-rf", f"/parent/{path.name}", quiet=True)
     path.mkdir(parents=True)
 
 
@@ -268,12 +302,12 @@ def empty_directory(path, tag):
 DOCKER_FAILED = 125
 
 
-def compile_build(tag, build, sanitizer, out, ubsan=None):
+def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels):
     """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`. `ubsan`, if given,
     is (checks, left out[, left out of C compiles]): the UBSan checks of the build, those that trap mode leaves out,
-    and those that its C compiles leave out."""
+    and those that its C compiles leave out. `labels`: docker run arguments for the container, work_label()."""
     step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
-    empty_directory(out, tag)
+    empty_directory(out, tag, labels=labels)
     owner = f"{os.getuid()}:{os.getgid()}"
     # The number of parallel jobs, if set here, for recipes that read it; it does not change the bytes.
     jobs = ["-e", "OFT_MAKE_JOBS"] if os.environ.get("OFT_MAKE_JOBS") else []
@@ -282,13 +316,13 @@ def compile_build(tag, build, sanitizer, out, ubsan=None):
         checks = ["-e", f"OV_UBSAN_CHECKS={','.join(ubsan[0])}", "-e", f"OV_UBSAN_EXCLUDE={','.join(ubsan[1])}"]
         if len(ubsan) > 2 and ubsan[2]:
             checks += ["-e", f"OV_UBSAN_C_EXCLUDE={','.join(ubsan[2])}"]
-    command = ["docker", "run", "--rm", "--init", "--network=none", "-e", f"SANITIZER={sanitizer}",
+    command = ["docker", "run", "--rm", "--init", "--network=none", *labels, "-e", f"SANITIZER={sanitizer}",
                "-e", f"OV_OWNER={owner}", *jobs, *checks, "-v", f"{out}:/out", tag, "compile"]
     code = run(*command)
     if code == DOCKER_FAILED:
         # docker run itself failed (the daemon could not start the container), not the build: once more, afresh.
         say(f"docker run exited {DOCKER_FAILED}: starting the {build} build again")
-        empty_directory(out, tag)
+        empty_directory(out, tag, labels=labels)
         code = run(*command)
     if code != 0:
         raise Failed(f"compile exited {code} in the {build} build")
