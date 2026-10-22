@@ -2,11 +2,11 @@
 
 This page tells what our statements say and what a proof covers. It also tells what we do with a finding, and what we publish. It is for maintainers and for reviewers of our claims.
 
-This repository tells how to build the fuzz targets of a project. The statements and their proofs are in [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs): one branch for each project, with its statements, its proofs and its lock. This page gives a summary. The Rocq definitions in the proofs repository are the authority.
+This repository tells how to build the fuzz targets of a project. The statements and their proofs are in [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs), on its main branch: each project's statements and lock in `projects/<name>/`, and its proofs in `proofs/<name>/`. This page gives a summary. The Rocq definitions in the proofs repository are the authority.
 
 ## The statements
 
-A statement is about the exact bytes of one binary: one fuzz target in one build, pinned by its SHA-256 in the lock. We state it in [linux-process-semantics](https://github.com/theorem-labs/linux-process-semantics), a formal model of a riscv64 Linux process. A statement is about each input that the process can get:
+A statement is about the exact bytes of one binary: one fuzz target in one build, pinned by its SHA-256 in the lock. We state it in [rocq-linux-process-semantics](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process. A statement is about each input that the process can get:
 
 * the input file and its contents, or no file;
 * the arguments and the environment;
@@ -17,7 +17,7 @@ There are two main statements:
 * **Halts.** On each input that stays in the build's memory budget, each run exits with status 0 or 2 ([below](#what-a-statement-accepts)). Thus the binary does not crash, fail an assertion, hang, or fail a sanitizer check on such an input.
 * **Agrees.** On each input on which the plain build stays in its budget, the plain build and a sanitizer build both reach no error. They also have the same behaviour: they write the same bytes and exit with the same status. A sanitizer detection stops the program, so this statement excludes each error that the sanitizer checks.
 
-The project's branch in the proofs repository lists the statements of each fuzz target and build, and the proofs that are done.
+The project's directory in the proofs repository, `projects/<name>/`, lists the statements of each fuzz target and build, and the proofs that are done.
 
 ## What a statement accepts
 

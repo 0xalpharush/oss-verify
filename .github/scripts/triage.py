@@ -86,9 +86,8 @@ SECURITY_POLICY_PATHS = ("SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md
 # Where a project keeps its OSS Verify files in its own repository, as the README suggests.
 IN_REPO_DIRECTORY = ".oss-verify"
 
-# The proofs repository's index of projects. That repository does not exist yet: this assumes it keeps the layout of
-# oss-fuzz-theorems' index, a tab-separated index/projects.tsv whose header row names a `project` and a `status` column
-# (and `statements` and `proved`, if it counts them). Change these when the repository is created.
+# The proofs repository's index of projects: a tab-separated index/projects.tsv whose header row names a `project` and a
+# `status` column, and `statements` and `proved`.
 PROOFS_REPO = validate.PROOFS_REPO.removeprefix("https://github.com/")
 PROOFS_INDEX = "index/projects.tsv"
 

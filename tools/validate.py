@@ -170,11 +170,6 @@ DEFAULT_BUDGETS = {"halts": "16GiB", "agrees": {"address": ["2GiB", "512GiB"], "
 PROOFS_REPO = "https://github.com/theorem-labs/oss-verify-proofs"
 
 
-def default_proofs(name):
-    """Where a project's proofs go unless its project.yaml says otherwise."""
-    return {"repo": f"{PROOFS_REPO}#{name}", "path": f"projects/{name}"}
-
-
 def is_https_url(value):
     """Return True if `value` is an https:// URL with a host and at most one simple #fragment."""
     if not (isinstance(value, str) and URL.fullmatch(value)):

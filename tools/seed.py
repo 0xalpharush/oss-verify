@@ -10,8 +10,8 @@
                                                                             (re)create draft-generic-oss-fuzz-NAME
     tools/seed.py --rebase [NAME ...]                                       move drafts onto main, as they are
 
-CHECKOUT is a checkout of oss-fuzz-theorems (https://github.com/theorem-labs/oss-fuzz-theorems) at the release that
-tools/release_tag.py names; this reads its projects/<name>/project.yaml and projects/<name>/<harness>/harness.yaml.
+CHECKOUT is a checkout of the oss-fuzz-theorems release that tools/release_tag.py names, which is not public (see
+there); this reads its projects/<name>/project.yaml and projects/<name>/<harness>/harness.yaml.
 RECIPE is that release's build recipe (recipe.tar.zst, in its -src assets) unpacked; its patches/series.tsv says which
 patches the release applied to each library. Without it, a harness whose library the release patched is left out.
 
@@ -951,7 +951,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("names", nargs="*", help="projects of the release to seed")
     parser.add_argument("--from", dest="checkout", type=pathlib.Path,
-                        help="a checkout of oss-fuzz-theorems at the release that tools/release_tag.py names")
+                        help="a checkout of the oss-fuzz-theorems release that tools/release_tag.py names")
     parser.add_argument("--recipe", type=pathlib.Path, help="that release's build recipe, unpacked")
     parser.add_argument("--offline", action="store_true", help="look nothing up: name each library by its commit")
     mode = parser.add_mutually_exclusive_group()
@@ -971,7 +971,7 @@ def main():
     if options.checkout is None:
         parser.error("--from is required")
     if not (options.checkout / "projects").is_dir():
-        parser.error(f"{options.checkout} has no projects/: it is not a checkout of oss-fuzz-theorems")
+        parser.error(f"{options.checkout} has no projects/: it is not a checkout of the oss-fuzz-theorems release")
     release_tag.check(options.checkout)
     if (options.check or options.report) and options.names:
         parser.error("--check and --report take no project names")

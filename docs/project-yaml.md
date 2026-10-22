@@ -104,7 +104,6 @@ Each build makes a different set of binaries, with its own statements.
 
 Change the UndefinedBehaviorSanitizer checks of the `ubsan` and `asan-ubsan` builds. Use this field only if `sanitizers` contains `undefined`, and only for a `c`, `c++` or `python` project.
 
-<!-- PENDING: the final format of ubsan_checks. -->
 **The format of this field is provisional.** It can change before the next toolchain version applies it.
 
 > **WARNING:** Today's toolchain vintage does not apply this field. Its builds keep the fixed UBSan flags of the release ([build-contract.md](build-contract.md#the-builds)), so that its binaries are the release's. With this vintage, `tools/check` refuses a project that sets the field. The field applies with the next toolchain version.
@@ -175,11 +174,11 @@ Give a size as a positive number of bytes, or as a number followed by `KiB`, `Mi
 
 ### proofs
 
-Give the place where we publish the proofs: `repo`, an `https://` URL with `#<branch>`, and `path`, a directory in that repository. Most projects do not use this field. By default, we publish to the branch with the project's name in [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs), in the directory `projects/<name>`:
+Give the place where we publish the proofs: `repo`, an `https://` URL, with `#<branch>` if it is not the repository's default branch, and `path`, a directory in that repository. Most projects do not use this field. By default, we publish to the main branch of [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs), with the project's statements in `projects/<name>/` and its proofs in `proofs/<name>/`:
 
 ```yaml
 proofs:
-  repo: https://github.com/theorem-labs/oss-verify-proofs#<name>
+  repo: https://github.com/theorem-labs/oss-verify-proofs
   path: projects/<name>
 ```
 

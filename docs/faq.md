@@ -2,11 +2,7 @@
 
 This page answers the questions that [theorem.dev/oss-verify](https://theorem.dev/oss-verify/) does not answer yet. It is for maintainers and for other readers.
 
-<!-- One home for each fact: when theorem.dev/oss-verify answers a question, remove that question here. -->
-
 ## How do you choose projects?
-
-<!-- draft: policy to review -->
 
 **Enrollment.** We accept an established project that has a critical effect on the security of infrastructure and users. Our criteria are like those of OSS-Fuzz, and we decide case by case. We consider how much untrusted input the project gets, and how many users and dependent projects it has. A project must also obey these conditions:
 
@@ -49,7 +45,6 @@ To send feedback about a finding or a patch, reply to its report, or write to [o
 
 ## How does attribution work?
 
-<!-- theorem.dev/oss-verify gives the same answer. Remove this answer when that page is live (one home for each fact). -->
 We do not require credit. If you fix a bug that OSS Verify found, we ask for one line about it. Put the line in the commit message, or in the place where you give credits. Give the id from our report in it, for example:
 
     Found by Theorem's OSS Verify, as finding THM-2026-7K3QF9XA.
@@ -73,16 +68,11 @@ As a regular expression, an id is `THM-[0-9]{4}-[0-9A-HJKMNP-TV-Z]{8}`. Each fin
 * We send the findings of a seeded project to no one automatically.
 * A statement is about the binaries that we build from your repository at a pinned commit, with the fuzz targets in `fuzz_targets`.
 
-<!-- to be confirmed: whether we check the enrollment again before each report, and what we do with a finding in a dependency that a binary contains. -->
-
 ## How do you keep the data secure?
 
 * We build your project from its public repository. The compile step has no network access.
 * If you set `pgp`, we encrypt each report to your key.
 * We do not publish findings. What we publish does not show a finding that is not public.
-
-<!-- to be confirmed: where we keep findings, and who can read them. -->
-**To be confirmed:** where we keep findings, and who can read them.
 
 ## Why static riscv64 programs?
 

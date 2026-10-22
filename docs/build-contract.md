@@ -273,7 +273,6 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 
 ## Go fuzz targets
 
-<!-- draft: policy to review -->
 A Go fuzz target is an OSS-Fuzz Go fuzz target, as it is. OSS-Fuzz's Go helpers build it: `compile_go_fuzzer` for a go-fuzz `Fuzz(data []byte) int` function, and `compile_native_go_fuzzer` or `compile_native_go_fuzzer_v2` for a `testing.F` fuzz test. The Go toolchain image adds Go 1.27.1 and these helpers to the C and C++ toolchain. Its row in infra/toolchains.tsv names it. The oss-fuzz-theorems 2026.10 release built its Go binaries in this image, but did not publish them. Our builds make them again, byte for byte.
 
 `build.sh` is the project's OSS-Fuzz `build.sh`, as it is. `compile` runs it with the environment that OSS-Fuzz gives the `build.sh` of a Go project: `SANITIZER=address`, `FUZZING_ENGINE=libfuzzer`, `ARCHITECTURE=x86_64` and `FUZZING_LANGUAGE=go` ([go/compile-go](../infra/base-builder/go/compile-go)). The helpers do OSS-Fuzz's steps until the build. Then they build a static riscv64 program from the fuzz target and a driver in Go, with no cgo. A Go project has the plain build only.

@@ -42,8 +42,8 @@
 #     over that limit fails: its only rule is the list.
 #     The merge uses the one merge base GitHub reports. Where a branch and the base branch have several merge bases
 #     (a criss-cross), git's own merge builds a virtual base from them and may differ. This assumes the default branch
-#     stays linear (no merge commits), so that a pull request has one merge base with it. That holds once
-#     theorem-labs/agent-infra's default-branch ruleset for this repository, which requires linear history, is applied.
+#     stays linear (no merge commits), so that a pull request has one merge base with it. That holds while this
+#     repository's default-branch ruleset, which requires linear history, is applied.
 #     The pull request's merge button squashes, which is the tree this judges: rebase merging and merge commits are
 #     off for this repository. Turning either on would let a tree this never judged reach the default branch.
 #   - The project's files are a fork's at its head commit, and a branch of this repository's as the merge has them, so

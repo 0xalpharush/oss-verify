@@ -5,6 +5,8 @@
 
     tools/verify_ports.py --from CHECKOUT --recipe RECIPE --assets ASSETS --work DIR --results FILE [NAME ...]
 
+CHECKOUT is a checkout of the oss-fuzz-theorems release that tools/release_tag.py names (not public; see there).
+
 For each NAME (default: every project tools/seed.py can seed), in parallel:
 
   1. tools/seed.py --offline writes its project.yaml, naming the release's commit;
@@ -158,7 +160,8 @@ def verify(name, options, release):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("names", nargs="*", help="projects to port and check (default: every seedable one)")
-    parser.add_argument("--from", dest="checkout", type=pathlib.Path, required=True)
+    parser.add_argument("--from", dest="checkout", type=pathlib.Path, required=True,
+                        help="a checkout of the oss-fuzz-theorems release that tools/release_tag.py names")
     parser.add_argument("--recipe", type=pathlib.Path, required=True)
     parser.add_argument("--assets", type=pathlib.Path, required=True)
     parser.add_argument("--work", type=pathlib.Path, required=True, help="where each project's files and log go")

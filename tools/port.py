@@ -5,11 +5,11 @@
 
     tools/port.py --from CHECKOUT --recipe RECIPE --assets ASSETS --out DIR NAME ...
 
-CHECKOUT is a checkout of oss-fuzz-theorems at that release, RECIPE its build recipe (recipe.tar.zst) unpacked, and
-ASSETS a directory with the release's <name>-src.MANIFEST.tsv files, which say where each source tree of a project
-goes. For each NAME, this writes DIR/NAME/: the Dockerfile, build.sh and sources file of the project's build, the
-files of the release's own a build reads (shims, copies of harnesses), and its build-only patches with their series.
-tools/seed.py writes the project.yaml beside them.
+CHECKOUT is a checkout of the oss-fuzz-theorems release that tools/release_tag.py names (not public; see there),
+RECIPE its build recipe (recipe.tar.zst) unpacked, and ASSETS a directory with the release's <name>-src.MANIFEST.tsv
+files, which say where each source tree of a project goes. For each NAME, this writes DIR/NAME/: the Dockerfile,
+build.sh and sources file of the project's build, the files of the release's own that a build reads (shims, copies of
+harnesses), and its build-only patches with their series. tools/seed.py writes the project.yaml beside them.
 
 The build is the release's, target by target: build.sh runs each target's pin (its build_lib and helpers) through
 infra/base-builder's release-target.sh, at the paths the release's binaries record. Nothing is re-derived: the pins
@@ -432,7 +432,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("names", nargs="+", help="projects of the release to port")
     parser.add_argument("--from", dest="checkout", type=pathlib.Path, required=True,
-                        help="a checkout of oss-fuzz-theorems at the release that tools/release_tag.py names")
+                        help="a checkout of the oss-fuzz-theorems release that tools/release_tag.py names")
     parser.add_argument("--recipe", type=pathlib.Path, required=True, help="that release's build recipe, unpacked")
     parser.add_argument("--assets", type=pathlib.Path, required=True, help="a directory with its -src.MANIFEST.tsv files")
     parser.add_argument("--out", type=pathlib.Path, required=True, help="write each port to OUT/<name>/")

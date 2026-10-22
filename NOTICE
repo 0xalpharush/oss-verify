@@ -6,10 +6,9 @@ names.
 
 The driver, infra/base-builder/driver/, is licensed under the MIT licence (LICENSES/MIT.txt) or the Apache License,
 Version 2.0, at your option (MIT OR Apache-2.0). So is each file of ours under projects/<name>/ whose SPDX line says
-so, such as the git port's files that #3 marks (https://github.com/theorem-labs/oss-verify/pull/3), and so are the
-lines of ours in the wazuh and mariadb fuzz targets that this notice names below, wherever they are copied. All of
-these are linked into the fuzz targets' binaries, and the MIT licence lets a program under version 2 of the GNU GPL
-be linked with them, which the Apache License, Version 2.0 does not
+so, and so are the lines of ours in the wazuh and mariadb fuzz targets that this notice names below, wherever they are
+copied. All of these are linked into the fuzz targets' binaries, and the MIT licence lets a program under version 2
+of the GNU GPL be linked with them, which the Apache License, Version 2.0 does not
 (https://www.gnu.org/licenses/license-list.html#apache2). That covers only our own code. A binary that also links
 someone else's code under the Apache License, Version 2.0 with such a program still combines the two, as the wazuh
 and mariadb fuzz targets do (below).
@@ -29,14 +28,13 @@ CODE_OF_CONDUCT.md is the Contributor Covenant, version 2.0 (https://www.contrib
 
 infra/base-builder/ takes its driver (driver/), its compiler wrappers and flags (toolchain.sh), the shape of a
 fuzz target's link (link-fuzz-target), the release's recipes (recipes.sh) and the steps of its build around a target
-(release-target.sh) from the build recipe of the oss-fuzz-theorems 2026.10 release
-(https://github.com/theorem-labs/oss-fuzz-theorems), Copyright 2026 Theorem Labs, PBC.
+(release-target.sh) from the build recipe of the oss-fuzz-theorems 2026.10 release, Copyright 2026 Theorem Labs, PBC.
 
 The files tools/port.py writes under projects/<name>/ and tools/seeds/<name>/, and every copy of them, come from that
 same build recipe: the pins in build.sh, a target's own files, and the build-only patches. Where such a file holds a
 project's own text (for example a copy of its harness that the release edited, a file generated from its sources, or
-a patch that writes one), that text keeps the project's licence; the recipe's UPSTREAM-CARRIED.tsv names each, with
-its origin and licence.
+a patch that writes one), that text keeps the project's licence. The recipe's UPSTREAM-CARRIED.tsv, copied byte for
+byte to tools/seeds/UPSTREAM-CARRIED.tsv, names each, with its origin and licence.
 
 tools/port.py generates the files of tools/seeds/<name>/ from the build recipe, which carries no licence line for
 them, and tools/seed.py --branch copies them byte for byte into projects/<name>/ of the draft branch
@@ -91,12 +89,10 @@ come from other projects and keep those projects' licences:
   infra/base-builder/python/atheris_host.c repeats, in its lines 126-129, four declarations of CPython 3.11.13's
   Include/internal/pycore_pylifecycle.h (its lines 25, 36, 37 and 56), under the same copyright and licence.
 
-Theorem publishes the build recipe's code under the MIT licence, in the LICENSE and NOTICE of the recipe's repository
-(https://github.com/theorem-labs/oss-fuzz-theorems-build, at c8fa6a271a29009a7d8431c49e17ed0c659b437d), and the
-release says the same of the driver it links into every binary (docs/licensing.md of
-https://github.com/theorem-labs/oss-fuzz-theorems, on its release/2026.10.0-rc.2 branch). Here the driver and the
-lines of the wazuh and mariadb fuzz targets named above are under MIT OR Apache-2.0, wherever they are copied, and the
-rest of what comes from the recipe is under the Apache License, Version 2.0.
+Theorem Labs, PBC holds the copyright in the code it wrote for the build recipe, the driver included, and licenses it
+under the MIT licence. Here the driver and the lines of the wazuh and mariadb fuzz targets named above are under MIT OR
+Apache-2.0, wherever they are copied, and the rest of what comes from the recipe is under the Apache License, Version
+2.0.
 
 A file under projects/<name>/ or tools/seeds/<name>/ copied from a project's own repository or from OSS-Fuzz
 (https://github.com/google/oss-fuzz) keeps its licence: the one its header names, or for a file with no header, that

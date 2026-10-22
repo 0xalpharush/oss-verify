@@ -4,7 +4,6 @@ This page describes the DSL format: how a DSL fuzz target reads its input as a s
 
 A DSL fuzz target is also called an API driver. It is a fuzz target with the usual shape: an `LLVMFuzzerTestOneInput` ([build-contract.md](build-contract.md#the-fuzz-targets)). Inside that function, a small virtual machine runs the program that the input holds. Each operation of the program calls the library. The project defines its own operations. The machine gives the frames, the checks, the observables and the limits that this page describes.
 
-<!-- PENDING: the DSL runtime and its tools are not in this repository yet. -->
 **Pending.** The runtime of the DSL is not in this repository yet. It comes with a later toolchain version. The parts of this page that are not settled yet are marked "pending".
 
 ## The input
@@ -153,7 +152,6 @@ The allocation mask makes chosen allocations fail ([build-contract.md](build-con
 * The memory of the machine itself is never counted, so no mask can make it fail.
 * `expect alloc` and `allocs` give the number of counted allocations of this repeat.
 
-<!-- PENDING: who arms the mask in a DSL fuzz target, and the scope of its counter. -->
 **Pending:** which part arms the mask, and where its counter starts. Either the fuzz target arms the mask of the inner header at each call, or the allocation-failure driver owns the mask. The allocation functions that are counted, and whether `allocs` writes a total after the run, are also pending.
 
 ## An example

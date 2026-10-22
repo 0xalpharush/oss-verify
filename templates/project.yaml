@@ -74,5 +74,5 @@ patch_style: .oss-verify/patch_style.md
 #     address: [2GiB, 512GiB]
 #     undefined: [16GiB, 512GiB]
 # proofs:
-#   repo: https://github.com/theorem-labs/oss-verify-proofs#<name>
+#   repo: https://github.com/theorem-labs/oss-verify-proofs
 #   path: projects/<name>
