@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/commonmark/cmark#7042d9978b20fea86ca9cc98bda55f10be392e69
+primary_contact: n/a
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [cmark_fuzzer]

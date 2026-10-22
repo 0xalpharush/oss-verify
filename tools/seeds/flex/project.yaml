@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/westes/flex#4fcc71489ae298c35b0b786114ad524945f2cf95
+primary_contact: n/a
+homepage: https://github.com/westes/flex
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz-scanopt]

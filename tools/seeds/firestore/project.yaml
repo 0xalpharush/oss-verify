@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/firebase/firebase-ios-sdk#a51fbca0ae44efe46184c21dd4ff5928ee209933
+primary_contact: n/a
+homepage: https://firebase.google.com/docs/firestore
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [firestore_fieldpath_fuzzer]

@@ -1,0 +1,8 @@
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+# kind	path	arguments: see lay-out-sources
+tree	ext/bzip2-bzip2_compress_target/src	upstream/bzip2
+link	ext/bzip2-bzip2_decompress_target/src	ext/bzip2-bzip2_compress_target/src
+link	ext/bzip2-bzip2_fd/src	ext/bzip2-bzip2_compress_target/src
+file	targets/bzip2-bzip2_compress_target/bzip2_compress_target.c	https://raw.githubusercontent.com/google/oss-fuzz/955c6866c152471d78c7472c0f1f354343548b9f/projects/bzip2/bzip2_compress_target.c	36d34d3101dcb63a042f6470386ad12ebddbc900bed5d739963e6daff908f849
+file	targets/bzip2-bzip2_decompress_target/bzip2_decompress_target.c	https://raw.githubusercontent.com/google/oss-fuzz/955c6866c152471d78c7472c0f1f354343548b9f/projects/bzip2/bzip2_decompress_target.c	40a270bd32af28c7a313334bc874c946f59f3a12b410e716cc2c9fddb48a0234
+file	targets/bzip2-bzip2_fd/bzip2_fd.c	https://raw.githubusercontent.com/google/oss-fuzz/955c6866c152471d78c7472c0f1f354343548b9f/projects/bzip2/bzip2_fd.c	79a34dc194a4c608ac436435411953143d4c9b2d3b31f47da9cb895902b60a51

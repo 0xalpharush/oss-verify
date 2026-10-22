@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/mozilla/mp4parse-rust#95d98b9a6840f5bfc9a2323b3fa3f56d7f3c6077
+primary_contact: n/a
+homepage: https://github.com/mozilla/mp4parse-rust
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [avif, mp4]

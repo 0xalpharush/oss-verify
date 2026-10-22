@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.xiph.org/xiph/speex#a1b872e6704cc5825750098ce0e0c0b4aacaef4d
+primary_contact: n/a
+homepage: https://speex.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [speex_decode_fuzzer_float, speex_encode_fuzzer_float]

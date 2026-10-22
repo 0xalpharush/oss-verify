@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.com/systerel/S2OPC#bad930a6f63cb23cde9666b3e46384c5b9f4352f
+primary_contact: n/a
+homepage: https://s2opc.com
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [decode_fuzzer, parse_tcp_uri_fuzzer, server_request_fuzzer, sub_fuzzer]

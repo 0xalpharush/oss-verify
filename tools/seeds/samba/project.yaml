@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.com/samba-team/samba#f7ba52c006d5eae76cb89d07886266af28450aba
+primary_contact: n/a
+homepage: https://samba.org
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_lzxpress]

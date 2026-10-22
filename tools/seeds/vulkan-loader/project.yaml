@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/khronosgroup/Vulkan-Loader#b1d75f38257ffa71d7aa93552d2e2793296309aa
+primary_contact: n/a
+homepage: https://github.com/khronosgroup/Vulkan-Loader
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [json_load_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/h2o/picotls#f07f1c8c68b237f1468bc1f1fe1b68aba3ff23b4
+primary_contact: n/a
+homepage: https://github.com/h2o/picotls
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz-asn1]

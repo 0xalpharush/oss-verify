@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/openssh/openssh-portable#0ef0f5a839831c213f24e3f2ae434765c607fb50
+primary_contact: n/a
+homepage: https://www.openssh.com
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [agent_fuzz, authkeys_fuzz, authopt_fuzz, kex_fuzz, privkey_fuzz, pubkey_fuzz, sig_fuzz, sshsig_fuzz, sshsigopt_fuzz]

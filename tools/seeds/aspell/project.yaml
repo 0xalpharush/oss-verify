@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/gnuaspell/aspell#608e4ae25165a21ada26246ee784e0cf4ddcddb6
+primary_contact: n/a
+homepage: https://github.com/GNUAspell/aspell
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [aspell_fuzzer]

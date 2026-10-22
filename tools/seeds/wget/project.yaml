@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://git.savannah.gnu.org/git/wget#e9697d98e7249b0f68a6be040a4f3dcc5bc101fa
+primary_contact: n/a
+homepage: https://www.gnu.org/software/wget
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [wget_cookie_fuzzer]

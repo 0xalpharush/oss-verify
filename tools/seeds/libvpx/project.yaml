@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://chromium.googlesource.com/webm/libvpx#5c880e08d21386049adec8e5537c4e726458b563
+primary_contact: n/a
+homepage: https://www.webmproject.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [vpx_dec_fuzzer_vp9, vpx_enc_fuzzer_vp9]

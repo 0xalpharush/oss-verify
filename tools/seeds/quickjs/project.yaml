@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/bellard/quickjs#04be246001599f5995fa2f2d8c91a0f198d3f34c
+primary_contact: n/a
+homepage: https://bellard.org/quickjs
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_regexp]

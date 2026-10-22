@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/miekg/dns#2e4905fb030255032d4343cb83bc2f8c3cfcb82a
+primary_contact: n/a
+homepage: https://github.com/miekg/dns
+language: go
+sanitizers: []
+fuzz_targets: [fuzz_msg_unpack, fuzz_newrr]

@@ -1,0 +1,39 @@
+#!/bin/sh -e
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+#
+# Builds the fuzz targets of speex into $OUT, each from the pin of the release's target for it.
+# compile runs build.sh with bash; the release ran each target's build with sh -e, and so does this.
+[ -z "${BASH_VERSION:-}" ] || exec sh -e "$0"
+. /usr/local/lib/oss-verify/release-target.sh
+
+# speex_decode_fuzzer_float: the release's target speex-speexdec_fuzzer
+(
+ov_target_begin speex-speexdec_fuzzer
+build_lib() {
+  oft_require_target_cxx
+  oft_build_autotools
+  oft_build_harness "contrib/oss-fuzz/speexdec_fuzzer.cc"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build speex_decode_fuzzer_float
+)
+
+# speex_encode_fuzzer_float: the release's target speex-speexenc_fuzzer
+(
+ov_target_begin speex-speexenc_fuzzer
+build_lib() {
+  oft_require_target_cxx
+  oft_build_autotools
+  oft_build_harness "contrib/oss-fuzz/speexenc_fuzzer.cc"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build speex_encode_fuzzer_float
+)

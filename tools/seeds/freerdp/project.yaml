@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/FreeRDP/FreeRDP#dbea8ef5d3eb680bbafbdeaf0cc81a6614070196
+primary_contact: n/a
+homepage: https://www.freerdp.com
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [TestFuzzCommonAssistanceBinToHexString]

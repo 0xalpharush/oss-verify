@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/mity/md4c#3e7ace20d262028baf702db9850520f017c25591
+primary_contact: n/a
+homepage: https://github.com/mity/md4c
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz-mdhtml]

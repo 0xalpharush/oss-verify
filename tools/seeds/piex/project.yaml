@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://android.googlesource.com/platform/external/piex#eaddfa72c1693728db64101701431421371c38da
+primary_contact: n/a
+homepage: https://github.com/google/piex
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzzer-piex]

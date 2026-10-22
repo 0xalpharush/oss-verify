@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/dtolnay/unsafe-libyaml#417668ce6565ece14bbd9b4a73137d9241ea1365
+primary_contact: n/a
+homepage: https://github.com/dtolnay/unsafe-libyaml
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [load, parse, scan]

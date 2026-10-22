@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/clbanning/mxj#971b308d696c0af929db4341e99c5b64020d97f1
+primary_contact: n/a
+homepage: https://github.com/clbanning/mxj
+language: go
+sanitizers: []
+fuzz_targets: [fuzz_map_xml]

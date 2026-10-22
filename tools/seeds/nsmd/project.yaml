@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gbmc.googlesource.com/nsmd#62de34e8b8bda9eab592ad737b7fbb3924a55e89
+primary_contact: n/a
+homepage: https://gbmc.googlesource.com/nsmd
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [decode_nsm_disable_tokens_req_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ryanhaining/cppitertools#531b3d753d2bbfe3b0ababe61c2e95e965c54a66
+primary_contact: n/a
+homepage: https://github.com/ryanhaining/cppitertools
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_cppitertools]

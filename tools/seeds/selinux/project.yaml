@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/SELinuxProject/selinux#efd1aa519e2f75baab5ea91f81d18e0bbeadd191
+primary_contact: n/a
+homepage: https://github.com/SELinuxProject/selinux
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [binpolicy-fuzzer, module-package-fuzzer, secilc-fuzzer]

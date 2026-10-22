@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/open-mpi/hwloc#3b37b024aa3fe368dd82008eea7e1ad9dca97d2c
+primary_contact: n/a
+homepage: https://github.com/open-mpi/hwloc
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [hwloc_fuzzer]

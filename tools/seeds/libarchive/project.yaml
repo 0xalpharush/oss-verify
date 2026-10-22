@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/libarchive/libarchive#3670ecf7c59a6b12fe93e6255bbe4a1f3420edf8
+primary_contact: n/a
+homepage: https://github.com/libarchive/libarchive
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [libarchive_7zip_fuzzer, libarchive_ar_fuzzer, libarchive_cab_fuzzer, libarchive_cpio_fuzzer, libarchive_entry_fuzzer, libarchive_filter_fuzzer, libarchive_iso9660_fuzzer, libarchive_lha_fuzzer, libarchive_linkify_fuzzer, libarchive_mtree_fuzzer, libarchive_rar5_fuzzer, libarchive_rar_fuzzer, libarchive_roundtrip_fuzzer, libarchive_seek_fuzzer, libarchive_string_fuzzer, libarchive_tar_fuzzer, libarchive_warc_fuzzer, libarchive_write_fuzzer, libarchive_xar_fuzzer, libarchive_zip_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://android.googlesource.com/platform/external/libldac#eeee1a3f5f8df1282e3a6d297085885fd886737b
+primary_contact: n/a
+homepage: https://android.googlesource.com/platform/external/libldac
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [libldac_encode_fuzzer]

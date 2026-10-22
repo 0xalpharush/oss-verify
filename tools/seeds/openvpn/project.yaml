@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/OpenVPN/openvpn#af6a79c6a83739ca9542e52a02a3449a2f292758
+primary_contact: n/a
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_base64]

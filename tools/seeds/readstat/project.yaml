@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/WizardMac/ReadStat#da9fcaa48a78107774ecc7efe83fc77050c68ad8
+primary_contact: n/a
+homepage: https://github.com/WizardMac/ReadStat
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_compression_sav, fuzz_grammar_dta_timestamp, fuzz_grammar_por_double, fuzz_grammar_sav_date, fuzz_grammar_sav_time, fuzz_grammar_spss_format, fuzz_grammar_xport_format]

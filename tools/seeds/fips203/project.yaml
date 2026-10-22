@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/integritychain/fips203#f1d1d5a0bbf3ab071b4538fad76598500721fc48
+primary_contact: n/a
+homepage: https://crates.io/crates/fips203
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [ml_kem_fuzz]

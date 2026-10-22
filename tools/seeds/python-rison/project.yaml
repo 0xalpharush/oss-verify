@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/betodealmeida/python-rison#501b4e3ece2ed96ac2c29f417b57fcbb59fb9cc5
+primary_contact: n/a
+homepage: https://github.com/betodealmeida/python-rison
+language: python
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_decode, fuzz_roundtrip]

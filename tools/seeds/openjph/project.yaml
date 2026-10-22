@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/aous72/OpenJPH#96f6d3937232a15d7f53fca450f3bf97cd58343a
+primary_contact: n/a
+homepage: https://github.com/aous72/OpenJPH
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [ojph_compress_fuzz_target, ojph_expand_fuzz_target]

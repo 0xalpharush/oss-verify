@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/rust-lang/regex#72d650cb0a880a01ab6dc2137c0888e8f89740f7
+primary_contact: n/a
+homepage: https://github.com/rust-lang/regex
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [ast_fuzz_match, ast_fuzz_match_bytes, ast_fuzz_regex, ast_roundtrip, fuzz_regex_automata_deserialize_dense_dfa, fuzz_regex_automata_deserialize_sparse_dfa, fuzz_regex_lite_match, fuzz_regex_match]

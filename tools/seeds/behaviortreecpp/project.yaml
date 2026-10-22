@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/BehaviorTree/BehaviorTree.CPP#679086933aab78376f4a8fcb2adb2a6bed5e46b3
+primary_contact: n/a
+homepage: https://www.behaviortree.dev
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [bb_fuzzer, script_fuzzer]

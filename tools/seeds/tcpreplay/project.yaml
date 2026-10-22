@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/appneta/tcpreplay#c3f6049a1de91e7d3b81543d0ecb01e465b05214
+primary_contact: n/a
+homepage: https://tcpreplay.appneta.com
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_pcap, fuzz_services]

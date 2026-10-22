@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/coredns/coredns#6755e6276d56d055dad9c981852c0c43667d7029
+primary_contact: n/a
+homepage: https://coredns.io
+language: go
+sanitizers: []
+fuzz_targets: [fuzz_core, fuzz_plugin_cache, fuzz_plugin_chaos, fuzz_plugin_file, fuzz_plugin_forward, fuzz_plugin_grpc, fuzz_plugin_rewrite, fuzz_plugin_whoami]

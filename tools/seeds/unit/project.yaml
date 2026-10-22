@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/nginx/unit#76b39e928bd29f09278b60c3878b9f3d032b45b6
+primary_contact: n/a
+homepage: https://unit.nginx.org
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_basic]

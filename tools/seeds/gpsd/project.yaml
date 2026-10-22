@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.com/gpsd/gpsd#46977faa8f94eb036ca68c24a3fc0d233732e707
+primary_contact: n/a
+homepage: https://gpsd.io
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [FuzzClient, FuzzDrivers, FuzzDriversStructured, FuzzJson, FuzzPacket]

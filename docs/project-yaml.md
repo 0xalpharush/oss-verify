@@ -196,16 +196,18 @@ With each value, we hold back each statement that shows a finding that is not pu
 
 ## Seeded projects
 
-We seeded some projects ourselves, on branches named `draft-generic-oss-fuzz-<name>` ([faq.md](faq.md#how-do-you-choose-projects)). We used the build data of the oss-fuzz-theorems 2026.10 release. A seeded project has `primary_contact: n/a`. Its `project.yaml` starts with two comment lines that tell that we seeded it. `tools/validate.py` warns about `n/a`, and the triage comment on a pull request shows it.
+We seeded some projects ourselves. A project whose proofs we publish in [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs) is in `projects/<name>/`. Each other one is in [tools/seeds/](../tools/seeds/)`<name>/`: its `project.yaml`, and its build files if it has any. We used the build data of the oss-fuzz-theorems 2026.10 release. A seeded project has `primary_contact: n/a`. Its `project.yaml` starts with two comment lines that tell that we seeded it. `tools/validate.py` warns about `n/a`, and the triage comment on a pull request shows it.
+
+We seeded the projects of OSS-Fuzz, at its commit `bd2ce21991a94a362b92fb1bf25f86d5a1a60842`, that our builder can build and that we can describe honestly. A seeded `project.yaml` gives only what the recorded build data tells, and no guess. [seeded-projects.tsv](seeded-projects.tsv) lists each of the 1,381 projects of OSS-Fuzz at that commit. For a project that we did not seed, it gives the reason.
 
 A core maintainer can adopt a seeded project:
 
-1. Copy its `projects/<name>/` into a branch of your fork.
+1. Copy its `projects/<name>/`, or its `tools/seeds/<name>/`, to `projects/<name>/` in a branch of your fork.
 2. Set `primary_contact` to the project's security contact.
 3. Remove the two comment lines.
 4. Do the steps in the [README](../README.md#enroll-a-project) from step 3.
 
-The build files of a draft branch come from the build recipe of that release (`tools/port.py`). They make that release's binaries again, byte for byte. Keep them, or write your own. If a draft branch has no build files, its commit message tells why. Add a `Dockerfile` and a `build.sh` before you open the pull request.
+The build files of a seeded project come from the build recipe of that release. They make that release's binaries again, byte for byte. Keep them, or write your own. If a seeded project has no build files, [seeded-projects.tsv](seeded-projects.tsv) tells why. Add a `Dockerfile` and a `build.sh` before you open the pull request.
 
 ## The files in the project directory
 

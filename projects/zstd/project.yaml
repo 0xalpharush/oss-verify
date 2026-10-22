@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/facebook/zstd#82d322c4973d9e2968d94047a40892bc6d9a9bdf
+primary_contact: n/a
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [block_decompress, block_round_trip, decompress_cross_format, decompress_dstSize_tooSmall, dictionary_decompress, dictionary_loader, fse_read_ncount, huf_decompress, huf_round_trip, sequence_compression_api, simple_compress, simple_decompress, stream_decompress, zstd_frame_info]

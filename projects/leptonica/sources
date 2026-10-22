@@ -1,0 +1,35 @@
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+# kind	path	arguments: see lay-out-sources
+tree	ext/leptonica-affine_fuzzer/src	upstream/leptonica
+link	ext/leptonica-barcode_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-bilateral_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-bilinear_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-blend_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-boxfunc4_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-boxfunc5_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-boxfunc_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-ccbord_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-ccthin_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-checkerboard_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-colorfill_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-colorquant_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-compare_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-edge_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-enhance_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-fhmtgen_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-flipdetect_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-fpix2_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-graphics_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-graymorph_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-grayquant_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-jpegiostub_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-kernel_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-mask_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-maze_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-morph_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-pageseg_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-paintcmap_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-pix1_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-pix_orient_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-pix_rotate_shear_fuzzer/src	ext/leptonica-affine_fuzzer/src
+link	ext/leptonica-pixconv_fuzzer/src	ext/leptonica-affine_fuzzer/src

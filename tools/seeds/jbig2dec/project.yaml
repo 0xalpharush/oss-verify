@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ArtifexSoftware/jbig2dec#dc15c39bbbddc90f79c14563d2eb5a794106be8f
+primary_contact: n/a
+homepage: https://www.jbig2dec.com
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [jbig2_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/richgel999/miniz#3.1.2
+primary_contact: n/a
+homepage: https://github.com/richgel999/miniz
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [add_in_place_fuzzer, checksum_fuzzer, compress_fuzzer, flush_fuzzer, large_fuzzer, miniz_zip_validate_fuzzer, small_fuzzer, uncompress2_fuzzer, uncompress_fuzzer, zip_fuzzer]

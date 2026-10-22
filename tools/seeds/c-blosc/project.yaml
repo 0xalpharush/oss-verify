@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/Blosc/c-blosc#c8072c21dcce8daf6dd19a0bbae8c53458ad68cc
+primary_contact: n/a
+homepage: https://github.com/Blosc/c-blosc
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [compress_fuzzer, decompress_fuzzer]

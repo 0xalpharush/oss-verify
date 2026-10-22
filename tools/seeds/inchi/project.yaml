@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/IUPAC-InChI/InChI#6472717078fa8c1a7ec95ddf33a74c9289f16528
+primary_contact: n/a
+homepage: https://www.inchi-trust.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [molfile_fuzzer]

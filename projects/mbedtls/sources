@@ -1,0 +1,4 @@
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+# kind	path	arguments: see lay-out-sources
+tree	ext/mbedtls-fuzz_pkcs7/src	upstream/mbedtls
+git	ext/mbedtls-fuzz_pkcs7/src/framework	https://github.com/Mbed-TLS/mbedtls-framework	a3079552234917a9831dd70693983af5e62c70de

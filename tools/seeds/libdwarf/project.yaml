@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/davea42/libdwarf-code#aecc146edb2f5f00b099ba9460f9e15c3e5b7b1e
+primary_contact: n/a
+homepage: https://www.prevanders.net/dwarf.html
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_aranges, fuzz_crc, fuzz_crc_32, fuzz_debug_addr_access, fuzz_debug_str, fuzz_debuglink, fuzz_die_cu, fuzz_die_cu_attrs, fuzz_die_cu_attrs_loclist, fuzz_die_cu_e, fuzz_die_cu_e_print, fuzz_die_cu_info1, fuzz_die_cu_offset, fuzz_die_cu_print, fuzz_dnames, fuzz_findfuncbypc, fuzz_gdbindex, fuzz_globals, fuzz_gnu_index, fuzz_init_b, fuzz_init_binary, fuzz_init_path, fuzz_macro_dwarf4, fuzz_macro_dwarf5, fuzz_rng, fuzz_set_frame_all, fuzz_showsectgrp, fuzz_simplereader_tu, fuzz_srcfiles, fuzz_stack_frame_access, fuzz_str_offsets, fuzz_tie, fuzz_xuindex]

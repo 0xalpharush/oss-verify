@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ordian/toml_edit#e4b8bda51c458b3c9b5671b6ad50a0a4a279f583
+primary_contact: n/a
+homepage: https://github.com/ordian/toml_edit
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [parse_document]

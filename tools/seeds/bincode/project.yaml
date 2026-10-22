@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://git.sr.ht/~stygianentity/bincode#a4d858fa026bb87d1dba2edd386e2a6109f827c8
+primary_contact: n/a
+homepage: https://git.sr.ht/~stygianentity/bincode
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [compat, roundtrip]

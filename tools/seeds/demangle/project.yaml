@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ianlancetaylor/demangle#83e58baca7248962d58657affe41b3b6f27ee423
+primary_contact: n/a
+homepage: https://github.com/ianlancetaylor/demangle
+language: go
+sanitizers: []
+fuzz_targets: [FuzzTest]

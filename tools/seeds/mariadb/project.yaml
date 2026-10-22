@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/MariaDB/server#b2a8c2234dbc276fe3947633c9ffea454badf48f
+primary_contact: n/a
+homepage: https://mariadb.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_json]

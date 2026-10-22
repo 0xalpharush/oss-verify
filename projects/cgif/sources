@@ -1,0 +1,5 @@
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+# kind	path	arguments: see lay-out-sources
+tree	ext/cgif-cgif_file_fuzzer/src	upstream/cgif
+link	ext/cgif-cgif_fuzzer/src	ext/cgif-cgif_file_fuzzer/src
+link	ext/cgif-cgif_rgb_fuzzer/src	ext/cgif-cgif_file_fuzzer/src

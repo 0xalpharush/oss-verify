@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://sourceware.org/git/binutils-gdb#d36318737a3882fcae672a6f2da5cfdb792721a7
+primary_contact: n/a
+homepage: https://www.gnu.org/software/binutils
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_bfd, fuzz_disassemble, fuzz_objdump]

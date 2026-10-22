@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/protobuf-c/protobuf-c#6decaa6e5ff37e2c7f1afea06dc75b067d14b1b0
+primary_contact: n/a
+homepage: https://github.com/protobuf-c/protobuf-c
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [unpack_fuzzer]

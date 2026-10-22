@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/nlohmann/json#35705d79d878db5ca1a282ec0f8243a80010d24e
+primary_contact: n/a
+homepage: https://github.com/nlohmann/json
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [parse_afl_fuzzer, parse_bjdata_fuzzer, parse_bson_fuzzer, parse_cbor_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.com/NTPsec/ntpsec#9e79f1923b0e53e694767b7ea3e7dfbf36d2e028
+primary_contact: n/a
+homepage: https://ntpsec.org
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [FuzzClient]

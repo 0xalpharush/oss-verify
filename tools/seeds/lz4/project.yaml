@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/lz4/lz4#0774d05537f9762f838f7ab541b7765f1a729cb5
+primary_contact: n/a
+homepage: https://github.com/lz4/lz4
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [compress_frame_fuzzer, compress_fuzzer, compress_hc_fuzzer, decompress_frame_fuzzer, decompress_fuzzer, round_trip_frame_fuzzer, round_trip_frame_uncompressed_fuzzer, round_trip_fuzzer, round_trip_hc_fuzzer, round_trip_stream_fuzzer]

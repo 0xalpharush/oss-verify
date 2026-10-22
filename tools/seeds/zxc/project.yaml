@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/hellobertrand/zxc#a2ea7707b2fd235f94c8a82a992c168098bd2ee0
+primary_contact: n/a
+homepage: https://github.com/hellobertrand/zxc
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [zxc_fuzzer_decompress, zxc_fuzzer_dict, zxc_fuzzer_pstream, zxc_fuzzer_roundtrip, zxc_fuzzer_seekable]

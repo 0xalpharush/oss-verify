@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/gweis/isodate#17cb25eb7bc3556a68f3f7b241313e9bb8b23760
+primary_contact: n/a
+homepage: https://github.com/gweis/isodate
+language: python
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_parse]

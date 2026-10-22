@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/bazelbuild/rules_fuzzing#ef7f8ad7dc118d009c93350e37632b719831345d
+primary_contact: n/a
+homepage: https://github.com/bazelbuild/rules_fuzzing
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzzed_data_provider_fuzz_test, input_buffer_overflow_fuzz_test, new_buffer_overflow_fuzz_test, ubsan_function_ptr_fuzz_test]

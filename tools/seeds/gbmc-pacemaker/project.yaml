@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gbmc.googlesource.com/gbmcweb#7c20d3878fd8e3418d281da85833a342593ae38a
+primary_contact: n/a
+homepage: https://gbmc.googlesource.com/gbmcweb
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [pacemaker_fuzzer]

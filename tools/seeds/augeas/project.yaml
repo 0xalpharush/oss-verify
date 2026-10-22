@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/hercules-team/augeas#22d715e8d4ad133e2eb085b9b38d1e4a37f911d2
+primary_contact: n/a
+homepage: https://github.com/hercules-team/augeas
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [augeas_api_fuzzer]

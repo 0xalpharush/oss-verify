@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/libgit2/libgit2#0551dfd4ad989b6a3d5683c0d4cf326c6efef929
+primary_contact: n/a
+homepage: https://libgit2.github.com
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [config_file_fuzzer, objects_fuzzer, packfile_fuzzer, patch_parse_fuzzer]

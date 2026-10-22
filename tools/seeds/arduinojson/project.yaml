@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/bblanchon/ArduinoJson#1cd478f48e7c4cd142a0bd26ee17d63d70d04e3f
+primary_contact: n/a
+homepage: https://github.com/bblanchon/ArduinoJson
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [json_fuzzer, msgpack_fuzzer, number_fuzzer]

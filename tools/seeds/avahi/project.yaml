@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/avahi/avahi#b1a83592590445fc3b88d3b3fdda69b5103956a9
+primary_contact: n/a
+homepage: https://avahi.org
+language: c
+sanitizers: [undefined]
+fuzz_targets: [fuzz-consume-key, fuzz-consume-record, fuzz-domain, fuzz-ini-file-parser, fuzz-packet, fuzz-strlst]

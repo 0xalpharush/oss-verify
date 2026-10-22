@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/dustin/go-humanize#a1b4e66b9a6d890e9e15e7091cf16c8032367d6e
+primary_contact: n/a
+homepage: https://github.com/dustin/go-humanize
+language: go
+sanitizers: []
+fuzz_targets: [FuzzParseBytes]

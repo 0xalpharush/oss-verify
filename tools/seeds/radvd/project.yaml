@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/radvd-project/radvd#fbbacdcbd12f829453deb33ed50a5a49a3c42b05
+primary_contact: n/a
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_config, fuzz_process]

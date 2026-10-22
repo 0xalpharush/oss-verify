@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/zeux/meshoptimizer#b5b2c4391cb62d434d44e7f6ffb96194605fae2f
+primary_contact: n/a
+homepage: https://github.com/zeux/meshoptimizer
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [clusterfuzz, codecfuzzer, simplifyfuzz]

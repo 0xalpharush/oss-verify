@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/json-c/json-c#d17ad9d1863ebbf39993706140bf67847b7add0f
+primary_contact: n/a
+homepage: https://json-c.github.io/json-c
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [json_array_fuzzer, json_object_fuzzer, json_pointer_fuzzer, tokener_parse_ex_fuzzer]

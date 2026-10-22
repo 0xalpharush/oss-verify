@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/nanopb/nanopb#d21fa5084287ab67da2f166f4def045bedcb535e
+primary_contact: n/a
+homepage: https://jpa.kapsi.fi/nanopb
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzztest_io_errors]

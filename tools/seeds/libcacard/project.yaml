@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.freedesktop.org/spice/libcacard#633afa761d15bc12adedbff8a43ac9d3c617d1a3
+primary_contact: n/a
+homepage: https://gitlab.freedesktop.org/spice/libcacard
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_simpletlv]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.com/gnutls/libtasn1#2b2065b2383aebe138c7d0f7b5646369e5f56ec3
+primary_contact: n/a
+homepage: https://gitlab.com/gnutls/libtasn1
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [asn1_decode_simple_ber_fuzzer, asn1_decode_simple_der_fuzzer, asn1_get_length_ber_fuzzer, asn1_get_length_der_fuzzer, asn1_get_object_id_der_fuzzer, libtasn1_array2tree_fuzzer, libtasn1_gnutls_der_fuzzer, libtasn1_parser2tree_fuzzer, libtasn1_pkix_der_fuzzer]

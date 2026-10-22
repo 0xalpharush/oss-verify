@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.xiph.org/xiph/tremor#820fb3237ea81af44c9cc468c8b4e20128e3e5ad
+primary_contact: n/a
+homepage: https://xiph.org/vorbis
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [decode_fuzzer, vorbis_synthesis_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.xiph.org/xiph/opusfile#6dfd29e7adb87f2e193575fc3fa88cbf1a0b27df
+primary_contact: n/a
+homepage: https://opus-codec.org
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [opusfile_fuzzer]

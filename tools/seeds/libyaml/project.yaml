@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/yaml/libyaml#90a56d4500aa1a1798514c5cb55c3ad4cb095f94
+primary_contact: n/a
+homepage: https://github.com/yaml/libyaml
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [libyaml_deconstructor_alt_fuzzer, libyaml_deconstructor_fuzzer, libyaml_dumper_fuzzer, libyaml_emitter_fuzzer, libyaml_loader_fuzzer, libyaml_parser_fuzzer, libyaml_reformatter_alt_fuzzer, libyaml_reformatter_fuzzer, libyaml_scanner_fuzzer]

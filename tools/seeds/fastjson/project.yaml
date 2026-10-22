@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/valyala/fastjson#d652a1b1909d3520389b2c287ca3cf3aa3791451
+primary_contact: n/a
+homepage: https://github.com/valyala/fastjson
+language: go
+sanitizers: []
+fuzz_targets: [fuzz]

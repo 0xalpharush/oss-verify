@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/simdjson/simdjson#f807de973580fb22cc0db6b3b896716684b0266c
+primary_contact: n/a
+homepage: https://simdjson.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_atpointer, fuzz_dump, fuzz_dump_raw_tape, fuzz_element, fuzz_implementations, fuzz_minify, fuzz_minifyimpl, fuzz_ndjson, fuzz_ondemand, fuzz_padded, fuzz_parser, fuzz_print_json, fuzz_utf8]

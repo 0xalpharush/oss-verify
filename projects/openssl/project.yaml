@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/openssl/openssl#47aae188a6bdc65675ea9c2a9e770bef48a5d781
+primary_contact: n/a
+homepage: https://www.openssl.org
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [acert, asn1, asn1parse, bignum, bndiv, client, cmp, cms, conf, crl, ct, decoder, dtlsclient, dtlsserver, echconfiglist_parser, hashtable, ml-dsa, ml-kem, pem, pkcs12, pkcs7_verify, provider, punycode, quic-client, quic-lcidm, quic-rcidm, quic-server, quic-srtm, server, slh-dsa, smime, v3name, x509, x509v3]

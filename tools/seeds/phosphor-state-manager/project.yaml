@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/openbmc/phosphor-state-manager#a518bd393db4c04f2e1354e6540463a446dfde5b
+primary_contact: n/a
+homepage: https://github.com/openbmc/phosphor-state-manager
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [target_parser_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/open62541/open62541#12b72510faae152bb9ec9fc7084063d7e1b00da3
+primary_contact: n/a
+homepage: https://open62541.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_attributeoperand, fuzz_base64_decode, fuzz_base64_encode, fuzz_binary_decode, fuzz_datatype_description, fuzz_eventfilter_parse, fuzz_json_decode, fuzz_json_decode_encode, fuzz_parse_string, fuzz_pubsub_binary, fuzz_pubsub_connection_config, fuzz_pubsub_json, fuzz_src_ua_util, fuzz_xml_decode_encode]

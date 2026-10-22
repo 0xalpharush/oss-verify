@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/mobile-shell/mosh#decd9b705eb81626f694335b8d5940538beb06da
+primary_contact: n/a
+homepage: https://mosh.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [terminal_fuzzer, terminal_parser_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ada-url/ada#e67544784e8df244a7d999f7423bc8680b9ccdca
+primary_contact: n/a
+homepage: https://ada-url.github.io/ada
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [ada_c, can_parse, idna, max_length, parse, serializers, simple_absolute, unicode, url_search_params]

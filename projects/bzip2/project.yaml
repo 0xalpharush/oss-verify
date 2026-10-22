@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://sourceware.org/git/bzip2#f5dfc96063fef2d9c5446d0733867d899ef9b942
+primary_contact: n/a
+homepage: https://sourceware.org/bzip2
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [bzip2_compress_target, bzip2_decompress_target, bzip2_fd]

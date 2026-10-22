@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ron-rs/ron#7cf000afe4de4783786db1e94f9c14b1da382c26
+primary_contact: n/a
+homepage: https://github.com/ron-rs/ron
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [from_str]

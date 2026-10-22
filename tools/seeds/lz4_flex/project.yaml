@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/PSeitz/lz4_flex#f6251928e30af958243a3ef8f22e3071d241543d
+primary_contact: n/a
+homepage: https://github.com/PSeitz/lz4_flex
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_decomp_corrupt_block, fuzz_decomp_corrupt_frame, fuzz_roundtrip, fuzz_roundtrip_cpp_compress, fuzz_roundtrip_cpp_decompress, fuzz_roundtrip_frame]

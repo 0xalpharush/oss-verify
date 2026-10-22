@@ -238,14 +238,14 @@ def project_tag(job, commit, builder, home, suffix=""):
 
 
 def work_label(home):
-    """The label every container that the run with work directory `home` starts carries, so that a caller
-    (tools/verify_ports.py) stops that run's containers and no other's."""
+    """The label every container that the run with work directory `home` starts carries, so that a caller stops that
+    run's containers and no other's."""
     return ["--label", f"{WORK_LABEL}={home}"]
 
 
 def record_image(record, tag):
     """Add `tag` to the file `record`, one tag a line, before the image is built: the project images this run makes,
-    for a caller (tools/verify_ports.py) to remove those and no other run's."""
+    for a caller to remove those and no other run's."""
     with open(record, "a", encoding="utf-8") as handle:
         handle.write(f"{tag}\n")
 

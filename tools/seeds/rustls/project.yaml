@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/rustls/rustls#99f2358cae2954837dbb866faf6727de75489ab9
+primary_contact: n/a
+homepage: https://github.com/rustls/rustls
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [client, deframer, fragment, message, persist, server, server_name]

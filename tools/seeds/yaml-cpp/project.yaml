@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/jbeder/yaml-cpp#c3f81127320662deb3e28f4da0a511f1faecd860
+primary_contact: n/a
+homepage: https://codedocs.xyz/jbeder/yaml-cpp/index.html
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [load_fuzzer]

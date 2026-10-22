@@ -1,0 +1,6 @@
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+# kind	path	arguments: see lay-out-sources
+tree	ext/json-c-json_array_fuzzer/src	upstream/json-c
+link	ext/json-c-json_object_fuzzer/src	ext/json-c-json_array_fuzzer/src
+link	ext/json-c-json_pointer_fuzzer/src	ext/json-c-json_array_fuzzer/src
+link	ext/json-c-tokener_parse_ex_fuzzer/src	ext/json-c-json_array_fuzzer/src

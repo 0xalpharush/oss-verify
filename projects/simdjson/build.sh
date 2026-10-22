@@ -1,0 +1,215 @@
+#!/bin/sh -e
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+#
+# Builds the fuzz targets of simdjson into $OUT, each from the pin of the release's target for it.
+# compile runs build.sh with bash; the release ran each target's build with sh -e, and so does this.
+[ -z "${BASH_VERSION:-}" ] || exec sh -e "$0"
+. /usr/local/lib/oss-verify/release-target.sh
+
+# fuzz_atpointer: the release's target simdjson-fuzz_atpointer
+(
+ov_target_begin simdjson-fuzz_atpointer
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_atpointer.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_atpointer
+)
+
+# fuzz_dump: the release's target simdjson-fuzz_dump
+(
+ov_target_begin simdjson-fuzz_dump
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_dump.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_dump
+)
+
+# fuzz_dump_raw_tape: the release's target simdjson-fuzz_dump_raw_tape
+(
+ov_target_begin simdjson-fuzz_dump_raw_tape
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_dump_raw_tape.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_dump_raw_tape
+)
+
+# fuzz_element: the release's target simdjson-fuzz_element
+(
+ov_target_begin simdjson-fuzz_element
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_element.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_element
+)
+
+# fuzz_implementations: the release's target simdjson-fuzz_implementations
+(
+ov_target_begin simdjson-fuzz_implementations
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_implementations.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_implementations
+)
+
+# fuzz_minify: the release's target simdjson-fuzz_minify
+(
+ov_target_begin simdjson-fuzz_minify
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_minify.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_minify
+)
+
+# fuzz_minifyimpl: the release's target simdjson-fuzz_minifyimpl
+(
+ov_target_begin simdjson-fuzz_minifyimpl
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_minifyimpl.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_minifyimpl
+)
+
+# fuzz_ndjson: the release's target simdjson-fuzz_ndjson
+(
+ov_target_begin simdjson-fuzz_ndjson
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_ndjson.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_ndjson
+)
+
+# fuzz_ondemand: the release's target simdjson-fuzz_ondemand
+(
+ov_target_begin simdjson-fuzz_ondemand
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_ondemand.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_ondemand
+)
+
+# fuzz_padded: the release's target simdjson-fuzz_padded
+(
+ov_target_begin simdjson-fuzz_padded
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_padded.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_padded
+)
+
+# fuzz_parser: the release's target simdjson-fuzz_parser
+(
+ov_target_begin simdjson-fuzz_parser
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_parser.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_parser
+)
+
+# fuzz_print_json: the release's target simdjson-fuzz_print_json
+(
+ov_target_begin simdjson-fuzz_print_json
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_print_json.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_print_json
+)
+
+# fuzz_utf8: the release's target simdjson-fuzz_utf8
+(
+ov_target_begin simdjson-fuzz_utf8
+build_lib() {
+  oft_require_target_cxx
+  oft_build_cmake
+  oft_build_harness "fuzz/fuzz_utf8.cpp"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_utf8
+)

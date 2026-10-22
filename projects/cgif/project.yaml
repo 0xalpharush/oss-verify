@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/dloebl/cgif#b1facf77a226e971fdd9c0f2fd616ab9b03562d9
+primary_contact: n/a
+homepage: https://github.com/dloebl/cgif
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [cgif_file_fuzzer, cgif_fuzzer, cgif_rgb_fuzzer]

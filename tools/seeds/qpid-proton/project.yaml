@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/apache/qpid-proton#caf0f45c5652d1576ca5af882fbc2be9b53800c0
+primary_contact: n/a
+homepage: https://qpid.apache.org/proton
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz-message-decode, fuzz-sniff-header]

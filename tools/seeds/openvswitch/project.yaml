@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/openvswitch/ovs#1d4157643ca16ef8d84c8a27fe524aedb7b538d0
+primary_contact: n/a
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [json_parser_target, odp_target, ofctl_parse_target]

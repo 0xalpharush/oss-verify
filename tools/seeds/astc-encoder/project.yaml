@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ARM-software/astc-encoder#9fbec68053d507023bb30e2a449f900a915882b9
+primary_contact: n/a
+homepage: https://github.com/ARM-software/astc-encoder
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_astc_compress, fuzz_astc_decompress]

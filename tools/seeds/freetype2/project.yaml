@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/freetype/freetype2-testing#db8ae87fead2ede5487e242dd9f5a129ca5e9fd2
+primary_contact: n/a
+homepage: https://www.freetype.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [cff, ftfuzzer, truetype, type1]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/libjxl/libjxl#aea3a06e281fdee13e04815bfbf4f4132e7f59ea
+primary_contact: n/a
+homepage: https://github.com/libjxl/libjxl
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [color_encoding_fuzzer, decode_fuzzer, fields_fuzzer, fuzz_iccprofile_atf, fuzz_iccprofile_info, fuzz_iccprofile_transform, icc_codec_fuzzer, rans_fuzzer]

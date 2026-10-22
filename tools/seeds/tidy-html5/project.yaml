@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/htacg/tidy-html5#d08ddc2860aa95ba8e301343a30837f157977cba
+primary_contact: n/a
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [tidy_config_fuzzer, tidy_fuzzer, tidy_parse_string_fuzzer, tidy_xml_fuzzer]

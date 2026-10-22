@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.freedesktop.org/spice/usbredir#f4406c506726853d1795eba428256b3922e1a6ad
+primary_contact: n/a
+homepage: https://www.spice-space.org/usbredir.html
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [usbredirfilterfuzz, usbredirparserfuzz]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/Exiv2/exiv2#e84cb9db060527416a43f3d257656331c85aff28
+primary_contact: n/a
+homepage: https://www.exiv2.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz-preview, fuzz-read-print-write, fuzz-read-write]

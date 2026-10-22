@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/libsndfile/libsndfile#7ff854d1e0bd9a751a9ff52ed980c62afced91fe
+primary_contact: n/a
+homepage: https://github.com/libsndfile/libsndfile
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [sndfile_alt_fuzzer, sndfile_fuzzer]

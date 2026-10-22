@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/libical/libical#ce074dd9c86850cf38a7a3193b0ff08d0579248e
+primary_contact: n/a
+homepage: https://github.com/libical/libical
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [libical_extended_fuzzer, libical_fuzzer, libicalvcard_fuzzer]

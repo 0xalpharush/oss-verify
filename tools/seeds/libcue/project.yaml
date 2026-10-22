@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/lipnitsk/libcue#f35fd675703d8984c2ea26cca7cb403493368fd5
+primary_contact: n/a
+homepage: https://github.com/lipnitsk/libcue
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz]

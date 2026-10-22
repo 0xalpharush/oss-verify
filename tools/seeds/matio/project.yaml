@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/tbeu/matio#65898b308e369ab5ff5b6bf5a5b8313d2f294655
+primary_contact: n/a
+homepage: https://github.com/tbeu/matio
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [matio_read_fuzzer]

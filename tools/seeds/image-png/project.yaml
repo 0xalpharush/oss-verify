@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/image-rs/image-png#b2f10c6a7e3127d4aaf231f3eae731a33e6eb0bc
+primary_contact: n/a
+homepage: https://github.com/image-rs/image-png
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [buf_independent, decode, roundtrip]

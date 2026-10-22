@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.com/ocudu/ocudu#ef6f83ce1c0eeb2833f14efbf5f290d7c23ae94d
+primary_contact: n/a
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [ngap_pdu_decoder_fuzzer]

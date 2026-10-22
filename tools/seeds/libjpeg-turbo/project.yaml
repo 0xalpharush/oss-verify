@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/libjpeg-turbo/libjpeg-turbo#2646fa33f8d67373c27b558b47e77b2d8d517e31
+primary_contact: n/a
+homepage: https://libjpeg-turbo.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [compress12_fuzzer, compress12_lossless_fuzzer, compress16_lossless_fuzzer, compress_fuzzer, compress_lossless_fuzzer, compress_yuv_fuzzer, decompress_libjpeg_fuzzer, decompress_yuv_fuzzer, libjpeg_turbo_fuzzer, transform_fuzzer]

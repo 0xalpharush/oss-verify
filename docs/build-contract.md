@@ -28,6 +28,10 @@ The builder adds the interface of OSS-Fuzz. Its driver, compiler wrappers and fl
 
 Each binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp64d`), linked with lld against musl.
 
+## Static riscv64 programs
+
+The statements use a formal model of a riscv64 Linux process ([what-gets-proven.md](what-gets-proven.md#the-statements)). A statement is about each byte of the program. A static program holds all of its code: the library, the fuzz target, the driver and the C library. Thus no code from outside the binary runs.
+
 ## Toolchains
 
 A new toolchain image changes the bytes of each binary that it builds, and a proof is about specified bytes. Thus each project is built with one toolchain image, its vintage.
@@ -37,7 +41,7 @@ A new toolchain image changes the bytes of each binary that it builds, and a pro
 * `tools/check --lock` builds with the toolchain that the lock names. For a manifest, this is `builder.toolchain`. For a `harness.yaml` of oss-fuzz-theorems, it is the `build.builder` field of the `project.yaml` two directories above.
 * If you give more than one lock, the locks must name the same toolchain.
 * Without a lock, `tools/check` builds with the newest toolchain for the project's language: the last row that lists it. `--toolchain <image>` overrides the lock and the newest toolchain.
-* The lock of a project pins its vintage. A project with published proofs stays on the toolchain that its lock names, so its binaries keep their bytes. A project with no lock, for example a draft branch, uses the newest toolchain.
+* The lock of a project pins its vintage. A project with published proofs stays on the toolchain that its lock names, so its binaries keep their bytes. A project with no lock, for example a seeded project in `tools/seeds/`, uses the newest toolchain.
 
 We check builds ported from oss-fuzz-theorems against the release's binaries, on the release's toolchain. Their `harness.yaml` locks name it.
 
@@ -323,6 +327,8 @@ We will write the lock in the proofs repository from the manifest. The lock is t
 
 ## Reproducibility
 
+A statement is about the exact bytes of a binary, which the lock pins by their SHA-256. You can rebuild a binary and compare it with the lock only if each build gives the same bytes.
+
 `tools/check --twice` builds everything a second time from the start, with `docker build --no-cache`, a new fetch and a new compile of each build. It fails if a byte is different. The Build check of a pull request runs `tools/check --twice` too.
 
 After the comparison, `tools/check --twice` adds the `rebuild` block to the manifest. It also adds the block when the builds differ. The block contains these items:
@@ -360,7 +366,7 @@ These steps rebuild a binary and compare it with its lock in the proofs reposito
 
 ## Builds ported from oss-fuzz-theorems
 
-`tools/port.py` can port the build of a project that we seeded from the oss-fuzz-theorems 2026.10 release, from the release's build recipe. It writes three files next to `project.yaml`:
+We ported the build of each project that we seeded from the oss-fuzz-theorems 2026.10 release from the release's build recipe. Each port is three files next to `project.yaml`:
 
 * `Dockerfile`: gets the project at `COMMIT` into `$SRC/upstream/<name>`, then runs `lay-out-sources` on `sources`.
 * `sources`: tells where each source tree goes, as the release's source manifest tells. It names a copy of the checkout for each release target, and each other tree or file, pinned by commit or SHA-256. It also names the release's own files for a target, and its build patches. It is the only place that records the pin of a dependency. A `Dockerfile` never holds one.
@@ -375,7 +381,7 @@ These steps rebuild a binary and compare it with its lock in the proofs reposito
 
 The internal paths matter too. The source locations of the UBSan checks keep the internal path. In an `asan-ubsan` build, a header that uses `__FILE__` and holds a UBSan check thus makes one more string literal, which AddressSanitizer instruments. With the release's layout, a ported build makes the release's binaries again.
 
-`tools/verify_ports.py` ports each project and checks the port with `tools/check --lock`, against each `harness.yaml` of the release for its fuzz targets. [tools/seeds/builds.tsv](../tools/seeds/builds.tsv) holds the result for each project, and [seeded-projects.tsv](seeded-projects.tsv) repeats it. A draft branch gets the port in `tools/seeds/<name>/` only if each binary is the release's.
+We checked each port with `tools/check --lock`, against each `harness.yaml` of the release for its fuzz targets. [tools/seeds/builds.tsv](../tools/seeds/builds.tsv) holds the result for each project, and [seeded-projects.tsv](seeded-projects.tsv) repeats it. A seeded project gets the port in `tools/seeds/<name>/` only if each binary is the release's.
 
 ## Build patches
 

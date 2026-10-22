@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/google/woff2#fb9c3379f2605b10f3e8f1d9636664ab5576775c
+primary_contact: n/a
+homepage: https://github.com/google/woff2
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [convert_woff2ttf_fuzzer, convert_woff2ttf_fuzzer_new_entry]

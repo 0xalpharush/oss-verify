@@ -1,4 +1,4 @@
-# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release (tools/seed.py), not enrolled by the project's
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
 # maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
 repo: https://github.com/boostorg/boost#4daa5786d7c5dad39df0429cb078165b3134a06f
 primary_contact: n/a

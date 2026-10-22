@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/evanphx/json-patch#84a4bb100ade42a86fce2647c95a7dbcbf569cb2
+primary_contact: n/a
+homepage: https://github.com/evanphx/json-patch
+language: go
+sanitizers: []
+fuzz_targets: [fuzz_create_merge, fuzz_decode_apply]

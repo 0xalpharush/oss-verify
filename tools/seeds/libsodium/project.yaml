@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/jedisct1/libsodium#2c61b499e7cea2d873a9afee220c946601f78beb
+primary_contact: n/a
+homepage: https://libsodium.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [crypto_aead_fuzzer, crypto_box_fuzzer, crypto_generichash_fuzzer, crypto_kdf_fuzzer, crypto_kx_fuzzer, crypto_sign_fuzzer, secret_key_auth_fuzzer, secretbox_easy_fuzzer]

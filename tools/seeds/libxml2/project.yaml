@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://gitlab.gnome.org/GNOME/libxml2#c63248941708bc1d2e3a4292954593312212f6ca
+primary_contact: n/a
+homepage: https://gitlab.gnome.org/GNOME/libxml2
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [api, html, reader, regexp, schema, uri, valid, xinclude, xml, xpath]

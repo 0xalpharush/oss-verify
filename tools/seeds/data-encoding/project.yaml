@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ia0/data-encoding#65862b9234e2851c4f828f73f9541788ad105146
+primary_contact: n/a
+homepage: https://github.com/ia0/data-encoding
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_any_spec, impl_decode, impl_decode_len, impl_encode, impl_encode_append, impl_encode_len, impl_encode_mut_str, impl_encode_write_buffer, impl_new_encoder, spec_decode_encode, spec_encode_decode, spec_spec_base]

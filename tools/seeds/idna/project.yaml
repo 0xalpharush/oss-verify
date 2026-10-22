@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/kjd/idna#c79316ffefd06e7fcd05d33a57e3f0a4fd1c2f5d
+primary_contact: n/a
+homepage: https://github.com/kjd/idna
+language: python
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_encode_decode, fuzz_idna_api, fuzz_idna_codec]

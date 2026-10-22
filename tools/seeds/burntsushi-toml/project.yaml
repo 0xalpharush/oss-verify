@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/BurntSushi/toml#d733fc535e4a9f3c454e421a87b90ade5d49bf31
+primary_contact: n/a
+homepage: https://github.com/BurntSushi/toml
+language: go
+sanitizers: []
+fuzz_targets: [fuzz_toml]

@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/jmcnamara/libxlsxwriter#3227eb0c1556ba41d94605a7abee0e097782d10a
+primary_contact: n/a
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [xlsx_fuzzer]

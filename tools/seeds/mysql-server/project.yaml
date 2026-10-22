@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/mysql/mysql-server#23e360a7fac718d80b9e6a79f7d5a7bf37aa3bbc
+primary_contact: n/a
+homepage: https://www.mysql.com
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [cbor_load_fuzzer]

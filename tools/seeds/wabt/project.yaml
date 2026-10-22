@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/WebAssembly/wabt#dce62429770ea7b2795461d34b99d140e048e1f5
+primary_contact: n/a
+homepage: https://github.com/WebAssembly/wabt
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [read_binary_ir_fuzzer, wasm2wat-fuzz, wat2wasm_fuzzer]

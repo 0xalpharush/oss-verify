@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/spdk/spdk#f0b63ed866f0e4d3c56e73bd4a98d0042956147a
+primary_contact: n/a
+homepage: https://github.com/spdk/spdk
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [crc_fuzz_test, igzip_simple_inflate_fuzz_test]

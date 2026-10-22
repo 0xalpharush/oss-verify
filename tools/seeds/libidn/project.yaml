@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://git.savannah.gnu.org/git/libidn#7ade613c681d4a24d657110f7bdef28639e884cb
+primary_contact: n/a
+homepage: https://www.gnu.org/software/libidn
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [libidn_stringprep_fuzzer, libidn_toascii_fuzzer, libidn_tounicode_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/pganalyze/libpg_query#7632d033ba08bd1343228f1570f8b49bde46072b
+primary_contact: n/a
+homepage: https://pganalyze.com
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_parser]

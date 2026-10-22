@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/google/zopfli#ccf9f0588d4a4509cb1040310ec122243e670ee6
+primary_contact: n/a
+homepage: https://github.com/google/zopfli
+language: c++
+sanitizers: [address]
+fuzz_targets: [zopfli_compress_fuzzer, zopfli_deflate_fuzzer]

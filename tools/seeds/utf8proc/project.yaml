@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/JuliaStrings/utf8proc#0075ed7d0adba45682ee6bf7a83b10f8fd110163
+primary_contact: n/a
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [utf8proc_fuzzer]

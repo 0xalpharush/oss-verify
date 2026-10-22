@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/ittiam-systems/libhevc#1a3c8d651a7ec18ff777de1ad8af40ae48ed914c
+primary_contact: n/a
+homepage: https://github.com/ittiam-systems/libhevc
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [hevc_dec_fuzzer]

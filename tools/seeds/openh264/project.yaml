@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/cisco/openh264#8ed656019aab87820ffb876353db9e6a598b4d00
+primary_contact: n/a
+homepage: https://www.openh264.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [decoder_fuzzer]

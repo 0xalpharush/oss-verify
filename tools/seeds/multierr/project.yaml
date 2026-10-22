@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/uber-go/multierr#cf4b2327cea93d7b37e2b11bfe38187e2bbefaec
+primary_contact: n/a
+homepage: https://github.com/uber-go/multierr
+language: go
+sanitizers: []
+fuzz_targets: [FuzzCombine]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/cfengine/core#b14a380d0dcc9305f8e2a7d6018d01e41593b57d
+primary_contact: n/a
+homepage: https://github.com/cfengine/core
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [string_fuzzer]

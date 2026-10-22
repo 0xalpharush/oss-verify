@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/Mbed-TLS/mbedtls#8d692f375d3b1babf1b1ee3b61d3a0579b840a71
+primary_contact: n/a
+homepage: https://developer.trustedfirmware.org/w/mbed-tls
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_pkcs7]

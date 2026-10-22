@@ -30,19 +30,17 @@ infra/base-builder/ takes its driver (driver/), its compiler wrappers and flags 
 fuzz target's link (link-fuzz-target), the release's recipes (recipes.sh) and the steps of its build around a target
 (release-target.sh) from the build recipe of the oss-fuzz-theorems 2026.10 release, Copyright 2026 Theorem Labs, PBC.
 
-The files tools/port.py writes under projects/<name>/ and tools/seeds/<name>/, and every copy of them, come from that
+The files we generated under projects/<name>/ and tools/seeds/<name>/ from the build recipe, and every copy of them, come from that
 same build recipe: the pins in build.sh, a target's own files, and the build-only patches. Where such a file holds a
 project's own text (for example a copy of its harness that the release edited, a file generated from its sources, or
 a patch that writes one), that text keeps the project's licence. The recipe's UPSTREAM-CARRIED.tsv, copied byte for
 byte to tools/seeds/UPSTREAM-CARRIED.tsv, names each, with its origin and licence.
 
-tools/port.py generates the files of tools/seeds/<name>/ from the build recipe, which carries no licence line for
-them, and tools/seed.py --branch copies them byte for byte into projects/<name>/ of the draft branch
-draft-generic-oss-fuzz-<name>, which the project's maintainers can adopt. So for the two below, this notice states
-the licence by what the lines are. It is Theorem's grant, and it holds for these lines wherever they are copied: in
-tools/seeds/<name>/, in projects/<name>/ of the draft branch, and in projects/<name>/ once the project is enrolled. A
-draft branch carries this notice once tools/seed.py --rebase has moved it onto a main that has it. The line numbers
-are those of the copies on main.
+The build files of tools/seeds/<name>/ were generated from the build recipe, which carries no licence line
+for them, and a maintainer who adopts a seeded project copies them byte for byte into projects/<name>/. So for the
+two below, this notice states the licence by what the lines are. It is Theorem's grant, and it holds for these lines
+wherever they are copied: in tools/seeds/<name>/, and in projects/<name>/ once the project is enrolled. The line
+numbers are those of the copies on main.
 
 wazuh is under version 2 of the GNU GPL only, and its fuzz target fuzz_xml is built with two files of ours that the
 port's build.sh writes: the header file_op.h (lines 63-68 of tools/seeds/wazuh/build.sh) and the shim

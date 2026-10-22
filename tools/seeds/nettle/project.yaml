@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://git.lysator.liu.se/nettle/nettle#bb9bba13cc327d578e7dab2921b021bad9af8ee1
+primary_contact: n/a
+homepage: https://www.lysator.liu.se/~nisse/nettle
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_dsa_openssl_private_key_from_der, fuzz_dsa_sha1_keypair_from_sexp, fuzz_dsa_sha256_keypair_from_sexp, fuzz_dsa_signature_from_sexp, fuzz_rsa_keypair_from_der, fuzz_rsa_keypair_from_sexp, fuzz_rsa_public_key_from_der]

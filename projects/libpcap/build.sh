@@ -1,0 +1,52 @@
+#!/bin/sh -e
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+#
+# Builds the fuzz targets of libpcap into $OUT, each from the pin of the release's target for it.
+# compile runs build.sh with bash; the release ran each target's build with sh -e, and so does this.
+[ -z "${BASH_VERSION:-}" ] || exec sh -e "$0"
+. /usr/local/lib/oss-verify/release-target.sh
+
+# fuzz_both: the release's target libpcap-fuzz_both
+(
+ov_target_begin libpcap-fuzz_both
+build_lib() {
+  oft_build_cmake
+  oft_build_harness "testprogs/fuzz/fuzz_both.c"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_both
+)
+
+# fuzz_filter: the release's target libpcap-fuzz_filter
+(
+ov_target_begin libpcap-fuzz_filter
+build_lib() {
+  oft_build_cmake
+  oft_build_harness "testprogs/fuzz/fuzz_filter.c"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_filter
+)
+
+# fuzz_pcap: the release's target libpcap-fuzz_pcap
+(
+ov_target_begin libpcap-fuzz_pcap
+build_lib() {
+  oft_build_cmake
+  oft_build_harness "testprogs/fuzz/fuzz_pcap.c"
+  oft_seal_getenv
+  oft_seal_mkstemp
+  oft_seal_getpid
+}
+LIB_ARCHIVE="lib/liboft.a"
+LIB_CFLAGS=""
+ov_target_build fuzz_pcap
+)

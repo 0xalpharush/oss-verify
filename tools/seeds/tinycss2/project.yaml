@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/Kozea/tinycss2#c73bf7135a75e11d58e75cf398f2e11f46282353
+primary_contact: n/a
+homepage: https://github.com/Kozea/tinycss2
+language: python
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_components, fuzz_parse]

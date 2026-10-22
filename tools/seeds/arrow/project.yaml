@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/apache/arrow#70f5c269ae8d154f57f7a7ec6babe6e0685ed6ec
+primary_contact: n/a
+homepage: https://arrow.apache.org
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [arrow-csv-fuzz, arrow-ipc-file-fuzz, arrow-ipc-stream-fuzz, parquet-arrow-fuzz]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/pytest-dev/iniconfig#00e7d87c7353b1ffecc4cd55f19acfffedd5233e
+primary_contact: n/a
+homepage: https://github.com/pytest-dev/iniconfig
+language: python
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_parse]

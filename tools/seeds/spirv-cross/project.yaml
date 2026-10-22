@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/KhronosGroup/SPIRV-Cross#9c3c8e2cefdd8194b193bb8ed2fdff4d5527e382
+primary_contact: n/a
+homepage: https://github.com/KhronosGroup/SPIRV-Cross
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [parser_fuzzer]

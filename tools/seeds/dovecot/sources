@@ -1,0 +1,24 @@
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+# kind	path	arguments: see lay-out-sources
+tree	ext/dovecot-fuzz-message-parser/src	upstream/dovecot
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/CaseFolding.txt	https://www.unicode.org/Public/17.0.0/ucd/CaseFolding.txt	ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/CompositionExclusions.txt	https://www.unicode.org/Public/17.0.0/ucd/CompositionExclusions.txt	2f239196ef3b5b61db5cc476e9bd80f534d15aa1b74e1be1dea5d042a344c85f
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/DerivedBidiClass.txt	https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedBidiClass.txt	4867b4b7f0731ed1bfcd34cc6251211ff1542541fce0734b6fbda139ee80b3a4
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/DerivedCoreProperties.txt	https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt	24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/DerivedJoiningType.txt	https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedJoiningType.txt	f39ebe974825d6736aee15582250307aa532b2cfab3caf3f86bd23fddc9c5c4d
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/DerivedNormalizationProps.txt	https://www.unicode.org/Public/17.0.0/ucd/DerivedNormalizationProps.txt	71fd6a206a2c0cdd41feb6b7f656aa31091db45e9cedc926985d718397f9e488
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/GraphemeBreakProperty.txt	https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakProperty.txt	d6b51d1d2ae5c33b451b7ed994b48f1f4dc62b2272a5831e7fd418514a6bae89
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/GraphemeBreakTest.txt	https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakTest.txt	e2d134d2c52919bace503ebb6a551c1855fe1a1faec18478c78fff254a1793ec
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/IdnaMappingTable.txt	https://www.unicode.org/Public/17.0.0/idna/IdnaMappingTable.txt	87f05505dc026fdb2bff16132bdc68a8014675836882a9a2b1844540ad3be382
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/IdnaTestV2.txt	https://www.unicode.org/Public/17.0.0/idna/IdnaTestV2.txt	beb5d0be20e896189b03209a82fdc34f06351502bbd4b8e2523583fc2954d9cf
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/NormalizationTest.txt	https://www.unicode.org/Public/17.0.0/ucd/NormalizationTest.txt	5019ffd530751a741900c849c0e010332f142a3612234639bd200b82138a87db
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/PropList.txt	https://www.unicode.org/Public/17.0.0/ucd/PropList.txt	130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/PropertyValueAliases.txt	https://www.unicode.org/Public/17.0.0/ucd/PropertyValueAliases.txt	64e9a5f76f7a1e8b5a47d6a1f9a26522a251208f5276bdfa1559dac7cf2e827a
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/Scripts.txt	https://www.unicode.org/Public/17.0.0/ucd/Scripts.txt	9f5e50d3abaee7d6ce09480f325c706f485ae3240912527e651954d2d6b035bf
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/SpecialCasing.txt	https://www.unicode.org/Public/17.0.0/ucd/SpecialCasing.txt	efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/UnicodeData.txt	https://www.unicode.org/Public/17.0.0/ucd/UnicodeData.txt	2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/WordBreakProperty.txt	https://www.unicode.org/Public/17.0.0/ucd/auxiliary/WordBreakProperty.txt	72274cac1e6b919507db35655c3e175aa27274668a1ece95c28d2069f2ad9852
+file	ext/dovecot-fuzz-message-parser/src/src/lib/ucd/emoji-data.txt	https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt	2cb2bb9455cda83e8481541ecf5b6dfda66a3bb89efa3fa7c5297eccf607b72b
+patch	ext/dovecot-fuzz-message-parser/src	0001-version-files.patch
+copy	targets/dovecot-fuzz-message-parser/ucd.sha256	dovecot-fuzz-message-parser.ucd.sha256
+copy	targets/dovecot-fuzz-message-parser/wrap_ambient.c	dovecot-fuzz-message-parser.wrap_ambient.c

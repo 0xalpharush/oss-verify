@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/expr-lang/expr#4b31df3a2e0eefec04c017a82a00e0f08541d3e4
+primary_contact: n/a
+homepage: https://github.com/expr-lang/expr
+language: go
+sanitizers: []
+fuzz_targets: [fuzz_expr]

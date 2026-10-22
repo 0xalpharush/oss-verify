@@ -1,6 +1,6 @@
 # The projects of the oss-fuzz-theorems 2026.10 release in a language other than C and C++ that its build ported and
 # built, but that it did not publish (its project.yaml says status language-pending): what that build pinned of
-# each, read from its records. tools/seed.py seeds a project from its row (docs/project-yaml.md#seeded-projects).
+# each, read from its records. A seeded project's port is built from its row (docs/project-yaml.md#seeded-projects).
 # A project of OSS-Fuzz whose fuzz targets are in two repositories is two rows, one for each repository; oss_fuzz is
 # OSS-Fuzz's name. release_targets are the release's names of the fuzz targets, in order; held names the builds that
 # the release held back, if any.

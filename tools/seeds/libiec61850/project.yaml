@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/mz-automation/libiec61850#664aa00b447292afdf86330745df1b25328aa98f
+primary_contact: n/a
+homepage: https://github.com/mz-automation/libiec61850
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_acse_parse, fuzz_goose_subscriber, fuzz_mms_decode, fuzz_mms_encode, fuzz_mms_print, fuzz_mms_server_decode_mms_pdu, fuzz_pres_userdata, fuzz_sv_subscriber]

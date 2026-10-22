@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/google/re2#3a8436ac436124a57a4e22d5c8713a2d42b381d7
+primary_contact: n/a
+homepage: https://github.com/google/re2
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [re2_fuzzer]

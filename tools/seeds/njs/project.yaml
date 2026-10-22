@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/nginx/njs#3e02ae0fae030cd802075f42b7037fe3df96e2f6
+primary_contact: n/a
+homepage: https://nginx.org/en/docs/njs
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [njs_process_script_fuzzer]

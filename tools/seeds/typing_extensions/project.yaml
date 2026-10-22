@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/python/typing_extensions#3ae9b7553a5c560dc09b484078d98ece2985eecd
+primary_contact: n/a
+homepage: https://github.com/python/typing_extensions
+language: python
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_typing_extensions]

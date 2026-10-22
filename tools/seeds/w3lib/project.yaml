@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/scrapy/w3lib#d5d5e4f4acaf5ed25e255bfa8639987c165a18a9
+primary_contact: n/a
+homepage: https://github.com/scrapy/w3lib
+language: python
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_parse_data_uri, fuzz_safe_download_url, fuzz_url_safe]

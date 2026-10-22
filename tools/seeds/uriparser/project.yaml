@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/uriparser/uriparser#35a929905323fbc291acf9b6a26a680d0827f997
+primary_contact: n/a
+homepage: https://github.com/uriparser/uriparser
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [uri_dissect_query_malloc_fuzzer]

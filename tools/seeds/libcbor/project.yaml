@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/PJK/libcbor#d436c4027d2f62539e4f20b191d3224c7601c8b1
+primary_contact: n/a
+homepage: https://github.com/PJK/libcbor
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [cbor_load_fuzzer]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/lvandeve/lodepng#ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a
+primary_contact: n/a
+homepage: https://github.com/lvandeve/lodepng
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [lodepng_fuzzer]

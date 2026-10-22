@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/jqlang/jq#41b8edfe5437fcd25a072081c05f9f770f9e9b85
+primary_contact: n/a
+homepage: https://jqlang.github.io/jq
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [base, deluxe, jq_fuzz_parse_extended, jq_fuzz_parse_stream, libfuzzer-onig]

@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/tats/w3m#ee66aabc3987000c2851bce6ade4dcbb0b037d81
+primary_contact: n/a
+homepage: https://tracker.debian.org/pkg/w3m
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_conv]

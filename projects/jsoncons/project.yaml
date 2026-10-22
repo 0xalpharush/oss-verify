@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/danielaparker/jsoncons#af497a1c1ea9043f4ad8d799617b7d00d6676153
+primary_contact: n/a
+homepage: https://github.com/danielaparker/jsoncons
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_bigint, fuzz_bson, fuzz_bson_encoder, fuzz_bson_parser_max, fuzz_cbor, fuzz_cbor_encoder, fuzz_cbor_parser_max, fuzz_csv, fuzz_json_cursor, fuzz_json_encoder, fuzz_json_parser_max, fuzz_msgpack, fuzz_msgpack_encoder, fuzz_msgpack_parser_max, fuzz_parse, fuzz_ubjson, fuzz_ubjson_encoder, fuzz_ubjson_parser_max]

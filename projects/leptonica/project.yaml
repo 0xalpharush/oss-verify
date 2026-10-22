@@ -1,0 +1,7 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/DanBloomberg/leptonica#10bdea2f19240ffe8c931701b0b7340f41c6b256
+primary_contact: n/a
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [affine_fuzzer, barcode_fuzzer, bilateral_fuzzer, bilinear_fuzzer, blend_fuzzer, boxfunc4_fuzzer, boxfunc5_fuzzer, boxfunc_fuzzer, ccbord_fuzzer, ccthin_fuzzer, checkerboard_fuzzer, colorfill_fuzzer, colorquant_fuzzer, compare_fuzzer, edge_fuzzer, enhance_fuzzer, fhmtgen_fuzzer, flipdetect_fuzzer, fpix2_fuzzer, graphics_fuzzer, graymorph_fuzzer, grayquant_fuzzer, jpegiostub_fuzzer, kernel_fuzzer, mask_fuzzer, maze_fuzzer, morph_fuzzer, pageseg_fuzzer, paintcmap_fuzzer, pix1_fuzzer, pix_orient_fuzzer, pix_rotate_shear_fuzzer, pixconv_fuzzer]

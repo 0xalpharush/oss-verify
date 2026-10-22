@@ -1,0 +1,4 @@
+# Generated from the build recipe of the oss-fuzz-theorems 2026.10 release; do not edit.
+# kind	path	arguments: see lay-out-sources
+tree	ext/yajl-ruby-json_fuzzer/src	upstream/yajl-ruby
+file	targets/yajl-ruby-json_fuzzer/json_fuzzer.c	https://raw.githubusercontent.com/google/oss-fuzz/955c6866c152471d78c7472c0f1f354343548b9f/projects/yajl-ruby/json_fuzzer.c	d1962e795c5c69e70e964327326b062c2471a266e09f782a3f3e8c69a68ec0b5

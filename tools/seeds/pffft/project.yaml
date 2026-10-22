@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://bitbucket.org/jpommier/pffft#0aec0327a6912e1a0ec5326eef737c2ce19bc836
+primary_contact: n/a
+homepage: https://bitbucket.org/jpommier/pffft
+language: c++
+sanitizers: [address, undefined]
+fuzz_targets: [pffft_real_fuzzer]

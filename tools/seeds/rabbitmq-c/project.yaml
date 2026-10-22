@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/alanxz/rabbitmq-c#6ddbdb2d8c1f63dcd3eb65c7a33d36b1d6417eed
+primary_contact: n/a
+homepage: https://github.com/alanxz/rabbitmq-c
+language: c
+sanitizers: [address, undefined]
+fuzz_targets: [fuzz_codec, fuzz_handle_input, fuzz_method_decode, fuzz_properties_decode, fuzz_server, fuzz_table, fuzz_url]

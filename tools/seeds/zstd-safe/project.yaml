@@ -1,0 +1,8 @@
+# Seeded by Theorem from the oss-fuzz-theorems 2026.10 release, not enrolled by the project's
+# maintainers: provisional. To adopt it, set primary_contact and remove these lines (docs/project-yaml.md).
+repo: https://github.com/gyscos/zstd-rs#be539f10dfce7818092ca72010683aaaa5c84e3f
+primary_contact: n/a
+homepage: https://github.com/gyscos/zstd-rs
+language: rust
+sanitizers: [address, undefined]
+fuzz_targets: [zstd_fuzzer]
