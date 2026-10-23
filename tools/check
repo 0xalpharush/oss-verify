@@ -230,12 +230,13 @@ def main():
         sys.exit(f"tools/check: {failure}")
 
     try:
-        step(f"resolve {job.repo}" + (f"#{job.ref}" if job.ref else " (default branch)"))
-        commit = check_build.resolve(job.repo, job.ref)
-        say(f"{job.ref or 'the default branch'} is {commit}")
-        if locked and locked != commit:
-            say(f"the lock is for {locked}: building that commit")
+        if locked:
             commit = locked
+            step(f"build {job.repo} at locked commit {commit}")
+        else:
+            step(f"resolve {job.repo}" + (f"#{job.ref}" if job.ref else " (default branch)"))
+            commit = check_build.resolve(job.repo, job.ref)
+            say(f"{job.ref or 'the default branch'} is {commit}")
         say(f"toolchain: {toolchain} ({why})")
         builder, tag, targets, entries = build_all(job, commit, work, toolchain, work)
     except Failed as failure:

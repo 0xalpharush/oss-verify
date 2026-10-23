@@ -121,11 +121,18 @@ def resolve(repo, ref):
     full commit id (taken as it is), or "" for the default branch."""
     if FULL_COMMIT.fullmatch(ref):
         return ref
-    names = [ref] if ref.startswith("refs/") else [f"refs/heads/{ref}", f"refs/tags/{ref}", f"refs/tags/{ref}^{{}}"]
+    if ref.startswith("refs/"):
+        names = [ref, f"{ref}^{{}}"]
+    else:
+        names = [f"refs/heads/{ref}", f"refs/tags/{ref}", f"refs/tags/{ref}^{{}}"]
     listing = output(*git("ls-remote", "--", repo, *(names if ref else ["HEAD"])))
     refs = dict(reversed(line.split("\t", 1)) for line in listing.splitlines() if "\t" in line)
     if not ref:
         found = {refs["HEAD"]} if "HEAD" in refs else set()
+    elif ref.startswith("refs/"):
+        # A qualified annotated tag names a tag object; use its peeled commit.
+        commit = refs.get(f"{ref}^{{}}") or refs.get(ref)
+        found = {commit} if commit else set()
     else:
         tag = refs.get(f"refs/tags/{ref}^{{}}") or refs.get(f"refs/tags/{ref}")
         found = {commit for commit in (refs.get(f"refs/heads/{ref}"), tag, refs.get(ref)) if commit}
