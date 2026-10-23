@@ -143,27 +143,38 @@ A seeded project has `primary_contact: n/a`, because no maintainer has adopted i
 
 To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).
 
+## When
+
+There is no fixed timeline. A proof takes days of work, and often more. We can also stop work on a part of a project without a proof ([the terms](https://theorem.dev/oss-verify/terms/), section 1).
+
+* We build the binaries when we start work on the project, and pin them in a lock. If `repo` names a branch or a tag, we build the commit that it names at that time ([project-yaml.md](project-yaml.md#repo)).
+* We do not build again each time the branch moves. After the first proof, we update the proofs from time to time. An update can build a newer commit, and that build gets a new lock.
+
 ## Publishing
 
-The `publish` field tells us when to publish the proofs, and the `proofs` field tells where ([project-yaml.md](project-yaml.md#publish)). We publish three items:
+The `publish` field tells us when to publish the proofs, and the `proofs` field tells where ([project-yaml.md](project-yaml.md#publish)). We publish:
 
 * the statements about the project's binaries;
 * the proofs of these statements;
-* the lock: the SHA-256 of each binary, the commit that we built it from, and the toolchain.
+* the lock: the SHA-256 of each binary, the commit that we built it from, and the toolchain;
+* the binaries and the source archives that we built them from;
+* each patch a proof needed, once its finding is public (below).
 
 We write the lock from the manifest of `tools/check` ([build-contract.md](build-contract.md#the-manifest)). Each value of `publish` obeys these rules:
 
 * We publish nothing that shows a finding that is not public yet. We hold back the statements that the finding affects until it is public. What we publish does not tell why.
 * We publish a seeded project only while it has no findings.
+* If a proof needed a patch to the project's code, we publish it only once the finding that the patch fixes is public. We list the patch with the proof: its text, a summary, and whether the project has it.
 
 ## Where the claims come from
 
-Each public claim rests on three pinned inputs:
+Each public claim rests on three pinned inputs, and on a fourth when a proof needed a patch:
 
 * the commit of the project's source;
 * the commit of this repository that holds the build files;
-* the digest of the toolchain image.
+* the digest of the toolchain image;
+* for a proof that needed a patch to the project's code, the patch, which we publish with the proof ([above](#publishing)).
 
-We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released process model, these build files and the project's source as it is. It uses no patch that changes the library. Its build can contain build patches only ([project-yaml.md](project-yaml.md#the-files-in-the-project-directory)).
+We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released process model, these build files, and the project's source as it is, or with the published patch. A patch that fixes a bug is never in the project directory: the build files there contain build patches only, which change how the project builds and fix no bug ([project-yaml.md](project-yaml.md#build-patches)).
 
-To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock.
+To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. `tools/check` builds the project's source as it is, so it does not rebuild a binary that needed a patch to the project's code.
