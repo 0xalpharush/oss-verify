@@ -243,7 +243,7 @@ The fuzz target that you link with `$LIB_FUZZING_ENGINE` does not change. The al
       malloc calloc realloc reallocarray aligned_alloc posix_memalign memalign strdup strndup
       operator new, operator new[] (C++), with their nothrow and aligned forms
 
-Compile the sources of the fuzz target before the link. Then link the object files. The link refuses a source file.
+Compile the sources of the fuzz target before the link. Then name the object files and static archives directly, as in the example above. Allocation-failure and counting links refuse source files, response files, linker scripts, `-l` library selectors, and linker forwarding (`-Wl,...`, `-Xlinker` or `--for-linker`), and clang configuration files (`--config`): those forms can hide inputs whose allocation calls would not be rewritten. A normal `$LIB_FUZZING_ENGINE` link keeps its existing behaviour.
 
 While `LLVMFuzzerTestOneInput` runs, the driver counts these calls from 0, over all calls of the fuzz target in a run. Call n fails if bit n of the allocation mask is set:
 
@@ -329,6 +329,8 @@ The exit status tells the result ([above](#exit-statuses)).
 * `rebuild`, only with `--twice`: the second build ([below](#reproducibility)).
 
 We will write the lock in the proofs repository from the manifest. The lock is the only place that records the commit. `tools/check --lock <file>` builds the commit that a lock names, and compares each binary with the lock ([below](#check-a-binary-against-a-lock)). The lock can be a manifest or an oss-fuzz-theorems `harness.yaml`.
+
+Repeat `--lock` to compare with several locks. They must agree on the source commit and toolchain, and on the SHA-256 of any target and build that more than one lock pins. Conflicting pins stop the command before building. Identical pins and locks for different targets or builds can be combined.
 
 If you run `tools/check` before you commit the project directory, the manifest says `modified: true` under `oss_verifier`. Commit first if you want a manifest that names exactly the commit you built. It does not change what we pin: we write the lock from our own build of the merged directory.
 

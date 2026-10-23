@@ -66,6 +66,10 @@ if [ "$driver" = "$OV_AF_DRIVER" ] || [ "$driver" = "$OV_AFC_DRIVER" ]; then
   for i in "${!args[@]}"; do
     a=${args[$i]}
     case "$a" in
+      # --for-linker is clang's other spelling of -Xlinker, and a --config file can hold -L, -l and -Wl options.
+      -l*|-Wl,*|-Xlinker|--for-linker|--for-linker=*|--config|--config=*)
+        echo "link-fuzz-target: $a: name an allocation-failure fuzz target's object files and archives directly, without -l, linker forwarding or a configuration file" >&2
+        exit 1 ;;
       -*) continue ;;
       @*)
         echo "link-fuzz-target: $a: name an allocation-failure fuzz target's objects on the command line" >&2
@@ -80,7 +84,9 @@ if [ "$driver" = "$OV_AF_DRIVER" ] || [ "$driver" = "$OV_AFC_DRIVER" ]; then
       'BC'$'\300\336')
         echo "link-fuzz-target: $a: LLVM bitcode; an allocation-failure fuzz target needs object code (no LTO)" >&2
         exit 1 ;;
-      *) continue ;;
+      *)
+        echo "link-fuzz-target: $a: an allocation-failure fuzz target needs object files and archives, not linker scripts or other inputs" >&2
+        exit 1 ;;
     esac
     copy="$copies/$i-$(basename -- "$a")"
     cp -- "$a" "$copy"

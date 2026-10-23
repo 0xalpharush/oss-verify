@@ -212,6 +212,11 @@ def main():
             sys.exit(f"tools/check: the locks name two commits, {locked} and {commit}")
         if image and locked_toolchain and image != locked_toolchain:
             sys.exit(f"tools/check: the locks name two toolchains, {locked_toolchain} and {image}")
+        for (target, build), pin in more.items():
+            previous = (pins or {}).get((target, build))
+            if previous is not None and previous["sha256"] != pin["sha256"]:
+                sys.exit(f"tools/check: the locks name two sha256 values for {target}.{build}: "
+                         f"{previous['sha256']} and {pin['sha256']}")
         locked = commit or locked
         locked_toolchain = image or locked_toolchain
         pins = {**(pins or {}), **more}
