@@ -76,6 +76,8 @@ These are the common compile flags:
 
 The `-fno-builtin-*` flags keep each allocation an ordinary call in all four builds. Thus the optimizer cannot remove or merge an allocation in one build and keep it in a different build.
 
+`compile` builds the driver with these flags and `-fno-plt`. clang does not use `-fno-plt` for this target. Thus each build writes `warning: argument unused during compilation: '-fno-plt'` seven times, before `build.sh` starts. You can ignore this warning. `$CFLAGS` does not have `-fno-plt`.
+
 | build | `$SANITIZER` | sanitizer flags | a detected error |
 |---|---|---|---|
 | `plain` | `none` | none | none |
