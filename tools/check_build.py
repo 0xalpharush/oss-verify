@@ -222,11 +222,21 @@ def image_id(tag):
     return output("docker", "image", "inspect", "--format", "{{.Id}}", tag).strip()
 
 
+def require_buildkit():
+    """Refuse to start without BuildKit. tools/check builds with `docker build --progress=plain`, which the legacy
+    builder refuses with "unknown flag: --progress". Docker Desktop has BuildKit; Ubuntu's docker.io package needs the
+    docker-buildx package beside it."""
+    if run("docker", "buildx", "version", quiet=True) != 0:
+        raise Failed("tools/check needs Docker with BuildKit, and `docker buildx version` fails. "
+                     "Install the buildx plugin (on Ubuntu, `apt install docker-buildx`), then run tools/check again.")
+
+
 def build_builder(image=None, suffix="", no_cache=False):
     """Build the builder image from infra/base-builder, FROM the toolchain `image` (the newest for C if None). Return
     its tag."""
     image = image or newest_toolchain()
     tag = f"oss-verify-base-builder:{tree_hash(BUILDER_DIR)[:16]}-{toolchain_id(image)}{suffix}"
+    require_buildkit()
     step(f"docker build: the builder ({tag}), FROM {image}")
     cache = ["--no-cache"] if no_cache else []
     if run("docker", "build", "--progress=plain", *cache, "--build-arg", f"TOOLCHAIN={image}", "-t", tag,

@@ -262,6 +262,36 @@ class UbsanSettings(unittest.TestCase):
         self.assertEqual(check_build.ubsan_mode(TOOLCHAIN), "fixed")
 
 
+class Buildkit(unittest.TestCase):
+    """tools/check refuses, with the fix, a Docker that has no BuildKit, before the legacy builder fails on
+    --progress."""
+
+    def test_no_buildx_stops_before_the_builder_is_built(self):
+        calls = []
+
+        def run(*argv, quiet=False):
+            calls.append(argv)
+            return 1 if argv[:2] == ("docker", "buildx") else 0
+
+        with mock.patch.object(check_build, "run", run), mock.patch.object(check_build, "step"):
+            with self.assertRaises(check_build.Failed) as failed:
+                check_build.build_builder(TOOLCHAIN)
+        self.assertIn("apt install docker-buildx", str(failed.exception))
+        self.assertEqual(calls, [("docker", "buildx", "version")])
+
+    def test_with_buildx_the_builder_is_built(self):
+        calls = []
+
+        def run(*argv, quiet=False):
+            calls.append(argv)
+            return 0
+
+        with mock.patch.object(check_build, "run", run), mock.patch.object(check_build, "step"):
+            check_build.build_builder(TOOLCHAIN)
+        self.assertEqual(calls[0], ("docker", "buildx", "version"))
+        self.assertEqual(calls[1][:3], ("docker", "build", "--progress=plain"))
+
+
 class ProjectTag(unittest.TestCase):
     """The project image's tag names the oss-verify tree that builds it and the run's work directory, so two trees, or
     two runs, on one Docker host keep two images."""
