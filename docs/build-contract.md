@@ -69,12 +69,14 @@ We check builds ported from oss-fuzz-theorems against the release's binaries, on
 
 These are the common compile flags:
 
-    -march=rv64g -mabi=lp64d -Os -g -ffunction-sections -fdata-sections -fno-stack-protector -Wdate-time
+    -march=rv64g -mabi=lp64d -Os -g -ffunction-sections -fdata-sections -fno-stack-protector -fno-plt -Wdate-time
     -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-reallocarray -fno-builtin-free
     -fno-builtin-aligned_alloc -fno-builtin-posix_memalign -fno-builtin-memalign -fno-builtin-valloc
     -fno-builtin-strdup -fno-builtin-strndup
 
 The `-fno-builtin-*` flags keep each allocation an ordinary call in all four builds. Thus the optimizer cannot remove or merge an allocation in one build and keep it in a different build.
+
+`-fno-plt` has no effect in a static link. Thus clang can write `warning: argument unused during compilation: '-fno-plt'` when it links a fuzz target with `$CFLAGS`. You can ignore this warning. If your build compiles with `-Werror`, add `-Wno-unused-command-line-argument`.
 
 | build | `$SANITIZER` | sanitizer flags | a detected error |
 |---|---|---|---|
