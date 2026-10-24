@@ -108,6 +108,14 @@ The sealed AddressSanitizer runtime has these properties, as the documentation o
 
 The driver is compiled with no sanitizer flags in each build. The library and the fuzz targets get the flags of the build. In each build, `getenv()` returns NULL, `getpid()` and `getppid()` return 1, and `mkstemp()` and the related functions use a fixed name in the current directory. Thus a program depends only on its input file.
 
+### Functions that the AddressSanitizer runtime wraps
+
+The sealed AddressSanitizer runtime intercepts functions of the C library through the linker's `--wrap` option. Each `asan` and `asan-ubsan` link gets `-Wl,--wrap=<function>` for each function on the runtime's list, and the runtime defines `__wrap_<function>` for each one. The list has 380 functions. `fopen`, `time`, `clock_gettime` and `dlopen` are on it.
+
+Thus do not link with `-Wl,--wrap=<function>` for a function on the list, and do not define `__wrap_<function>` for it. If you do, the link of the AddressSanitizer builds fails with `duplicate symbol: __wrap_<function>`. To replace a function on the list, rename the call when you compile. For example, compile the file that calls `fopen()` with `-Dfopen=my_fopen`, and define `my_fopen` in your fuzz target. This method works in all four builds.
+
+The list is a file in the toolchain image: `/opt/asan-static-rt/lib/clang/20/lib/riscv64-unknown-linux-musl/libclang_rt.asan.a.wrap`. Each `--wrap=<function>` line names one function. To read it, run `docker run --rm --entrypoint cat <image> <path>`, with the image from [infra/toolchains.tsv](../infra/toolchains.tsv).
+
 ## What the Dockerfile must do
 
 Start from [templates/Dockerfile](../templates/Dockerfile). Two builds written by hand are small examples. [projects/cjson/](../projects/cjson/) builds cJSON's own fuzz target with CMake; its `build.sh` also copies the checkout to the path where the oss-fuzz-theorems release built it, which only a build that must match the release's bytes needs. [tools/tests/fixtures/example/](../tools/tests/fixtures/example/) is a test project, whose `Dockerfile` takes the source from the build context, as a `Dockerfile` in your repository does, and whose `fuzz/` subdirectory a project directory cannot have. Obey these rules:
