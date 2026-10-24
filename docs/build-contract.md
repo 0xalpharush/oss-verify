@@ -110,11 +110,11 @@ The driver is compiled with no sanitizer flags in each build. The library and th
 
 ### Functions that the AddressSanitizer runtime wraps
 
-The sealed AddressSanitizer runtime intercepts functions of the C library through the linker's `--wrap` option. Each `asan` and `asan-ubsan` link gets `-Wl,--wrap=<function>` for each function on the runtime's list, and the runtime defines `__wrap_<function>` for each one. The list has 380 functions. `fopen`, `time`, `clock_gettime` and `dlopen` are on it.
+The sealed AddressSanitizer runtime intercepts functions through the linker's `--wrap` option. Each `asan` and `asan-ubsan` link gets `-Wl,--wrap=<function>` for each function on the runtime's list, and the runtime defines `__wrap_<function>` for them (for example `__wrap_fopen`). The list in the toolchain image has 380 functions. The builder removes `iconv` from it, so the links wrap 379 functions. `fopen`, `time`, `clock_gettime` and `dlopen` are on the list.
 
-Thus do not link with `-Wl,--wrap=<function>` for a function on the list, and do not define `__wrap_<function>` for it. If you do, the link of the AddressSanitizer builds fails with `duplicate symbol: __wrap_<function>`. To replace a function on the list, rename the call when you compile. For example, compile the file that calls `fopen()` with `-Dfopen=my_fopen`, and define `my_fopen` in your fuzz target. This method works in all four builds.
+Thus do not link with `-Wl,--wrap=<function>` for a function on the list, and do not define `__wrap_<function>` for it. If you define `__wrap_<function>`, two objects define it, and the link of the AddressSanitizer builds fails. To replace a function on the list, rename the call when you compile. For example, compile the file that calls `fopen()` with `-Dfopen=my_fopen`, and define `my_fopen` in your fuzz target. This method works in all four builds.
 
-The list is a file in the toolchain image: `/opt/asan-static-rt/lib/clang/20/lib/riscv64-unknown-linux-musl/libclang_rt.asan.a.wrap`. Each `--wrap=<function>` line names one function. To read it, run `docker run --rm --entrypoint cat <image> <path>`, with the image from [infra/toolchains.tsv](../infra/toolchains.tsv).
+The list is a file in the toolchain image: `/opt/asan-static-rt/lib/clang/20/lib/riscv64-unknown-linux-musl/libclang_rt.asan.a.wrap`. Each `--wrap=<function>` line names one function. To read it, run `docker run --rm --entrypoint cat <image> <path>`, with the image from [infra/toolchains.tsv](../infra/toolchains.tsv). [infra/base-builder/toolchain.sh](../infra/base-builder/toolchain.sh) removes the `--wrap=iconv` line.
 
 ## What the Dockerfile must do
 
