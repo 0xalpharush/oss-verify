@@ -229,6 +229,9 @@ def require_buildkit():
     if run("docker", "buildx", "version", quiet=True) != 0:
         raise Failed("tools/check needs Docker with BuildKit, and `docker buildx version` fails. "
                      "Install the buildx plugin (on Ubuntu, `apt install docker-buildx`), then run tools/check again.")
+    if os.environ.get("DOCKER_BUILDKIT") == "0":
+        raise Failed("tools/check needs Docker with BuildKit, and DOCKER_BUILDKIT=0 turns it off. "
+                     "Unset DOCKER_BUILDKIT, then run tools/check again.")
 
 
 def build_builder(image=None, suffix="", no_cache=False):
