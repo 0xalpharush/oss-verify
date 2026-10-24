@@ -118,11 +118,11 @@ Thus do not link with `-Wl,--wrap=<function>` for a function on the list, and do
 
 * Compile the file that calls the function with `-D<function>=<name>`, for example `-Dfopen=my_fopen`. `-D` changes each use of the name in that file and in the headers that it includes. Thus use it only in a C file, and only for a name that has no other meaning there.
 * Define `my_fopen` in your fuzz target. In a C++ fuzz target, define it with `extern "C"`.
-* If the library's archive also has that file, compile a second copy of it with `-D` for this fuzz target only. Link the copy before the archive. Then the other fuzz targets do not need `my_fopen`. libreac's `build.sh` does this for its pcap reader.
+* If the library's archive also has that file, compile a second copy of it for this fuzz target only. Use the flags and include paths of the library's own compile of that file, and add `-D`. Link the copy before the archive. Then the other fuzz targets do not need `my_fopen`.
 
 The list is a file in the toolchain image: `/opt/asan-static-rt/lib/clang/20/lib/riscv64-unknown-linux-musl/libclang_rt.asan.a.wrap`. Each `--wrap=<function>` line names one function. To read it, run `docker run --rm --entrypoint cat <image> <path>`, with the image from [infra/toolchains.tsv](../infra/toolchains.tsv). [infra/base-builder/toolchain.sh](../infra/base-builder/toolchain.sh) removes the `--wrap=iconv` line.
 
-The driver's seals also use `--wrap`, in all four builds: `getenv`, `getpid`, `getppid`, `mkstemp`, `mkostemp`, `mkstemps` and `mkostemps`. Do not wrap these functions, and do not define `__wrap_<function>` for them.
+The driver's seals also use `--wrap`, in all four builds: `getenv`, `getpid`, `getppid`, `mkstemp`, `mkostemp`, `mkstemps` and `mkostemps`. `link-fuzz-target` adds them to each link. In a `build.sh` that you write by hand, do not wrap these functions, and do not define `__wrap_<function>` for them. If a link wraps `getenv`, `getpid` or `mkstemp` itself, `link-fuzz-target` adds none of the seals, and the program can then depend on its environment, its process id and the names of its temporary files. A build ported from oss-fuzz-theorems adds the same seals with the `oft_seal_*` helpers of `recipes.sh`. Keep those calls.
 
 ## What the Dockerfile must do
 
