@@ -84,11 +84,6 @@ name: "Build"
 # `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>`. A ci-test run posts its comment on that pull request,
 # so point it at a test pull request (one opened by this repository, not a maintainer's open enrollment).
 #
-# On the first run for a pull request, and on each run started by hand, the comment job also sends the build's facts
-# (the project, its language, the build's result, and the size and linkage of each binary) to the Slack channel
-# #proving-oss-fuzz, through the incoming webhook in the repository secret SLACK_WEBHOOK_URL, which can post to that
-# one channel only. Without the secret it sends nothing, and says so in a warning.
-#
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, with the repository variable
 # OTEL_EXPORTER_OTLP_ENDPOINT (the collector's public URL) and the repository secret OTEL_COLLECTOR_TOKEN (its bearer
 # token), tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
@@ -140,7 +135,6 @@ jobs:
       result: ${{ steps.build.outputs.result }}
       binaries: ${{ steps.build.outputs.binaries }}
       checks: ${{ steps.build.outputs.checks }}
-      language: ${{ steps.build.outputs.language }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
@@ -231,16 +225,10 @@ jobs:
           commit=$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["commit"])' \
             ~/.cache/oss-verify-check/"$NAME"/manifest.yaml 2> /dev/null || true)
           [[ $commit =~ ^[0-9a-f]{40}$ ]] || commit=""
-          # For the Slack notice: the language project.yaml gives, only if it is one of tools/validate.py's names.
-          language=$(python3 -c 'import sys, yaml; sys.path.insert(0, "tools"); import validate
-          value = yaml.safe_load(open(sys.argv[1])).get("language")
-          print(value if isinstance(value, str) and value in validate.LANGUAGES else "")' \
-            "projects/$NAME/project.yaml" 2> /dev/null || true)
           # A random delimiter, so that no text can end an output early.
           delimiter="output-$(openssl rand -hex 16)"
           {
             echo "commit=$commit"
-            echo "language=$language"
             echo "result=\`projects/$NAME/\` at \`${SHA:0:7}\` $result"
             for output in binaries checks; do
               file=$summary
@@ -415,7 +403,6 @@ jobs:
           permission-pull-requests: write
 
       - name: Post the comment, or update the one already there
-        id: post
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
@@ -444,32 +431,7 @@ jobs:
           if [ -n "$existing" ]; then
             jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \
               | gh api --method PATCH "repos/$REPO/issues/comments/$existing" --input - > /dev/null
-            echo "posted=updated" >> "$GITHUB_OUTPUT"
           else
             jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \
               | gh api --method POST "repos/$REPO/issues/$PR/comments" --input - > /dev/null
-            echo "posted=new" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: "Send the build's facts to #proving-oss-fuzz"
-        # Once for each pull request, when its comment is first posted, and again on each run started by hand.
-        if: ${{ steps.post.outputs.posted == 'new' || github.event_name == 'workflow_dispatch' }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          URL: ${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number || inputs.pr }}
-          NAME: ${{ needs.project-builds.outputs.name }}
-          LANGUAGE: ${{ needs.project-builds.outputs.language }}
-          RESULT: ${{ needs.project-builds.outputs.result }}
-          BINARIES: ${{ needs.project-builds.outputs.binaries }}
-        run: |
-          set -euo pipefail
-          if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "::warning::The repository secret SLACK_WEBHOOK_URL is not set, so the facts were not sent to #proving-oss-fuzz."
-            exit 0
-          fi
-          printf '%s' "$BINARIES" > "$RUNNER_TEMP/binaries.md"
-          python3 .github/scripts/slack-notice --name "$NAME" --language "$LANGUAGE" --url "$URL" --result "$RESULT" \
-            --binaries "$RUNNER_TEMP/binaries.md" > "$RUNNER_TEMP/slack.json"
-          # The webhook URL is the credential: it reaches curl as a config file through a pipe, not an argument.
-          curl -q -sSf --retry 2 -H 'Content-Type: application/json' --data-binary @"$RUNNER_TEMP/slack.json" \
-            -K <(printf 'url = "%s"\n' "$SLACK_WEBHOOK_URL") > /dev/null
