@@ -45,40 +45,52 @@ import validate
 # The header the driver reads in front of the payload: no config bytes, no allocation mask bit set.
 HEADER = b"\0" * 6
 # Seconds for one run of a seed, and for one run of a mutant's input (an AddressSanitizer report under qemu can take
-# minutes). A run that takes longer is killed: status 137.
+# minutes). A run that takes longer is killed: status 137, which counts as neither a pass nor a catch.
 SEED_LIMIT = 120
 MUTANT_LIMIT = 300
+KILLED = 137
+# Seconds that the mutant builds of one run may take in all. A record whose builds have not started by then is
+# `not checked`. The Build workflow's job has 240 minutes for two builds of the project and this step.
+MUTANT_BUDGET = 60 * 60
 # The statuses a statement accepts with today's driver.
 ACCEPTED = (0, 2)
 LANGUAGES = ("c", "c++")
 ENTRY = "LLVMFuzzerTestOneInput"
+# The most bytes read from a file that a container wrote, or from a source file in the image.
+MAX_READ = 64 << 20
 # The runs of one container. Each job is three lines: "<id> <cov|run> <seconds>", the binary under /ov-bin, the input
 # under /ov-in. A cov run also writes the addresses of the code qemu translated to /ov-w/<id>.pcs.
 RUNNER = r"""ulimit -c 0
 while read -r id mode limit && IFS= read -r bin && IFS= read -r input; do
   if [ "$mode" = cov ]; then
-    timeout -s KILL "$limit" /ov-qemu -d in_asm -D "/ov-w/$id.log" "/ov-bin/$bin" "/ov-in/$input" > /dev/null 2>&1
+    timeout -s KILL "$limit" /ov-qemu -d in_asm -D "/ov-w/$id.log" "/ov-bin/$bin" "/ov-in/$input" \
+      < /dev/null > /dev/null 2>&1
     status=$?
     grep -oE '^0x[0-9a-f]+' "/ov-w/$id.log" 2> /dev/null | sort -u > "/ov-w/$id.pcs"
     rm -f "/ov-w/$id.log"
   else
-    timeout -s KILL "$limit" /ov-qemu "/ov-bin/$bin" "/ov-in/$input" > /dev/null 2>&1
+    timeout -s KILL "$limit" /ov-qemu "/ov-bin/$bin" "/ov-in/$input" < /dev/null > /dev/null 2>&1
     status=$?
   fi
   echo "$id $status"
 done < /ov-w/jobs > /ov-w/statuses
 """
-# The source line of each address in /ov-w/pcs, and first of LLVMFuzzerTestOneInput, as JSON lines.
-SYMBOLIZE = r"""entry=$(llvm-nm --defined-only "/ov-bin/$1" | awk '$NF == "LLVMFuzzerTestOneInput" { print "0x" $1; exit }')
+# The source line and column of each address in /ov-w/pcs, and first of LLVMFuzzerTestOneInput, as JSON lines.
+SYMBOLIZE = r"""nm=$(llvm-nm --defined-only "/ov-bin/$1")
+entry=$(printf '%s\n' "$nm" | awk '$NF == "LLVMFuzzerTestOneInput" { print "0x" $1; exit }')
 [ -n "$entry" ] || { echo "no LLVMFuzzerTestOneInput in the symbol table" >&2; exit 1; }
 { echo "$entry"; cat /ov-w/pcs; } | llvm-symbolizer --obj="/ov-bin/$1" --output-style=JSON > /ov-w/lines.json
+"""
+# The MD5 checksums that the line table gives the files whose name ends in $2 (DWARF 5), one a line.
+CHECKSUMS = r"""llvm-dwarfdump --debug-line "/ov-bin/$1" | grep -A 3 -F "$2\"" | grep -o 'md5_checksum: [0-9a-f]*' \
+  | sort -u > /ov-w/md5 || true
 """
 
 # Before `compile`: a clang and a clang++ first on PATH that add -O0 after every other argument, so that each check
 # keeps its own code and line. The builder's compiler shims run clang and clang++ by name.
 OPTIMIZATION_OFF = r"""mkdir -p /tmp/ov-O0
 for cc in clang clang++; do
-  real=$(command -v "$cc") || continue
+  real=$(command -v "$cc") || { echo "no $cc on PATH: the -O0 build cannot be made" >&2; exit 1; }
   printf '#!/bin/sh\nexec %s "$@" -O0\n' "$real" > "/tmp/ov-O0/$cc"
   chmod +x "/tmp/ov-O0/$cc"
 done
@@ -93,10 +105,12 @@ NOT_MET = "mutant not met"
 BAD_RECORD = "bad mutant record"
 NO_CORPUS = "no seed corpus"
 NOT_CHECKED = "not checked"
+# Kinds of information: lines for the reviewer that are not findings.
 NOT_A_PROPERTY = "not a property"
+NOT_READ = "not read"
 
 CONDITIONS = frozenset({"if", "while", "for", "switch"})
-ABORT = re.compile(r"(?:\bstd\s*::\s*|::\s*)?\b(?:__builtin_)?abort\s*\(\s*\)")
+ABORT = re.compile(r"(?:(?:::\s*)?\bstd\s*::\s*|::\s*)?\b(?:__builtin_)?abort\s*\(\s*\)")
 LABEL = re.compile(r"(?:case\b.*|default)\s*$", re.S)
 MUTANT = re.compile(r"mutant:\s*(?P<path>[^\s`]+):(?P<line>[0-9]+)\s+`(?P<old>[^`]*)`\s*->\s*`(?P<new>[^`]*)`\s*")
 INPUT = re.compile(r"input:\s*(?P<name>\S(?:.*\S)?)\s*")
@@ -121,12 +135,15 @@ class Record:
 
 @dataclasses.dataclass
 class Check:
-    """An abort() call in a fuzz target's source: its line, the lines of its guard, and what its comment records."""
+    """An abort() call in a fuzz target's source: its line, the lines of its guard (None if no condition in its
+    function guards it), and what its comment records. `note` is set for an abort() that is not read as a check: it
+    is listed as information only."""
     line: int
     guard: tuple
     records: list = dataclasses.field(default_factory=list)
     not_property: str = None
     problems: list = dataclasses.field(default_factory=list)
+    note: str = None
 
 
 @dataclasses.dataclass
@@ -158,8 +175,9 @@ class Report:
 
 
 def blank(text):
-    """Return (code, comments): `text` with each comment, string literal, character literal and preprocessor line
-    replaced by spaces (newlines kept, so offsets and lines stay), and the (start, end) offsets of each comment."""
+    """Return (code, comments): `text` with each comment, string literal, character literal, preprocessor line and
+    `#if 0` block replaced by spaces (newlines kept, so offsets and lines stay), and the (start, end) offsets of each
+    comment."""
     code = list(text)
     comments = []
     n = len(text)
@@ -169,25 +187,42 @@ def blank(text):
             if code[k] != "\n":
                 code[k] = " "
 
-    i, line_start = 0, True
+    def directive_end(start):
+        """The offset of the newline that ends the directive at `start` (a `\\` before it continues it)."""
+        j = start
+        while j < n and not (text[j] == "\n" and text[j - 1] != "\\" and text[j - 2:j] != "\\\r"):
+            j += 1
+        return j
+
+    i, line_start, skipping = 0, True, 0
     while i < n:
         c = text[i]
         if c == "\n":
             line_start = True
             i += 1
             continue
-        if line_start and c in " \t":
+        if line_start and c in " \t\r":
             i += 1
             continue
         if line_start and c == "#":
-            j = i
-            while j < n and not (text[j] == "\n" and text[j - 1] != "\\"):
-                j += 1
+            j = directive_end(i)
+            word = re.match(r"#\s*(\w*)\s*(\S*)", text[i:j])
+            if skipping:
+                skipping += {"if": 1, "ifdef": 1, "ifndef": 1, "endif": -1}.get(word[1], 0)
+                if skipping == 1 and word[1] in ("else", "elif"):
+                    skipping = 0
+            elif word[1] == "if" and word[2] == "0":
+                skipping = 1
             wipe(i, j)
             i = j
             continue
         line_start = False
-        if text.startswith("//", i):
+        if skipping:
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            wipe(i, j)
+            i = j
+        elif text.startswith("//", i):
             j = text.find("\n", i)
             j = n if j < 0 else j
             comments.append((i, j))
@@ -199,16 +234,25 @@ def blank(text):
             comments.append((i, j))
             wipe(i, j)
             i = j
-        elif c == '"' or (c == "'" and not (i and text[i - 1].isdigit())):  # 1'000 is a C++ digit separator
+        elif c == '"' or (c == "'" and not separator(text, i)):
             j = i + 1
             while j < n and text[j] not in (c, "\n"):
                 j += 2 if text[j] == "\\" else 1
-            j = min(j + 1, n)
+            if j < n and text[j] == c:
+                j += 1
             wipe(i, j)
             i = j
         else:
             i += 1
     return "".join(code), comments
+
+
+def separator(text, at):
+    """True if the `'` at `at` is a C++14 digit separator: it is inside a number such as 1'000 or 0xDEAD'BEEF."""
+    k = at - 1
+    while k >= 0 and (text[k].isalnum() or text[k] in "_.'"):
+        k -= 1
+    return at > k + 1 and text[k + 1].isdigit()
 
 
 def previous(code, position):
@@ -268,44 +312,113 @@ def case_guard(code, colon):
     return None
 
 
+def forward_matching(code, open_):
+    """The offset of the `)` that closes the `(` at offset `open_`, or -1."""
+    depth = 0
+    for k in range(open_, len(code)):
+        if code[k] == "(":
+            depth += 1
+        elif code[k] == ")":
+            depth -= 1
+            if depth == 0:
+                return k
+    return -1
+
+
 def else_guard(code, at):
-    """The condition of the `if` whose `else` starts at `at`, when its body is a block; else None."""
+    """The condition of the `if` whose `else` starts at `at`, or None."""
     k = previous(code, at)
-    if k < 0 or code[k] != "}":
+    if k < 0:
         return None
-    before = previous(code, matching(code, k, "{", "}"))
-    return condition(code, before, {"if"}) if before >= 0 and code[before] == ")" else None
+    if code[k] == "}":
+        before = previous(code, matching(code, k, "{", "}"))
+        return condition(code, before, {"if"}) if before >= 0 and code[before] == ")" else None
+    if code[k] != ";":
+        return None
+    # `if (c) statement; else`: the statement starts at the last boundary (`;`, `{`, `}`) outside parentheses.
+    start, depth = k - 1, 0
+    while start >= 0 and not (depth == 0 and code[start] in ";{}"):
+        depth += {")": 1, "]": 1, "(": -1, "[": -1}.get(code[start], 0)
+        start -= 1
+    found = list(re.finditer(r"\bif\s*\(", code[start + 1:k]))
+    if not found:
+        return None
+    begin = start + 1 + found[-1].start()
+    close = forward_matching(code, start + found[-1].end())
+    return (begin, close) if close >= 0 else None
+
+
+def enclosing_block(code, at):
+    """The offset of the `{` of the innermost block that holds offset `at`, or -1."""
+    depth = 0
+    for k in range(at - 1, -1, -1):
+        if code[k] == "}":
+            depth += 1
+        elif code[k] == "{":
+            if depth == 0:
+                return k
+            depth -= 1
+    return -1
+
+
+def block_guard(code, opener):
+    """The guard of the statements in the block that the `{` at `opener` opens, or None (a function's body)."""
+    k = previous(code, opener)
+    if k < 0:
+        return None
+    if code[k] == ")":
+        return condition(code, k)
+    if code[k] == ":":
+        return case_guard(code, k)
+    word, start = word_before(code, k)
+    return else_guard(code, start) if word == "else" else None
 
 
 def guard_of(code, at):
-    """(start, end) offsets of the code that decides whether the abort() at `at` runs, or None if nothing does."""
+    """(start, end) offsets of the code that decides whether the abort() at `at` runs, or None if no condition in its
+    function does."""
     j = previous(code, at)
     if j < 0:
         return None
     if code[j] == "{":
-        k = previous(code, j)
-        if k < 0:
-            return None
-        if code[k] == ")":
-            return condition(code, k)
-        if code[k] == ":":
-            return case_guard(code, k)
-        word, start = word_before(code, k)
-        return else_guard(code, start) if word == "else" else None
+        return block_guard(code, j)
     if code[j] == ")":
         return condition(code, j)
     if code[j] == ":":
         return case_guard(code, j)
     word, start = word_before(code, j)
-    return else_guard(code, start) if word == "else" else None
+    if word == "else":
+        return else_guard(code, start)
+    if code[j] in ";}":
+        # After other statements: the guard of the block that holds them.
+        opener = enclosing_block(code, at)
+        return block_guard(code, opener) if opener >= 0 else None
+    return None
 
 
-def is_call(code, at):
-    """True if the abort() at `at` is a statement, not a declaration such as `void abort()`."""
+def label_start(code, at):
+    """If the abort() at `at` comes right after a `case`, `default` or goto label (also with a `{` between), the
+    offset where that label starts; else None."""
+    j = previous(code, at)
+    if j >= 0 and code[j] == "{":
+        j = previous(code, j)
+    if j < 0 or code[j] != ":":
+        return None
+    k = j - 1
+    while k >= 0 and code[k] not in ";{}":
+        k -= 1
+    return k + 1 + (len(code[k + 1:j]) - len(code[k + 1:j].lstrip()))
+
+
+def call_kind(code, at):
+    """"call" if the abort() at `at` is a statement, "expression" if it is part of an expression (`c ? abort() : 0`),
+    or None for a declaration such as `void abort()`."""
     j = previous(code, at)
     if j < 0 or code[j] in ";{}):":
-        return True
-    return word_before(code, j)[0] in ("else", "do")
+        return "call"
+    if word_before(code, j)[0] in ("else", "do"):
+        return "call"
+    return "expression" if code[j] in "?,(=&|!" else None
 
 
 def clean(line):
@@ -345,10 +458,12 @@ def parse_records(lines, check):
             check.not_property = EXEMPT.fullmatch(text)["reason"]
     if pending is not None:
         check.problems.append(f"`mutant: {pending.path}:{pending.line} ...` has no `input:` line after it")
+    if check.not_property is not None and (check.records or check.problems):
+        check.problems.append("the comment has both `not a property:` and a mutant record: keep one")
 
 
 def find_checks(text):
-    """The property checks of a C or C++ source: [Check], in the order of their lines."""
+    """The abort() calls of a C or C++ source: [Check], in the order of their lines."""
     code, comments = blank(text)
     starts = [0] + [k + 1 for k, c in enumerate(text) if c == "\n"]
 
@@ -373,16 +488,31 @@ def find_checks(text):
 
     checks = []
     for found in ABORT.finditer(code):
-        if not is_call(code, found.start()):
-            continue
+        kind = call_kind(code, found.start())
         line = line_of(found.start())
+        if kind is None:
+            continue
+        if kind == "expression":
+            checks.append(Check(line, None, note="an abort() inside an expression is not read as a property check: "
+                                                 "write `if (!condition) abort();`"))
+            continue
         guard = guard_of(code, found.start())
         first, last = (line_of(guard[0]), line_of(guard[1])) if guard else (line, line)
-        lines = sorted(set(above(first)) | set(range(first, last + 1)) | set(above(line)) | {line})
-        check = Check(line, (first, last))
-        parse_records([clean(part) for number in lines for part in pieces.get(number, [])], check)
+        lines = set(above(first)) | set(range(first, last + 1)) | set(above(line)) | {line}
+        label = label_start(code, found.start())
+        if label is not None:
+            lines |= set(above(line_of(label)))
+        check = Check(line, (first, last) if guard else None)
+        parse_records([clean(part) for number in sorted(lines) for part in pieces.get(number, [])], check)
+        if guard is None and check.not_property is None:
+            check.note = ("no condition in its function guards this abort(), so no seed that passes reaches it: "
+                          "write `if (!condition) abort();`")
         checks.append(check)
-    return checks
+    for number, raw in enumerate(text.split("\n"), 1):
+        if raw.lstrip().startswith("#") and ABORT.search(raw):
+            checks.append(Check(number, None, note="an abort() in a macro is not read as a property check: write "
+                                                   "`if (!condition) abort();` where the check is"))
+    return sorted(checks, key=lambda check: check.line)
 
 
 def mutate(data, record):
@@ -546,8 +676,8 @@ def check(job, tag, work, targets, builds, ubsan, qemu, labels):
     began = time.monotonic()
     report = Report(targets=len(targets))
     if job.language not in LANGUAGES:
-        report.findings.append(Finding("", "", NOT_CHECKED, f"property checks are read in C and C++ fuzz targets "
-                                       f"only, and this project is in {job.language}"))
+        report.information.append(Finding("", "", NOT_READ, f"property checks are read in C and C++ fuzz targets "
+                                          f"only, and this project is in {job.language}"))
         return report
     qemu, why = find_qemu(qemu)
     if qemu is None:
@@ -556,13 +686,14 @@ def check(job, tag, work, targets, builds, ubsan, qemu, labels):
     home = work / "properties"
     shutil.rmtree(home, ignore_errors=True)
     (home / "inputs").mkdir(parents=True)
-    workers = max(1, (os.cpu_count() or 2) // 2)
+    workers = max(1, os.cpu_count() or 1)
     image = Image(tag, labels, qemu, home, workers)
     first = next(iter(builds))
     # The reach is read from a plain build at -O0: with optimization, the compiler merges the abort() calls of a
     # function, and the branch of a check then often has line 0 in the debug information.
     coverage = home / "O0"
     try:
+        check_build.say("  compiling the plain build at -O0, for the reach of the checks")
         check_build.compile_build(tag, "plain -O0", builds.get("plain", "none"), coverage, labels=labels,
                                   before=([], OPTIMIZATION_OFF, []), quiet=True)
     except check_build.Failed as failure:
@@ -585,49 +716,55 @@ def check(job, tag, work, targets, builds, ubsan, qemu, labels):
         if "\n" in name:
             return [Finding(name, "", NOT_CHECKED, "the target's name has a line break")]
         addresses = set()
-        if coverage is not None:
-            if not (coverage / name).is_file():
-                return [Finding(name, "", NOT_CHECKED, "the plain build at -O0 did not make this target")]
+        reached = coverage is not None and (coverage / name).is_file()
+        if coverage is not None and not reached:
+            findings.append(Finding(name, "", NOT_CHECKED, "the plain build at -O0 did not make this target, so its "
+                                                           "reach is not checked"))
+        if reached:
             jobs = [(name, target.numbers[seed], SEED_LIMIT) for seed in sorted(target.numbers)]
             for _, pcs in image.runs(jobs, coverage, home / "inputs", coverage=True):
                 addresses |= pcs
-        ran, entry = image.lines(coverage or work / "raw" / first, name, addresses)
+        ran, entry = image.lines(coverage if reached else work / "raw" / first, name, addresses)
         if not entry:
-            return [Finding(name, "", NOT_CHECKED, f"the build has no debug information that names the source of "
-                                                   f"{ENTRY}")]
+            return findings + [Finding(name, "", NOT_CHECKED, f"the build has no debug information that names the "
+                                                              f"source of {ENTRY}")]
         target.source = image.relative(entry)
         text = image.read(entry)
         if text is None:
-            return [Finding(name, "", NOT_CHECKED, f"{target.source}, the source of {ENTRY}, is not in the project "
-                                                   "image")]
+            return findings + [Finding(name, "", NOT_CHECKED, f"{target.source}, the source of {ENTRY}, is not in "
+                                                              "the project image")]
         target.checks = find_checks(text.decode("utf-8", errors="replace"))
         if target.seeds is None:
             findings.append(Finding(name, "", NO_CORPUS, f"{name}_seed_corpus.zip is not in the project directory"))
         lines = ran.get(entry, set())
         for item in target.checks:
             where = f"{target.source}:{item.line}"
+            for problem in item.problems:
+                findings.append(Finding(name, where, BAD_RECORD, problem))
             if item.not_property is not None:
                 report.information.append(Finding(name, where, NOT_A_PROPERTY, item.not_property))
                 continue
+            if item.note is not None:
+                report.information.append(Finding(name, where, NOT_READ, item.note))
+                continue
             first_line, last_line = item.guard
-            if coverage is not None and not lines & set(range(first_line, last_line + 1)):
+            if reached and not lines & set(range(first_line, last_line + 1)):
                 guard = f"line {first_line}" if first_line == last_line else f"lines {first_line}-{last_line}"
                 findings.append(Finding(name, where, UNREACHED, f"no seed runs its guard ({guard})"))
-            for problem in item.problems:
-                findings.append(Finding(name, where, BAD_RECORD, problem))
             if not item.records and not item.problems:
                 findings.append(Finding(name, where, NO_RECORD))
         return findings
 
-    with concurrent.futures.ThreadPoolExecutor(workers) as pool:
-        futures = {name: pool.submit(reach, name) for name in targets}
-        for name in targets:
-            try:
-                report.findings.extend(futures[name].result())
-            except Exception as failure:  # noqa: BLE001 - one target's failure is that target's finding
-                report.findings.append(Finding(name, "", NOT_CHECKED, f"{type(failure).__name__}: {failure}"))
-    report.checks = sum(1 for target in found.values() for item in target.checks if item.not_property is None)
-    report.findings.extend(mutants(found, image, tag, work, builds, ubsan, labels, home))
+    # One target at a time: Image.runs already runs its seeds in parallel containers.
+    for name in targets:
+        try:
+            report.findings.extend(reach(name))
+        except Exception as failure:  # noqa: BLE001 - one target's failure is that target's finding
+            report.findings.append(Finding(name, "", NOT_CHECKED, f"{type(failure).__name__}: {failure}"))
+    if coverage is not None:
+        check_build.empty_directory(coverage, tag, labels=labels)
+    report.checks = sum(1 for target in found.values() for item in target.checks if is_property(item))
+    report.findings.extend(mutants(found, image, tag, work, builds, ubsan, labels, home, began + MUTANT_BUDGET))
     order = {name: number for number, name in enumerate(targets)}
 
     def place(finding):
@@ -638,6 +775,11 @@ def check(job, tag, work, targets, builds, ubsan, qemu, labels):
     report.information.sort(key=place)
     report.seconds = time.monotonic() - began
     return report
+
+
+def is_property(item):
+    """True for an abort() that the step reads as a property check."""
+    return item.not_property is None and item.note is None
 
 
 def mutants(found, image, tag, work, builds, ubsan, labels, home):
