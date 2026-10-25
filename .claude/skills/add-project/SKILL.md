@@ -127,7 +127,16 @@ You can also return -1 to reject an input that is outside the domain of a proper
 
 In all other cases, return 0. Change each expected outcome into `return 0`, narrowly. Examine the library's error code, or catch the one exception type that the API documents.
 
-Give each file a header that tells what it is and its licence. A file copied from the project's repository keeps the project's licence and tells so.
+### 3.8 Give each file its licence lines
+
+Each file of code that you put in `projects/<name>/` (fuzz targets, `Dockerfile`, `build.sh`, scripts) begins with licence lines: comment lines that say whose the file is and under which licence. Only lines that must come first, such as `#!`, a Dockerfile `# syntax=` line or a Python `coding:` line, go above them. Build patches, `project.yaml`, `sources`, `series`, `patch_style.md`, locks and seed inputs need none. The maintainer is the author of the contribution: ask them which name and organisation to give. Use the first of these cases that fits:
+
+1. **A seeded project's file that you adopt unchanged**, from `tools/seeds/<name>/` or `projects/<name>/` of this repository: add nothing. [NOTICE](../../../NOTICE) and `tools/seeds/UPSTREAM-CARRIED.tsv` give its licence. A seeded file that you change is case 3: keep its licence lines, for example the Google header of a seeded Python fuzz target. If it has none, give the licence that `tools/seeds/UPSTREAM-CARRIED.tsv` names for it; if that file does not name it, give `Copyright 2026 Theorem Labs, PBC` and `SPDX-License-Identifier: Apache-2.0` (NOTICE). Keep the lines that NOTICE names by number (wazuh, mariadb) unchanged; NOTICE grants them wherever they are copied. Then add a `Modified` line. New build files written in the form of a seeded project's, as step 4 says for Rust, Python and Go, are case 4.
+2. **A file started from `templates/`, with no lines copied from elsewhere**: delete the template's comments and give it the lines of a file that the maintainer wrote (case 4), as `projects/cjson/Dockerfile` does. If it also holds lines copied from elsewhere, for example from an OSS-Fuzz `build.sh`, delete the template's comments and use case 3.
+3. **A file copied from elsewhere**, whole or in part: the project's repository, OSS-Fuzz, or another project. Keep its licence lines unchanged, for example the Google header of an OSS-Fuzz `build.sh`, as `tools/seeds/go-toml/build.sh` does. If it has none, add `SPDX-License-Identifier: <its licence>`, as the LICENSE and NOTICE of the repository it came from say, and a line with the URL and commit it came from; add a `Copyright` line only when that repository names the holder. If the file was changed, also add one line under its licence lines that says who changed it, when, and what changed in this file, as `tools/validate.py` does. For example: `Modified 2026 by Alex Doe: built with the OSS Verify builder.`
+4. **A file that the maintainer wrote**: `Copyright <year> <their name or organisation>` and `SPDX-License-Identifier: Apache-2.0`, as in `templates/build.sh`. A contribution is under the Apache License 2.0 ([CONTRIBUTING.md](../../../CONTRIBUTING.md)). If the project is under version 2 of the GNU GPL only (GPL-2.0-only), give `SPDX-License-Identifier: MIT OR Apache-2.0` instead, because GPL-2.0-only code cannot be linked with Apache-2.0 code ([NOTICE](../../../NOTICE)). For such a project, tell the maintainer that a fuzz target copied from OSS-Fuzz stays under Apache-2.0 and can keep its binaries from being published (NOTICE, wazuh and mariadb).
+
+Do not add a licence file, and do not change `LICENSE`, `LICENSES/` or `NOTICE`. In the pull request, say which files came from where. No check reads licence lines, so get them right before the maintainer opens the pull request.
 
 ## 4. Port the build
 
@@ -139,7 +148,7 @@ For a `python` project, the fuzz targets are atheris harnesses. Write the build 
 
 For a `go` project, the fuzz targets are its OSS-Fuzz Go fuzz targets, and `build.sh` is its OSS-Fuzz `build.sh`, as it is (`docs/build-contract.md`, "Go fuzz targets"). Write the build files in the form of a ported Go build, for example `tools/seeds/go-toml/`. Pin the modules in a `go.lock`, and get them with a `gomodules` line in `sources`. Leave out `sanitizers`, or give `sanitizers: []`.
 
-Copy `templates/Dockerfile` and `templates/build.sh` into `projects/<name>/`. Port the project's build (`docs/build-contract.md`). Two builds written by hand are small examples (`docs/build-contract.md`, "What the Dockerfile must do"): `projects/cjson/`, and the test project `tools/tests/fixtures/example/`. The other projects in `projects/` and `tools/seeds/` are mostly ports of a release build, which use the helpers of `release-target.sh`. For a `c` or `c++` project, do not copy their form for a new build.
+Copy `templates/Dockerfile` and `templates/build.sh` into `projects/<name>/`, and give them their licence lines (3.8). Port the project's build (`docs/build-contract.md`). Two builds written by hand are small examples (`docs/build-contract.md`, "What the Dockerfile must do"): `projects/cjson/`, and the test project `tools/tests/fixtures/example/`. The other projects in `projects/` and `tools/seeds/` are mostly ports of a release build, which use the helpers of `release-target.sh`. For a `c` or `c++` project, do not copy their form for a new build.
 
 - In the `Dockerfile`, start with `FROM ${BASE_BUILDER}`.
 - Declare `ARG REPO` and `ARG COMMIT`.
@@ -182,7 +191,7 @@ For `ubsan_checks`, suggest the default: it is the list of OSS-Fuzz for the proj
 
 1. Make a branch that changes only `projects/<name>/`.
 2. Write the pull request description from `.github/PULL_REQUEST_TEMPLATE.md`.
-3. In the context note, give a summary of what each fuzz target checks, in a few lines.
+3. In the context note, give a summary of what each fuzz target checks, in a few lines, and say which files came from where (3.8).
 4. Optional: show the triage comment that the pull request will get: `python3 .github/scripts/triage.py --repo theorem-labs/oss-verify --local projects/<name> --login <maintainer's GitHub account> --body <a file holding the description>`. Without `GITHUB_TOKEN`, its GraphQL rows say "could not be checked".
 5. Show the branch and the description to the maintainer.
 6. Let the maintainer open the pull request. Only the maintainer can confirm "I am a core maintainer" and "I accept the OSS Verify terms".
