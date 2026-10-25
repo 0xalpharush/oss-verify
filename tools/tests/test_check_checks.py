@@ -38,6 +38,23 @@ class Shifts(unittest.TestCase):
         near = check_checks.hunk_shifts(b"+++ b/fuzz/f.c\n@@ -10,7 +10,6 @@\n a\n b\n-c\n d\n e\n f\n g\n", "/src/p")
         self.assertEqual(check_checks.moved(check(15), near), 14)
 
+    def test_record_patches_apply_on_the_last_lines(self):
+        import subprocess, tempfile
+        for ending in (b"\n", b""):
+            data = b"a\nb\nc\nd\ne" + ending
+            for line in range(1, 6):
+                with tempfile.TemporaryDirectory() as directory:
+                    directory = pathlib.Path(directory)
+                    (directory / "f.c").write_bytes(data)
+                    record = check_records.Record("f.c", line, "abcde"[line - 1], "X", "s")
+                    changed, _ = check_records.mutate(data, record)
+                    import difflib
+                    diff = b"".join(difflib.diff_bytes(difflib.unified_diff, check_checks.diff_lines(data),
+                                                       check_checks.diff_lines(changed), b"a/f.c", b"b/f.c"))
+                    (directory / "p").write_bytes(b"diff --git a/f.c b/f.c\n" + diff)
+                    subprocess.run(["git", "apply", "p"], cwd=directory, check=True, capture_output=True)
+                    self.assertEqual((directory / "f.c").read_bytes(), changed, (line, ending))
+
     def test_record_patches_split_on_newlines_only(self):
         data = "int x;\n/* \u00c5 */\nif (a) abort();\n".encode()
         record = check_records.Record("fuzz/f.c", 3, "(a)", "(!a)", "s")

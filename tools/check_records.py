@@ -399,8 +399,11 @@ def find_checks(text, path=""):
             check.note = ("no condition in its function guards this abort(), so no seed that passes reaches it: "
                           "write `if (!condition) abort();`")
         checks.append(check)
+    directive = False  # inside a preprocessor directive, which a line that ends in \ continues
     for number, raw in enumerate(source_lines, 1):
-        if raw.lstrip().startswith("#") and ABORT.search(raw):
+        in_directive = directive or raw.lstrip().startswith("#")
+        directive = in_directive and raw.rstrip("\r").endswith("\\")
+        if in_directive and ABORT.search(raw):
             checks.append(Check(number, None, path=path, text=raw.strip(),
                                 note="an abort() in a macro is not read as a property check: write "
                                      "`if (!condition) abort();` where the check is"))

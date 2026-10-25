@@ -291,7 +291,7 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 
 * Each property is a check that calls `abort()`, not an `assert()`, which `NDEBUG` removes.
 * A seed corpus runs each API call and each property check at least once ([project-yaml.md](project-yaml.md#seed-corpora)).
-* For each property, a one-line change to the code makes the fuzz target abort on an input of the seed corpus. The change is a breakage patch in the directory that `mutants` names ([project-yaml.md](project-yaml.md#mutants)).
+* For each property, a one-line change to the code makes the fuzz target abort on an input of the seed corpus. The change is a `mutant:` record in the check's comment, or a patch in the directory that `mutants` names ([below](#the-checks-of-a-fuzz-target), [project-yaml.md](project-yaml.md#mutants)).
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
 * `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).

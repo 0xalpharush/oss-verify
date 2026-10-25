@@ -112,5 +112,13 @@ class Reader(unittest.TestCase):
 
 
 
+class Macros(unittest.TestCase):
+    def test_an_abort_on_a_continued_directive_line_is_noted(self):
+        source = "#define CHECK(c) \\\n  do { if (!(c)) { abort(); } } while (0)\nint f(void) { return 0; }\n"
+        (found,) = check_records.find_checks(source)
+        self.assertEqual(found.line, 2)
+        self.assertIn("macro", found.note)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -143,7 +143,7 @@ The manifest and the lock record the list that a build used. Thus "each fuzz tar
 
 ### mutants
 
-Give the directory that holds the breakage patches of your fuzz targets: a one-line change to the library or to a fuzz target, for each check, that makes the check fail on an input in the seed corpus ([.claude/skills/add-project/SKILL.md](../.claude/skills/add-project/SKILL.md), step 3.4). The path starts at the `WORKDIR` of the `Dockerfile`, where `build.sh` runs. For a `Dockerfile` that fetches your repository into `$SRC/<name>` and works there, it is a directory of your repository, for example `fuzz/mutants`.
+Give the directory that holds breakage patches of your fuzz targets: changes to the library or to a fuzz target that make a check fail on an input in the seed corpus. A one-line change is usually a `mutant:` record in the check's comment instead, and a project can use both ([.claude/skills/add-project/SKILL.md](../.claude/skills/add-project/SKILL.md), step 3.4). The path starts at the `WORKDIR` of the `Dockerfile`, where `build.sh` runs. For a `Dockerfile` that fetches your repository into `$SRC/<name>` and works there, it is a directory of your repository, for example `fuzz/mutants`.
 
 Each file in the directory whose name ends in `.patch` is one breakage patch, as `git diff` writes it, with paths from that `WORKDIR`. Before its `diff --git` line, write which check it breaks and the seed input that catches it. `git apply` ignores that text. For example:
 
@@ -155,7 +155,7 @@ diff --git a/src/reac_ctrlblk.c b/src/reac_ctrlblk.c
 ...
 ```
 
-The Build check of each enrollment pull request applies each patch in turn, builds again, and runs each fuzz target on each input of its seed corpus. It reports each patch that no input catches, and each check that no patch makes fire ([build-contract.md](build-contract.md#the-checks-of-a-fuzz-target)). A breakage patch is never applied to a binary that we prove things about.
+The Build check of each enrollment pull request applies each patch in turn, builds again, and runs each fuzz target on each input of its seed corpus. It reports each patch that no input catches, and each check that no breakage, record or patch, makes fire ([build-contract.md](build-contract.md#the-checks-of-a-fuzz-target)). A breakage patch is never applied to a binary that we prove things about.
 
 ### patch_style
 

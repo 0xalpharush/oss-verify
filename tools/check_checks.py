@@ -361,7 +361,7 @@ def workdir_of(tag):
 def mutant_patches(tag, directory, workdir, *, labels):
     """The breakage patches in `directory` of the project image (relative to its WORKDIR): {name: bytes}, each regular
     file named *.patch at its top level. Raise Failed if the directory is not there."""
-    script = 'cd -- "$1" && for f in *.patch; do [ -f "$f" ] && [ ! -L "$f" ] && printf "%s\\0" "$f"; done; true'
+    script = 'cd -- "$1" || exit 3; for f in *.patch; do [ -f "$f" ] && [ ! -L "$f" ] && printf "%s\\0" "$f"; done; exit 0'
     done = subprocess.run(["docker", "run", "--rm", "--network=none", *labels, "--entrypoint", "sh", tag, "-c", script,
                            "sh", directory], stdin=subprocess.DEVNULL, capture_output=True)
     if done.returncode != 0:
@@ -370,6 +370,17 @@ def mutant_patches(tag, directory, workdir, *, labels):
     base = pathlib.PurePosixPath(workdir) / directory
     files = image_files(tag, [str(base / name) for name in names], labels=labels)
     return {name: files[str(base / name)][:MAX_PATCH_BYTES] for name in names if str(base / name) in files}
+
+
+def diff_lines(data):
+    """The lines of a file for difflib, split on \n only (bytes.splitlines would also split at \r). A last line with no
+    newline ends with the marker that a unified diff gives it."""
+    lines = [line + b"\n" for line in data.split(b"\n")]
+    if data.endswith(b"\n") or not data:
+        lines.pop()
+    else:
+        lines[-1] += b"\\ No newline at end of file\n"
+    return lines
 
 
 def record_breakages(checks, tag, workdir, *, labels):
@@ -395,9 +406,7 @@ def record_breakages(checks, tag, workdir, *, labels):
         if changed is None:
             breakages.append(Breakage(label, None, records, problem=why))
             continue
-        # Split on \n only: str.splitlines would also split at bytes such as \x0c and \x85.
-        before = [line + b"\n" for line in data.split(b"\n")]
-        after = [line + b"\n" for line in changed.split(b"\n")]
+        before, after = diff_lines(data), diff_lines(changed)
         diff = b"".join(difflib.diff_bytes(difflib.unified_diff, before, after, f"a/{path}".encode(),
                                            f"b/{path}".encode()))
         breakages.append(Breakage(label, f"diff --git a/{path} b/{path}\n".encode() + diff, records))
@@ -524,11 +533,13 @@ def evaluate(ctx, number, breakage, record_targets):
                           if coverage.count(check.path, moved(check, shifts), check.column)}
         breakage.builds = ("coverage",)
         caught = any(run.caught() and run.key() in ctx.passing for run in runs)
+        late = False
         if ctx.sanitizer and not caught and time.monotonic() > ctx.deadline:
-            breakage.detail = f"the {ctx.sanitizer[0]} build was not made: the time budget ran out"
+            late = True
         elif ctx.sanitizer and not caught:
             why = compile_check(ctx.tag, home / ctx.sanitizer[0], ctx.sanitizer[1], ctx.targets, labels=ctx.labels,
                                 patch=patch, ubsan=ctx.ubsan, seconds=max(60, ctx.deadline - time.monotonic()))
+            late = bool(why) and time.monotonic() > ctx.deadline
             if why:
                 breakage.detail = f"the {ctx.sanitizer[0]} build: {why}"
             else:
@@ -538,7 +549,7 @@ def evaluate(ctx, number, breakage, record_targets):
         breakage.runs = runs
         unrun = any(run.status == NOT_RUN for run in runs)
         caught = any(run.caught() and run.key() in ctx.passing for run in runs)
-        breakage.outcome = "not checked" if unrun and not caught else "measured"
+        breakage.outcome = "not checked" if (unrun or late) and not caught else "measured"
     except Failed as failure:
         breakage.outcome, breakage.detail = "does not build", str(failure)
     finally:
@@ -672,7 +683,8 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
             elif not any(catches(breakage, passing, t, record.input) for t in record_targets.get(check.path, ())):
                 statuses = ", ".join(f"{run.build} {run.status if run.status is not None else 'time limit'}"
                                      for run in breakage.runs if run.seed == record.input) or "no run"
-                problems.append(f"  - {label}: **mutant not met**: the input passes ({statuses})")
+                problems.append(f"  - {label}: **mutant not met**: the input passes ({statuses})"
+                                + (f"; {code(breakage.detail, 300)}" if breakage.detail else ""))
             else:
                 met += 1
                 if (check.path, check.line, check.column) not in breakage.fired:
@@ -705,7 +717,8 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
                     result = (f"caught: {cell(caught[0].target)} on {cell(caught[0].seed)}, {caught[0].build} "
                               f"build, {describe(caught[0])}")
                 else:
-                    result = f"**not caught** by any seed input ({' and '.join(b.builds)} builds)"
+                    result = f"**not caught** by any seed input ({' and '.join(b.builds)} builds)" + (
+                        f"; {cell(b.detail, 200)}" if b.detail else "")
                 fired = [check for check in found if (check.path, check.line, check.column) in b.fired]
                 lines.append(f"  | {cell(b.label)} | {result} | "
                              f"{', '.join(cell(where(c)) for c in fired) or 'none'} |")
