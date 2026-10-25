@@ -1,9 +1,8 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for tools/check_checks.py and .github/scripts/review-comment, slack-notice and review-run that need no Docker:
+"""Tests for tools/check_checks.py and .github/scripts/review-comment and review-run that need no Docker:
 python3 -m pytest tools/tests"""
 import base64
-import json
 import os
 import importlib.machinery
 import importlib.util
@@ -339,7 +338,7 @@ class CredentialArguments(unittest.TestCase):
     def test_build_yaml_keeps_the_three_credentials_out_of_argv(self):
         steps = [step for job in yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())["jobs"]
                  .values() for step in job["steps"] if "run" in step]
-        for name in ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "OTEL_COLLECTOR_TOKEN", "SLACK_WEBHOOK_URL"):
+        for name in ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "OTEL_COLLECTOR_TOKEN"):
             used = 0
             for step in steps:
                 variable = re.escape(f'"${name}"')
@@ -525,36 +524,6 @@ class ReviewRun(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(set(self.child()), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_EFFORT"})
         self.assertEqual(self.headers, [])
-
-
-class SlackNotice(unittest.TestCase):
-    def notice(self, table, name="libreac", language="c"):
-        with tempfile.TemporaryDirectory() as directory:
-            binaries = pathlib.Path(directory) / "binaries.md"
-            binaries.write_text(table)
-            out = subprocess.run([sys.executable, str(ROOT / ".github" / "scripts" / "slack-notice"), "--name", name,
-                                  "--language", language, "--url", "https://github.com/theorem-labs/oss-verify/pull/19",
-                                  "--result", "`projects/libreac/` at `abc1234` builds",
-                                  "--binaries", str(binaries)], capture_output=True, text=True, check=True).stdout
-        return json.loads(out)["text"]
-
-    def test_the_facts_of_each_binary(self):
-        text = self.notice("| target | build | file bytes | `.text` bytes | static |\n|---|---|---:|---:|---|\n"
-                           "| `fuzz_ctrl` | plain | 812,345 | 400,000 | yes |\n"
-                           "| `fuzz_ctrl` | address | 2,812,345 | 1,400,000 | yes |\n")
-        self.assertIn("Language: c.", text)
-        self.assertIn("pull/19", text)
-        self.assertEqual(text.count("fuzz_ctrl"), 2)
-        self.assertIn("812,345", text)
-        self.assertIn("1,400,000", text)
-        self.assertNotIn("---", text)
-
-    def test_no_text_becomes_a_mention_or_a_link(self):
-        text = self.notice("", name="<!channel> <https://x|y> &")
-        self.assertNotIn("<!channel>", text)
-        self.assertIn("&lt;!channel&gt;", text)
-        self.assertIn("&amp;", text)
-        self.assertIn("No binaries", text)
 
 
 if __name__ == "__main__":
