@@ -15,8 +15,9 @@
 # project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the
 # ANTHROPIC_* variables of its credential (in CI, those of workload identity federation), and, when
 # both OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN are set, the OpenTelemetry settings that send its usage to
-# Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name> and
-# theorem.lane=enroll-review-ci. Without them it exports nothing.
+# Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci
+# and theorem.credential=oss-verify-ci (the service account that federation gives a token for). Without them it exports
+# nothing.
 set -euo pipefail
 
 in=${1:?usage: review-run <directory>}
@@ -40,7 +41,7 @@ if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}"
   pass+=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=none
          OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
          "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $OTEL_COLLECTOR_TOKEN"
-         "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci")
+         "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci,theorem.credential=oss-verify-ci")
   echo "review-run: exporting usage to $OTEL_EXPORTER_OTLP_ENDPOINT"
 else
   echo "review-run: no OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN: usage is not exported"

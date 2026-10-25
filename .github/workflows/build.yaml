@@ -89,7 +89,8 @@ name: "Build"
 #
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector when the repository variable
 # OTEL_EXPORTER_OTLP_ENDPOINT (the collector's public URL) and the repository secret OTEL_COLLECTOR_TOKEN (its bearer
-# token) are both set, tagged theorem.project=oss-verify, theorem.subproject=<name> and theorem.lane=enroll-review-ci.
+# token) are both set, tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
+# theorem.credential=oss-verify-ci (.github/scripts/review-run sets them).
 # Without them it exports nothing, and the review runs as before.
 #
 # To build a pull request by number:
