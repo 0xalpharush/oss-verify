@@ -132,6 +132,9 @@ if [[ ${COMMIT:-} =~ ^[0-9a-f]{40}$ ]]; then
     # Data only: no git metadata, and no symbolic link, which could point the reader outside the directory.
     rm -rf "$source/.git"
     find "$source" -type l -delete
+    # Claude Code reads a CLAUDE.md or .claude/ in a directory whose files it reads as instructions: the project's are
+    # data, so they go (the skill's rule 1).
+    find "$source" \( -iname 'CLAUDE*.md' -o -iname 'AGENTS*.md' -o -name .claude \) -prune -exec rm -rf {} +
   else
     rm -rf "$source"
     echo "review-gather: could not fetch $COMMIT from $repo" > "$out/source.txt"
