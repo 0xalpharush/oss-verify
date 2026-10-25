@@ -36,10 +36,10 @@ for variable in $(compgen -e); do
   case $variable in ANTHROPIC_*|CLAUDE_CODE_*) pass+=("$variable=${!variable}") ;; esac
 done
 if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
-  # OTEL_EXPORTER_OTLP_HEADERS values are percent-encoded: %20 is the space after Bearer.
+  # Claude Code sends the header value as it is (measured with 2.1.309): a literal space after Bearer.
   pass+=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=none
          OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
-         "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20$OTEL_COLLECTOR_TOKEN"
+         "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $OTEL_COLLECTOR_TOKEN"
          "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci")
   echo "review-run: exporting usage to $OTEL_EXPORTER_OTLP_ENDPOINT"
 else
