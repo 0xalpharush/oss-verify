@@ -290,7 +290,11 @@ jobs:
           printf 'The Build check %s: %s.\n' "$BUILD_CONCLUSION" "${RESULT:-no result}" > .review/build/result.md
           printf '%s\n' "$BINARIES" > .review/build/binaries.md
           printf '%s\n' "$CHECKS" > .review/build/checks.md
+          # Until the token is printed again, the runner reads none of the gathered text as a workflow command.
+          resume="$(openssl rand -hex 16)"
+          echo "::stop-commands::$resume"
           .github/scripts/review-gather .review
+          echo "::$resume::"
 
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code@2.1.310
@@ -364,7 +368,7 @@ jobs:
           printf '%s' "$REVIEW" > "$RUNNER_TEMP/review.md"
           printf '%s' "$CHECKS" > "$RUNNER_TEMP/checks.md"
           case $REVIEW_RESULT in
-            skipped) why="the review is not set up in this repository yet" ;;
+            skipped) why="the review job did not start" ;;
             success) why="" ;;
             *) why="the review job ended with the result $REVIEW_RESULT" ;;
           esac
