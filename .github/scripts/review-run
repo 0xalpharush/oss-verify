@@ -45,9 +45,17 @@ if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}"
 else
   echo "review-run: no OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN: usage is not exported"
 fi
+status=0
 env -i PATH="$PATH" HOME="$HOME" LANG=C.UTF-8 "${pass[@]}" \
   claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \
-    --model "$model" --effort xhigh --max-turns 300 --output-format json < /dev/null > "$in/claude.json"
+    --model "$model" --effort xhigh --max-turns 300 --output-format json < /dev/null > "$in/claude.json" 2> "$in/claude.err" \
+  || status=$?
+if [ "$status" != 0 ] || jq -e .is_error "$in/claude.json" > /dev/null 2>&1; then
+  # Claude Code's own error (for example "Authentication failed" from the token exchange), not the review's text.
+  echo "review-run: Claude Code exited $status: $(jq -r '.subtype // empty' "$in/claude.json" 2>/dev/null)" >&2
+  tail -c 2000 "$in/claude.err" >&2
+  exit 1
+fi
 # The comment only: a line that ends in a colon, such as "Here is the comment:", and a rule (---) after it, in its first
 # six lines, go. Any other rule stays.
 jq -r 'if .is_error then error("the review ended with an error: \(.result // .subtype)") else .result end' \
