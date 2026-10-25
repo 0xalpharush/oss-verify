@@ -139,7 +139,10 @@ fetch_head() {
   $fetched && return
   local auth
   auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
-  git -c http.extraheader="Authorization: Basic $auth" fetch --quiet --no-tags --depth=1 origin "$sha" "$@"
+  # git reads the header from the named environment variable (--config-env), so the token is no process's argument,
+  # which another user on the machine can read; base64 is not protection from that.
+  GIT_HTTP_EXTRAHEADER="Authorization: Basic $auth" \
+    git --config-env=http.extraheader=GIT_HTTP_EXTRAHEADER fetch --quiet --no-tags --depth=1 origin "$sha" "$@"
   unset GH_TOKEN
   fetched=true
 }
