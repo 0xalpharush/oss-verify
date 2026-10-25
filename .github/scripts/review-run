@@ -28,7 +28,8 @@ model=${REVIEW_MODEL:-claude-opus-5-5}
 prompt="You are the agent of OSS Verify's enrollment check, in CI, on pull request #$PR of theorem-labs/oss-verify, \
 which adds or changes projects/$NAME/. Read .claude/skills/review-enrollment/SKILL.md and do the review that it \
 describes, as its section \"In CI\" says. The workflow gathered the inputs into $in/, and the pull request's \
-projects/$NAME/ is in this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing else."
+projects/$NAME/ is in this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing \
+else: it starts with the sentence of thanks, with no line before it about you or your review."
 
 pass=()
 for variable in $(compgen -e); do
@@ -46,8 +47,12 @@ else
 fi
 env -i PATH="$PATH" HOME="$HOME" LANG=C.UTF-8 "${pass[@]}" \
   claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \
-    --model "$model" --max-turns 150 --output-format json < /dev/null > "$in/claude.json"
+    --model "$model" --effort xhigh --max-turns 300 --output-format json < /dev/null > "$in/claude.json"
+# The comment only: a line such as "Here is the comment:" and a rule (---) in its first six lines go.
 jq -r 'if .is_error then error("the review ended with an error: \(.result // .subtype)") else .result end' \
-  "$in/claude.json" > "$in/comment.md"
+  "$in/claude.json" | awk 'NR <= 6 && !cut && /^---+[[:space:]]*$/ { cut = 1; held = ""; next }
+                          NR <= 6 && !cut { held = held $0 "\n"; next }
+                          { printf "%s", held; held = ""; print }
+                          END { printf "%s", held }' > "$in/comment.md"
 [ -s "$in/comment.md" ] || { echo "review-run: the review wrote no comment" >&2; exit 1; }
 echo "review-run: $(wc -c < "$in/comment.md") bytes in $in/comment.md, by $model"
