@@ -160,7 +160,7 @@ class ReviewComment(unittest.TestCase):
         self.assertIn("did not run on this push: the review is not set up", text)
 
     def test_a_review_that_did_not_run_keeps_the_last_one(self):
-        first = self.comment("Thanks.\n\n1. Fix X.\n")
+        first = self.comment("Thanks.\n\n<details><summary>x</summary>y</details>\n\n1. Fix X.\n", checks="")
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             for why in ("the review job ended with the result failure", "again"):
@@ -173,6 +173,7 @@ class ReviewComment(unittest.TestCase):
                 self.assertIn(f"did not run: {why}", first)
                 self.assertEqual(first.count("did not run"), 1)
                 self.assertEqual(first.count("### report"), 1)
+                self.assertEqual(first.count("<sub>Claude wrote this review"), 1)
 
     def test_a_credential_is_never_posted(self):
         token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXBvOngifQ.c2lnbmF0dXJl"

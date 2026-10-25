@@ -16,6 +16,7 @@ import re
 import sys
 
 MARKER = "<!-- oss-verify-review -->"
+CHECKS_SUMMARY = "<details><summary>What the breakage and coverage checks measured</summary>"
 # GitHub refuses a comment over 65,536 characters.
 MAX_REVIEW = 40_000
 MAX_CHECKS = 20_000
@@ -42,7 +43,9 @@ def main():
     review = options.review.read_text(encoding="utf-8", errors="replace") if options.review else ""
     if options.previous and options.why:
         previous = options.previous.read_text(encoding="utf-8", errors="replace")
-        body = previous.split("\n## Enrollment review\n", 1)[-1].split("\n<details><summary>", 1)[0]
+        body = previous.split("\n## Enrollment review\n", 1)[-1]
+        for end in (f"\n{CHECKS_SUMMARY}", "\n<sub>Claude wrote this review"):
+            body = body.rsplit(end, 1)[0]
         body = re.sub(r"^\*\*The review of the last push did not run[^\n]*\n\n", "", body.strip())
         if body and not body.startswith("The review agent did not run"):
             review = (f"**The review of the last push did not run: {options.why}. This is the review of an earlier "
@@ -58,7 +61,7 @@ def main():
                      "A person at Theorem reviews the enrollment.")
     checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
     if checks.strip():
-        parts += ["", "<details><summary>What the breakage and coverage checks measured</summary>", "",
+        parts += ["", CHECKS_SUMMARY, "",
                   cut(checks.replace(MARKER, ""), MAX_CHECKS, "the rest is in the Build check's summary"), "",
                   "</details>"]
     parts += ["", "<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
