@@ -254,7 +254,7 @@ A seed corpus is a zip file of example inputs of one fuzz target. Together, its 
 
 `series` lists the build patches, one file name on each line, in the order in which we apply them. We ignore empty lines and lines that start with `#`. List each patch exactly once.
 
-A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the project directory. We send it to you as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).
+A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the directory of your project. We send it to you as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)). Only a port that we publish can carry a fix for a bug, once its finding is public ([build-contract.md](build-contract.md#build-patches)).
 
 ### Rules for each file
 

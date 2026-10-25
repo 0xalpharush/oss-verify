@@ -432,4 +432,6 @@ We checked each port with `tools/check --lock`, against each `harness.yaml` of t
 
 ## Build patches
 
-A build patch in the project directory can only change how the project builds: static linking, cross-compilation, a version stamp or a generated file. `series` lists the build patches in the order of application. A change that fixes a bug is not a build patch. It never goes in the project directory. We send it to the project as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).
+A build patch of an enrollment can only change how the project builds: static linking, cross-compilation, a version stamp or a generated file. `series` lists the build patches in the order of application. A change that fixes a bug is not a build patch of an enrollment. It never goes in the directory of an enrolled project. We send it to the project as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).
+
+A port that we publish can also carry a fix for a bug as a build patch, once the finding of that bug is public. A proof can then be about the fixed build. The project's facts in the proofs repository list each such patch, with its upstream state ([what-gets-proven.md](what-gets-proven.md#where-the-claims-come-from)). The build patches of an enrollment still only change how the project builds.
