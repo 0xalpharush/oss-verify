@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# Runs the enrollment review: Claude Code follows .claude/skills/review-enrollment/SKILL.md on the files that
+# review-gather wrote, and its last message, the comment to the maintainer, is written to <directory>/comment.md.
+#
+#   PR=<number> NAME=<project> .github/scripts/review-run <directory inside this checkout>
+#
+# Run it from the root of the base branch's checkout. build.yaml's review job runs it in CI. A person can run it on
+# their own machine too, with their own Claude Code login, to see the comment a pull request would get: run
+# review-gather first, then this, and read comment.md. Nothing is posted.
+# The model gets three tools only, Read, Glob and Grep, in Claude Code's restricted mode, which also keeps them inside
+# this checkout: no shell, no network tool, no file writes, no MCP server. It reads what the pull request and the
+# project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the
+# ANTHROPIC_* variables of its credential (in CI, those of workload identity federation), and, when
+# OTEL_EXPORTER_OTLP_ENDPOINT is set, the OpenTelemetry settings that send its usage to Theorem's cost collector, with
+# the bearer token OTEL_COLLECTOR_TOKEN, tagged theorem.project=oss-verify-enrollment and theorem.subproject=<name>.
+set -euo pipefail
+
+in=${1:?usage: review-run <directory>}
+[[ $PR =~ ^[0-9]+$ ]] || { echo "review-run: PR is not a number" >&2; exit 2; }
+[[ $NAME =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || { echo "review-run: NAME is not a project name" >&2; exit 2; }
+case $(realpath "$in")/ in "$(pwd -P)"/*) ;; *) echo "review-run: $in is not inside this checkout" >&2; exit 2 ;; esac
+model=${REVIEW_MODEL:-claude-opus-5-5}
+
+prompt="You are the agent of OSS Verify's enrollment check, in CI, on pull request #$PR of theorem-labs/oss-verify, \
+which adds or changes projects/$NAME/. Read .claude/skills/review-enrollment/SKILL.md and do the review that it \
+describes, as its section \"In CI\" says. The workflow gathered the inputs into $in/, and the pull request's \
+projects/$NAME/ is in this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing else."
+
+pass=()
+for variable in $(compgen -e); do
+  case $variable in ANTHROPIC_*|CLAUDE_CODE_*) pass+=("$variable=${!variable}") ;; esac
+done
+if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+  pass+=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp
+         OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
+         "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify-enrollment,theorem.subproject=$NAME")
+  if [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
+    pass+=("OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20$OTEL_COLLECTOR_TOKEN")
+  fi
+fi
+env -i PATH="$PATH" HOME="$HOME" LANG=C.UTF-8 "${pass[@]}" \
+  claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \
+    --model "$model" --max-turns 150 --output-format json < /dev/null > "$in/claude.json"
+jq -r 'if .is_error then error("the review ended with an error: \(.result // .subtype)") else .result end' \
+  "$in/claude.json" > "$in/comment.md"
+[ -s "$in/comment.md" ] || { echo "review-run: the review wrote no comment" >&2; exit 1; }
+echo "review-run: $(wc -c < "$in/comment.md") bytes in $in/comment.md, by $model"

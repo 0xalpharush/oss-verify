@@ -291,10 +291,21 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 
 * Each property is a check that calls `abort()`, not an `assert()`, which `NDEBUG` removes.
 * A seed corpus runs each API call and each property check at least once ([project-yaml.md](project-yaml.md#seed-corpora)).
-* For each property, a one-line change to the code makes the fuzz target abort on a recorded input.
+* For each property, a one-line change to the code makes the fuzz target abort on an input of the seed corpus. The change is a breakage patch in the directory that `mutants` names ([project-yaml.md](project-yaml.md#mutants)).
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
 * `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+
+## The checks of a fuzz target
+
+`tools/check --checks <file>` measures the second and third rules above for a C or C++ project, on the inputs of its seed corpora, and writes a report in Markdown. The Build check of each enrollment pull request runs it and shows the report in its step summary and in its comment on the pull request. What it finds changes no exit status. It does these steps:
+
+1. **A coverage build.** It builds the `plain` build again, with `-O0 -fprofile-instr-generate -fcoverage-mapping`, with LLVM's profile runtime, and with `abort()` wrapped so that the profile is written before the program aborts. The toolchain image has no profile runtime, so `tools/check` downloads compiler-rt's source for the toolchain's LLVM version once, checks its SHA-256, and compiles the runtime in the build's container ([tools/checks/compile-check](../tools/checks/compile-check)).
+2. **The runs.** It runs each fuzz target on each input of its seed corpus, with the six-byte header in front ([above](#the-driver)), with `qemu-riscv64-static` in a container of the project image with no network ([tools/checks/run-seeds](../tools/checks/run-seeds)). A run that does not end in 120 seconds counts as a failure. The inputs also run on the project's most checking sanitizer build: `asan-ubsan`, else `asan`, else `ubsan`.
+3. **The checks.** A check is a call of `abort()` in a file that defines `LLVMFuzzerTestOneInput`, or in another file of its directory. A check of the form `if (<condition>) abort();`, or `if (<condition>) { ...; abort(); }`, is reached when a run evaluates its condition. The report lists each check that no input reaches. It lists apart the calls that no `if` guards, for example in a `default:` of a switch, whose reach it does not measure. It does not see a call inside a macro definition.
+4. **The breakage patches.** For each patch in the `mutants` directory, it applies the patch with `git apply` in the `WORKDIR` of the `Dockerfile`, makes the coverage build and the sanitizer build again, and runs each input on both. A patch is caught when a run that passes on the unchanged code now fails: an exit status other than 0 and 2, or no end within the time limit. The coverage build also shows which checks fired. The report lists each patch that no input catches, and each check that no patch makes fire. A patch can change only files under the `WORKDIR`.
+
+It needs `qemu-riscv64-static` on the machine (on Ubuntu, `apt install qemu-user-static`), and compiler-rt's source from GitHub on the first run.
 
 ## Go fuzz targets
 

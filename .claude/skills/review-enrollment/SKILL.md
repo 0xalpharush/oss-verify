@@ -1,11 +1,11 @@
 ---
 name: review-enrollment
-description: Review an enrollment pull request on this repository, as the agent of the enrollment check in CI. Checks the README's conditions, the pull request checklist, the process, the binary sizes and static linking, the rubric for which projects we take, and each fuzz target against step 3 of the add-project skill. Writes one comment that asks the maintainer for each fix, and a separate summary for the people at Theorem who decide. Use it for each pull request that adds or changes one projects/<name>/.
+description: Review an enrollment pull request on this repository, as the agent of the enrollment check in CI. Checks the README's conditions, the pull request checklist, the process, the binary sizes and static linking, the rubric for which projects we take, and each fuzz target against step 3 of the add-project skill, with the reach and breakage measurements of tools/check --checks. Writes one comment that asks the maintainer for each fix, and a separate summary for the people at Theorem who decide. Use it for each pull request that adds or changes one projects/<name>/. build.yaml's review job runs it on each enrollment pull request.
 ---
 
 # Review an enrollment pull request
 
-This skill is for the agent that the enrollment check runs in CI on a pull request that adds or changes `projects/<name>/`. It gives the checks, the commands and the two outputs:
+This skill is for the agent that the enrollment check runs in CI on a pull request that adds or changes `projects/<name>/`: the review job of `.github/workflows/build.yaml`, after the build. A person at Theorem can also run it by hand. It gives the checks, the commands and the two outputs:
 
 1. **The comment**: one comment on the pull request, to the maintainer. It asks for each fix, and it thanks them.
 2. **The summary**: a report for Sami or Jason. It gives the facts, the verdict of each check and what a person must decide.
@@ -37,6 +37,28 @@ The workflow gives you these values. If one is missing, get it with the command.
 `tools/check` lists each binary with its file size, the size of its `.text` section, `static` or `dynamic`, and its SHA-256. The log has one line for each binary (`out/<target>/<file>  N bytes  M .text  static  sha256 ...`). The step summary of the Build check has the same values as a table, with the columns target, build, file bytes, `.text` bytes and static. `manifest.yaml` has them too: `targets.<target>.builds.<build>.bytes`, and `layout.<target>.<build>.text_bytes` and `.static`. It also gives `repo`, `ref`, `commit` (the commit that the build fetched) and `rebuild.result`. The log gives the commit in its `<ref> is <commit>` line, and the result of the second build in its last line.
 
 Run each command from the checkout of the base branch, never from the pull request's files. Keep the files that you make in a scratch directory, `$WORK`. Write the two outputs to `$WORK/comment.md` and `$WORK/summary.md`.
+
+## In CI
+
+The review job of `.github/workflows/build.yaml` runs this skill with Claude Code (`.github/scripts/review-run`). There, these rules change:
+
+- **You have only Read, Glob and Grep**, inside the checkout of the base branch. You have no shell and no network. The workflow ran each command of this skill before you started (`.github/scripts/review-gather`), and wrote its output to the directory that the prompt names, `$IN` below. Do not ask for a command. Read its file.
+- **Write only the comment, as your last message.** Write no summary: the job's log is public, and the summary is for the people at Theorem. The workflow posts your comment, below the report of `tools/check --checks`, and replaces it on the next push.
+- **A missing input decides nothing.** If a file is missing, or holds an error or `(exit status` other than 0, the check that needs it is **person**. Do not ask the maintainer about it.
+
+| what the skill asks for | in CI |
+|---|---|
+| `DIR` | `projects/<name>/` in the checkout: the pull request's files, as `take-project` takes them |
+| the fuzz targets in the project's repository | `$IN/source/`: the repository at the built commit, without `.git` and symbolic links. If it is missing, `$IN/source.txt` says why |
+| `pr.json`, `pr.diff`, the description | `$IN/pr.json`, `$IN/pr.diff`, `$IN/description.md` |
+| the triage comment, and the triage today (G2) | `$IN/triage-comment.md`, `$IN/triage-today.md` |
+| check B's comparison, and the template's history | `$IN/checklist.txt`, `$IN/template-history.txt` |
+| `tools/validate.py "$DIR"` (C2) | `$IN/validate.txt` |
+| the build result (C3) and the binaries (D) | `$IN/build/result.md` and `$IN/build/binaries.md`, the Build check's step summary |
+| the reach and breakage measurements (F3, F4) | `$IN/build/checks.md`, the report of `tools/check --checks` |
+| the repository's facts: `git ls-remote`, the contributors, the comparisons of G1, and its pull requests | `$IN/repository.txt` |
+| the seed corpora (F3) | `$IN/seeds/<target>.listing.txt` (`unzip -l`) and `$IN/seeds/<target>.hex.txt` (the first 512 bytes of each of the first 200 inputs) |
+| the review comments of other reviewers (G5) | `$IN/review-comments.txt`, and `.reviews` in `$IN/pr.json` |
 
 ## Verdicts
 
@@ -137,17 +159,18 @@ Read each fuzz target's source: in `DIR`, or in the project's repository at the 
 
 1. **The properties.** List each property: each check that ends the run with a status that is not 0 or 2. In C and C++ that is `abort()`, in Rust `panic!` or `assert!`, in Python a raised exception that nothing catches, in Go `panic` or `t.Fatal`. These are **fail**: `assert()` in C and C++ (`NDEBUG` removes it), Python's `assert` (`python -O` removes it), `debug_assert!` without `CARGO_DEBUG_ASSERTIONS=1` in `build.sh`, and `return -1` for a failed property. A target with no properties checks only crashes, sanitizer errors and timeouts. Write that in the summary. It is not a fault.
 2. **Return values and exits (step 3.7).** No `exit()`, `_exit()` or `os.Exit`. No handler that catches all exceptions or panics. No signal handler. `-1` only for an expectation that the input chooses. Any of these is **fail**.
-3. **The seed corpus (step 3.3).** Each target needs `<target>_seed_corpus.zip` in `DIR`, also a target with no property. The template's box asks for an input that runs each check. Step 3.3 asks for an input that runs each API call. Check the zip file with `unzip -l`: at most 1,024 files, all at the top level, at most 1 MiB, at most 16 MiB uncompressed. Read the inputs (`unzip -p <zip> <file> | od -c | head`). Trace each property to an input that reaches it. Use the target's decoding: a selector byte, a mode byte, a size limit. No corpus is **fail**: ask for one, and say how its inputs must start. A property that no input reaches is **fail**.
-4. **The mutants (step 3.4).** Each property's comment records a one-line change and an input. Trace the input through the code with the change, by hand. The property must be false at the end. If it is not, the verdict is **fail**. A comment without a mutant or an input is **fail**.
-5. **Does the check prove what the comment says?** Compare each comment's claim with its code. These forms check less than they claim:
+3. **The seed corpus (step 3.3).** Each target needs `<target>_seed_corpus.zip` in `DIR`, also a target with no property. The template's box asks for an input that runs each check. Step 3.3 asks for an input that runs each API call. Check the zip file with `unzip -l`: at most 1,024 files, all at the top level, at most 1 MiB, at most 16 MiB uncompressed. No corpus is **fail**: ask for one, and say how its inputs must start. For C and C++, `tools/check --checks` measured the reach on a coverage build: the Build check's step summary, or `$IN/build/checks.md` in CI, lists each check `if (...) abort();` that no seed input reaches. Each one is **fail**. Find the input that reaches it: read the inputs (`unzip -p <zip> <file> | od -c | head`, or `$IN/seeds/<target>.hex.txt`), the target's decoding (a selector byte, a mode byte, a size limit) and the code that the check needs, and tell the maintainer which input to add. Where no measurement is available (another language, or the report says that it could not measure), trace each property to an input by hand. A property that no input reaches is **fail**.
+4. **The breakage patches (step 3.4).** Each check needs a one-line breakage patch in the directory that `mutants` in `project.yaml` names, and a seed input on which the check fires with the patch applied. For C and C++, the same report lists each patch, whether a seed input catches it, and each check that no patch makes fire. A patch that no seed input catches is **fail**: find the input that catches it, as for a reached check, and ask for it in the seed corpus. The checks that no patch makes fire are one **fail** together: give their count for each fuzz target, and ask for the patches. Without a `mutants` directory, all checks are in it. A comment that records a mutant in words is not enough: the step cannot apply it. Where no measurement is available, trace each recorded mutant and input by hand.
+5. **Does the check prove what the comment says, in both directions?** Read each check against its comment: every check, not a sample. These forms check less than they claim:
    - a length, a count, a type or `is not None` in place of the value;
    - a check that runs only for some inputs, for example `if "<" not in text`;
-   - a result that no check reads;
-   - one direction of a two-way claim.
+   - a result that no check reads, or a check of one element where the claim is about each element;
+   - one direction of a two-way claim: "valid when X" checked only as "X when valid", or only as "valid implies X".
 
-   For each weak check, find a second one-line change that keeps the weak check true and makes the claim false. If you find one, the verdict is **fail**. Ask for a check of the value, and for a mutant and an input for the case that the weak check misses.
+   For each weak check, find a one-line change to the library that keeps every check of the fuzz target true, on every input, and makes the claim false. Name the file and the line of that change. If you find one, the verdict is **fail**. Ask for a check of the value in both directions, and for a breakage patch and an input for the case that the weak check misses.
 6. **Coverage against the threat model.** Read the project's `SECURITY.md` and threat model at the built commit. Write which input the target reads, and whether the policy calls it trusted or untrusted. Write which untrusted inputs no target reads. This is for the summary and check E. In the comment, you can invite a target for an untrusted input, but do not make it a condition.
 7. **Suitable for a proof (steps 3.5 and 3.6).** Each count, size, loop and recursion that comes from the input has a bound. The run depends only on the input. It uses no thread, clock, network, environment variable or file other than the input, and no random number that does not come from the input. Search the target for `thread`, `spawn`, `time`, `clock`, `rand`, `getenv`, `environ`, `socket` and `open`. A break of 3.6 in the fuzz target is **fail**. A break in the library is for the summary.
+8. **The expected value comes from the fuzz target, not from the library.** A check that takes its expected value from the library under test proves only that the library agrees with itself: one wrong function then breaks both sides, and the check stays true. Examples: the expected checksum from the library's own checksum function, the width rule from the library's own predicate, or a value read from the library's internal state or private header. Find each such check, and the one-line change to the shared function that keeps the check true. Each one is **fail**: ask that the fuzz target compute the expected value itself, from the input and the documented rule. A comparison of two public entry points is a property only when the comment says that they must agree, and they do not share the code that computes the value.
 
 ### G. What the triage does not see
 
@@ -171,7 +194,7 @@ Write `$WORK/comment.md` in ASD-STE100: short sentences, active voice, one instr
 
 Do not put these in the comment: the size, the rubric, a **person** verdict, praise beyond one sentence, the verdict table, or a guess about whether we will accept the project. If no check is **fail**, write the thanks, what passed, and "We found nothing to change. A person at Theorem reviews the enrollment next."
 
-Post it only if the workflow sets `REVIEW_POST=1`: `gh pr comment "$PR" --body-file "$WORK/comment.md"`. Post it once.
+Post it only if the workflow sets `REVIEW_POST=1`: `gh pr comment "$PR" --body-file "$WORK/comment.md"`. Post it once. In CI, do not post: your last message is the comment ("In CI").
 
 ## Write the summary
 

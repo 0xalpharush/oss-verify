@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+"""Write the review comment of an enrollment pull request, as build.yaml's comment job posts it.
+
+    review-comment [--review <comment.md>] [--why <text>] [--checks <checks.md>]
+
+It prints the comment: the marker that build.yaml's comment job finds it by, the review's comment to the maintainer
+(or, when the review did not run, why), and the report of tools/check --checks, folded. The review's text comes from a
+model that read the pull request, so it is refused if it holds what looks like a credential, and cut to a length that
+GitHub takes.
+"""
+import argparse
+import pathlib
+import re
+import sys
+
+MARKER = "<!-- oss-verify-review -->"
+# GitHub refuses a comment over 65,536 characters.
+MAX_REVIEW = 40_000
+MAX_CHECKS = 20_000
+# A GitHub identity token (a JWT), an Anthropic token or key, a GitHub token.
+CREDENTIAL = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|sk-ant-[A-Za-z0-9_-]{8,}|gh[opsu]_[A-Za-z0-9]{20,}"
+                        r"|github_pat_[A-Za-z0-9_]{20,}")
+
+
+def cut(text, limit, where):
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit].rstrip() + f"\n\n(Cut at {limit:,} characters: {where}.)"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--review", type=pathlib.Path, help="the review's comment.md")
+    parser.add_argument("--why", default="", help="why there is no review, if there is none")
+    parser.add_argument("--checks", type=pathlib.Path, help="the report of tools/check --checks")
+    options = parser.parse_args()
+
+    review = options.review.read_text(encoding="utf-8", errors="replace") if options.review else ""
+    if CREDENTIAL.search(review):
+        review, options.why = "", "its text held what looks like a credential, so it was not posted"
+    review = review.replace(MARKER, "")
+    parts = [MARKER, "## Enrollment review", ""]
+    if review.strip():
+        parts.append(cut(review, MAX_REVIEW, "the rest is in the review job's log"))
+    else:
+        parts.append(f"The review agent did not run on this push: {options.why or 'the review job failed'}. "
+                     "A person at Theorem reviews the enrollment.")
+    checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
+    if checks.strip():
+        parts += ["", "<details><summary>What the breakage and coverage checks measured</summary>", "",
+                  cut(checks.replace(MARKER, ""), MAX_CHECKS, "the rest is in the Build check's summary"), "",
+                  "</details>"]
+    parts += ["", "<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
+              "`tools/check --checks` measured the checks. It can be wrong. It is replaced on each push, and it "
+              "decides nothing: a person at Theorem reviews the enrollment.</sub>"]
+    sys.stdout.write("\n".join(parts) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
