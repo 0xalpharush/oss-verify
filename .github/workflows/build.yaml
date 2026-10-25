@@ -54,8 +54,8 @@ name: "Build"
 # job. Its results reach the other jobs only as job outputs, which this repository's tools write: text, never code.
 # The review job runs no code of the pull request or the project. It and the comment job hold identity tokens
 # (id-token: write), which they trade for short-lived tokens: the review's for an Anthropic token by workload identity
-# federation, so no API key is stored, and both jobs' for a Google access token of the service account
-# ossv-ci@theorem-agent-infra, by Google workload identity federation (agent-infra bootstrap/, declareOssvCI). Claude
+# federation, so no API key is stored, and both jobs' for a Google access token by Google workload identity
+# federation (agent-infra bootstrap/, declareOssvCI). Claude
 # gets three tools only, Read, Glob and Grep, inside the checkout (.github/scripts/review-run), and an environment
 # without the runner's tokens. The comment job alone writes: it posts text, refused if it holds what looks like a
 # credential (.github/scripts/review-comment), as the oss-verify GitHub App (oss-verify[bot]), with an installation
@@ -65,8 +65,10 @@ name: "Build"
 #
 # This repository stores no long-lived credential for any of that. Google's provider admits this file and
 # triage.yaml, each on refs/heads/main, from pull_request_target or workflow_dispatch: a token carries no job name,
-# so what keeps the Google account to the review and comment jobs is this file. project-builds, the job that builds
-# the pull request's code, must never be given id-token: write.
+# so what keeps each Google account to the jobs that need it is this file and the GitHub Environment `comment`. The
+# review job acts as ossv-ci, which reads the cost collector's token and nothing else; the comment job declares
+# `environment: comment`, whose claim is the only way to act as ossv-app-comment, the one account that reads the
+# App's key. project-builds, the job that builds the pull request's code, must never be given id-token: write.
 # Runs do not wait for a maintainer's approval. To build only on request, remove pull_request_target below.
 #
 # The review reaches Claude by workload identity federation, with no stored key: the review job's GitHub identity token
@@ -455,17 +457,23 @@ jobs:
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' && (needs.review.result != 'success' || needs.review.outputs.comment != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # The GitHub Environment is what gets this job the App's key and keeps it from every other job: its identity
+    # token carries an `environment` claim, and only a token with that claim may act as ossv-app-comment, the one
+    # account Google lets read the key (agent-infra bootstrap/, declareOssvCI). The environment has no protection
+    # rule, so it adds no wait and no approval. Removing this line does not weaken the job; it stops it working.
+    environment: comment
     permissions:
       # contents: read only for the checkout of .github/scripts, which a job with no contents permission cannot make.
       # It writes with the oss-verify App's token, not this job's.
       contents: read
       # Only for the GitHub identity token that Google's federation trades for an access token of
-      # ossv-ci@theorem-agent-infra, which reads the App's key. This job runs no code of the pull request.
+      # ossv-app-comment@theorem-agent-infra, which reads the App's key. This job runs no code of the pull request.
       id-token: write
     env:
-      # The same public identifiers as the review job's (agent-infra bootstrap/, declareOssvCI).
+      # The review job's provider, and the account only a job in this environment can act as
+      # (agent-infra bootstrap/, declareOssvCI).
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
-      GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
+      GCP_SERVICE_ACCOUNT: ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:

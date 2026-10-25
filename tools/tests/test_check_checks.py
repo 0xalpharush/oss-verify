@@ -363,6 +363,18 @@ class WorkflowArguments(unittest.TestCase):
             self.assertNotIn(auth, (directory / "git-argv").read_text())
             self.assertNotIn(secret, (directory / "git-argv").read_text())
             self.assertIn(auth, (directory / "git-env").read_text())
+    def test_only_the_comment_jobs_can_read_the_app_key(self):
+        # The account that reads the App's key can be acted as only by a job whose identity token carries the
+        # `environment` claim (agent-infra bootstrap/, declareOssvCI), so the two go together: a job that names that
+        # account must declare the environment, and a job that declares the environment must name that account.
+        app_account = "ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com"
+        for workflow in ("build.yaml", "triage.yaml"):
+            jobs = self.workflow(workflow)["jobs"]
+            named = {name for name, job in jobs.items() if (job.get("env") or {}).get("GCP_SERVICE_ACCOUNT") == app_account}
+            in_environment = {name for name, job in jobs.items() if job.get("environment") == "comment"}
+            self.assertEqual(named, {"comment"}, f"{workflow}: the jobs that sign in as the App key's account")
+            self.assertEqual(in_environment, named,
+                             f"{workflow}: a job in the comment environment and a job that names {app_account} must be the same job")
 
 
 class ReviewRun(unittest.TestCase):

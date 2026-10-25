@@ -83,15 +83,21 @@ jobs:
     if: needs.gather.outputs.comment != ''
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    # The GitHub Environment is what gets this job the App's key and keeps it from every other job: its identity
+    # token carries an `environment` claim, and only a token with that claim may act as ossv-app-comment, the one
+    # account Google lets read the key (agent-infra bootstrap/, declareOssvCI). The environment has no protection
+    # rule, so it adds no wait and no approval. Removing this line does not weaken the job; it stops it working.
+    environment: comment
     permissions:
       # Only for the GitHub identity token that Google's federation trades for an access token of
-      # ossv-ci@theorem-agent-infra, which reads the App's key. This job posts text and runs no code of the pull request.
+      # ossv-app-comment@theorem-agent-infra, which reads the App's key. This job posts text and runs no code of the
+      # pull request.
       id-token: write
     env:
       # Theorem's Google project, as agent-infra bootstrap/ declares them (declareOssvCI). Public identifiers, not
       # credentials: the provider admits only this file and build.yaml, on refs/heads/main.
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
-      GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
+      GCP_SERVICE_ACCOUNT: ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com
     steps:
       - name: Sign in to Google Cloud
         id: gcp
