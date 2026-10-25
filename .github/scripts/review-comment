@@ -7,14 +7,15 @@
 
 It prints the comment: the marker that build.yaml's comment job finds it by, a metadata line, the review's comment to
 the maintainer (or, when there is none, why), and the report of tools/check --checks, folded. The review's text comes
-from a model that read the pull request and the checks text from the project, so each is refused if it holds what looks
-like a credential, cut to a length that GitHub takes, and stripped of any line that could read as this script's own
-metadata.
+from a model that read the pull request and the checks text from the project's source, so each is screened on its own:
+a text that holds what looks like a credential is refused (and the other kept), each is cut to a length that GitHub
+takes, and each is stripped of any HTML comment that could read as this script's own.
 
 The commit the review is of and whether there is a review live in the metadata line only, the second line of the
-comment, which this script alone writes. They are never read from the body. So with --previous and no review (the review
-of this push did not finish), it keeps the comment already posted, unchanged but for a metadata line and a first
-paragraph that say it is not current, naming the commit it is of and the commit that had no review.
+comment, which this script alone writes. They are never read from the body. So with --previous and no usable review
+(the review of this push did not finish, or wrote nothing, or wrote what is refused), it keeps the comment already
+posted, unchanged but for a metadata line and a first paragraph that say it is not current, naming the commit it is of
+and the commit that had no review.
 """
 import argparse
 import pathlib
@@ -36,18 +37,31 @@ CREDENTIAL = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|sk-ant-[A-Za
 META = re.compile(r"^<!-- oss-verify-meta v=1"
                   r"(?: head=(?P<head>[0-9a-f]{7,40}))?"
                   r" status=(?P<status>review|none|stale) -->$")
-# Any HTML comment that names this script's prefix, removed from text that this script did not write so that it can
-# never read, or be read by a person, as this script's own line. Applied until the text stops changing, so that no
-# splicing of two fragments can rebuild one.
-OWNED = re.compile(r"<!--[^>]*oss-verify[^>]*-->", re.I)
+# The no-review paragraph that this script wrote before the metadata line existed, in full: a legacy comment that is
+# exactly this has no review to keep. Any other legacy text is a review.
+LEGACY_NO_REVIEW = re.compile(r"The review agent did not run on this push: [^\n]*\. "
+                              r"A person at Theorem reviews the enrollment\.")
 
 
 def neutralize(text):
+    """text with each HTML comment that names this script's prefix replaced by a space, so that text this script did not
+    write never reads, to a person or a parser, as one of its own lines. One forward scan, linear in the text: a comment
+    runs from <!-- to the first --> after it, as in HTML, and the separator left in its place cannot join the text
+    around it into a new one. A <!-- with no --> after it is escaped, so it cannot hide the rest of the comment."""
+    out, at = [], 0
     while True:
-        stripped = OWNED.sub(" ", text)
-        if stripped == text:
-            return stripped
-        text = stripped
+        start = text.find("<!--", at)
+        if start == -1:
+            out.append(text[at:])
+            return "".join(out)
+        end = text.find("-->", start + 4)
+        if end == -1:
+            # No later --> exists, so every <!-- from here on is unterminated.
+            out += [text[at:start], text[start:].replace("<!--", "&lt;!--")]
+            return "".join(out)
+        span = text[start:end + 3]
+        out += [text[at:start], " " if "oss-verify" in span.lower() else span]
+        at = end + 3
 
 
 def cut(text, limit, where):
@@ -95,15 +109,16 @@ def not_current(previous, head, run):
     if status == "none" or not body.strip():
         return None
     if status is None:
-        # Legacy, before the metadata line: keep it unless it is the exact no-review sentence this script used to write.
-        if body.startswith("The review agent did not run on this push"):
+        # Legacy, before the metadata line: keep it unless its first paragraph is exactly the no-review sentence this
+        # script used to write.
+        if LEGACY_NO_REVIEW.fullmatch(body.split("\n\n", 1)[0].strip()):
             return None
         of_head = None
     of = f"`{of_head[:7]}`" if of_head else "an earlier commit"
     this = f"`{head[:7]}`" if head else "the last push"
     where = f" ([the run]({run}))" if run else ""
-    note = (f"**Not current:** this is the review of {of}. The review of {this} did not finish{where}. "
-            "A person at Theorem reviews the enrollment.")
+    note = (f"**Not current:** this is the review of {of}. The review of {this} did not finish with a review that "
+            f"can be posted{where}. A person at Theorem reviews the enrollment.")
     return assemble(of_head, "stale", f"{note}\n\n{body}", footer=False)
 
 
@@ -120,18 +135,20 @@ def main():
 
     review = options.review.read_text(encoding="utf-8", errors="replace") if options.review else ""
     why = ""
-    if options.previous and not review.strip():
+    if CREDENTIAL.search(review):
+        review, why = "", "its text held what looks like a credential, so it was not posted"
+    review = neutralize(review).strip()
+    # No usable review (none, blank, refused, or only this script's markers): keep the one already posted, if any.
+    if options.previous and not review:
         previous = options.previous.read_text(encoding="utf-8", errors="replace")
         if CREDENTIAL.search(previous):
-            why = "it wrote no comment, and the last review held what looks like a credential, so it is not kept"
+            why = why or "it wrote no comment"
+            why += ", and the last review held what looks like a credential, so it is not kept"
         else:
             kept = not_current(previous, head, run)
             if kept is not None:
                 sys.stdout.write(kept)
                 return 0
-    if CREDENTIAL.search(review):
-        review, why = "", "its text held what looks like a credential, so it was not posted"
-    review = neutralize(review).strip()
     if review:
         body = cut(review, MAX_REVIEW, "the rest is in the review job's log")
         status = "review"
@@ -142,6 +159,10 @@ def main():
                 "A person at Theorem reviews the enrollment.")
         status = "none"
     checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
+    if CREDENTIAL.search(checks):
+        # The checks text comes from the project's source: refused on its own, so a safe review is still posted.
+        checks = ("The report held what looks like a credential, so it was not posted. It is in the Build check's "
+                  "summary.")
     if checks.strip():
         body += ("\n\n<details><summary>What the breakage and coverage checks measured</summary>\n\n"
                  + cut(neutralize(checks), MAX_CHECKS, "the rest is in the Build check's summary") + "\n\n</details>")
