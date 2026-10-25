@@ -363,18 +363,47 @@ class WorkflowArguments(unittest.TestCase):
             self.assertNotIn(auth, (directory / "git-argv").read_text())
             self.assertNotIn(secret, (directory / "git-argv").read_text())
             self.assertIn(auth, (directory / "git-env").read_text())
+    APP_ACCOUNT = "ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com"
+
+    def app_key_jobs_problems(self, jobs):
+        """Why these jobs could let a job other than `comment` read the App's key, or [] if they cannot.
+
+        The account that reads the key can be acted as only by an oss-verify job whose identity token carries
+        `environment: comment` (agent-infra bootstrap/, declareOssvCI). GitHub accepts an environment as a string,
+        as an object with `name`, and through an expression, so any `environment` key on another job is refused
+        whatever its shape, and the comment job's must be exactly the string `comment`."""
+        problems = []
+        for name, job in jobs.items():
+            if name == "comment":
+                if job.get("environment") != "comment":
+                    problems.append(f"comment: environment {job.get('environment')!r}, want exactly 'comment'")
+                if (job.get("env") or {}).get("GCP_SERVICE_ACCOUNT") != self.APP_ACCOUNT:
+                    problems.append(f"comment: does not sign in as {self.APP_ACCOUNT}")
+            else:
+                if "environment" in job:
+                    problems.append(f"{name}: has an environment key ({job['environment']!r}); only comment may")
+                if self.APP_ACCOUNT in json.dumps(job):
+                    problems.append(f"{name}: names {self.APP_ACCOUNT}")
+        return problems
+
     def test_only_the_comment_jobs_can_read_the_app_key(self):
-        # The account that reads the App's key can be acted as only by a job whose identity token carries the
-        # `environment` claim (agent-infra bootstrap/, declareOssvCI), so the two go together: a job that names that
-        # account must declare the environment, and a job that declares the environment must name that account.
-        app_account = "ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com"
         for workflow in ("build.yaml", "triage.yaml"):
             jobs = self.workflow(workflow)["jobs"]
-            named = {name for name, job in jobs.items() if (job.get("env") or {}).get("GCP_SERVICE_ACCOUNT") == app_account}
-            in_environment = {name for name, job in jobs.items() if job.get("environment") == "comment"}
-            self.assertEqual(named, {"comment"}, f"{workflow}: the jobs that sign in as the App key's account")
-            self.assertEqual(in_environment, named,
-                             f"{workflow}: a job in the comment environment and a job that names {app_account} must be the same job")
+            self.assertIn("comment", jobs, workflow)
+            self.assertEqual(self.app_key_jobs_problems(jobs), [], workflow)
+
+    def test_another_job_in_the_comment_environment_is_refused_in_every_shape(self):
+        # The shapes GitHub takes for `environment` (workflow syntax, jobs.<job_id>.environment), each put on the
+        # review job of the real build.yaml: every one must be refused.
+        for shape in ("comment", {"name": "comment"}, {"name": "comment", "url": "https://example.invalid"},
+                      "${{ 'comment' }}", {"name": "${{ 'comment' }}"}, "Comment"):
+            jobs = self.workflow("build.yaml")["jobs"]
+            jobs["review"]["environment"] = shape
+            self.assertTrue(self.app_key_jobs_problems(jobs), f"review with environment {shape!r} was not refused")
+        for shape in ({"name": "comment"}, "${{ 'comment' }}"):
+            jobs = self.workflow("build.yaml")["jobs"]
+            jobs["comment"]["environment"] = shape
+            self.assertTrue(self.app_key_jobs_problems(jobs), f"comment with environment {shape!r} was not refused")
 
 
 class ReviewRun(unittest.TestCase):
