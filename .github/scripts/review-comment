@@ -109,7 +109,10 @@ def cut(text, limit, where):
     text = text.strip()
     if len(text) <= limit:
         return text
-    return close_comments(text[:limit].rstrip()) + f"\n\n(Cut at {limit:,} characters: {where}.)"
+    # Escaping makes each open <!-- three characters longer, so cut again to the limit. That cannot open a comment:
+    # escaping changes only text after the last -->, which it leaves holding no <!--, and a cut makes no new one.
+    kept = close_comments(text[:limit].rstrip())[:limit].rstrip()
+    return kept + f"\n\n(Cut at {limit:,} characters: {where}.)"
 
 
 def meta_line(head, status):

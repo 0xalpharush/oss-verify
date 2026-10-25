@@ -492,9 +492,18 @@ class Screening(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 1.0, hostile[:20])
 
     def visible(self, text):
-        """No comment opener is left open, so GitHub's renderer hides nothing after it."""
-        last = text.rfind("<!--")
-        return last == -1 or text.find("-->", last) != -1
+        """No comment is left open, so GitHub's renderer hides nothing after it. Parsed as HTML does: a comment starts at
+        <!--, and ends at once if it is <!--> or <!--->, else at the first --> after the <!--."""
+        at = 0
+        while (start := text.find("<!--", at)) != -1:
+            if text.startswith(">", start + 4) or text.startswith("->", start + 4):
+                at = start + 4
+                continue
+            end = text.find("-->", start + 4)
+            if end == -1:
+                return False
+            at = end + 3
+        return True
 
     def test_a_cut_never_leaves_a_comment_open(self):
         harmless = "\n\n<!-- harmless comment " + "z" * 200 + " -->"
@@ -548,6 +557,48 @@ class Screening(unittest.TestCase):
         self.assertIn("&lt;!-- left open", kept)
         self.assertIn("1. Fix X.", kept)
         self.assertTrue(self.visible(kept))
+
+    def test_closing_a_cut_never_takes_it_over_its_limit(self):
+        # Escaping each open <!-- adds three characters; a cut must stay within its limit afterwards. A body that
+        # assemble() gets (close_comments, then cut) leaves nothing open, whether or not it is cut.
+        import random
+        rng = random.Random(37)
+        pieces = ["<!--", "-->", "<!-", "<!--->", "<!-->", "x", " ", "\n"]
+        note = len("\n\n(Cut at 0,000,000 characters: w.)")
+        for _ in range(5_000):
+            text = "x" + "".join(rng.choice(pieces) for _ in range(rng.randrange(1, 300)))
+            limit = rng.randrange(1, len(text) + 1)
+            out = review_comment.cut(text, limit, "w")
+            self.assertLessEqual(len(out), max(limit, len(text.strip())) + note, (text, limit))
+            if len(text.strip()) > limit:
+                self.assertLessEqual(len(out), limit + note, (text, limit))
+            body = review_comment.cut(review_comment.close_comments(text), limit, "w")
+            self.assertTrue(self.visible(body), (text, limit))
+
+    def test_a_comment_full_of_openers_stays_within_githubs_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            # A new review and checks report whose single comment the cut leaves open, so every opener is escaped.
+            (directory / "review.md").write_text("<!--" * 11_000 + "-->")
+            (directory / "checks.md").write_text("<!--" * 2_000 + "-->")
+            fresh = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
+                                    "--checks", str(directory / "checks.md"), "--head", "a" * 40],
+                                   capture_output=True, text=True, check=True).stdout
+            self.assertLessEqual(len(fresh), 65_536)
+            self.assertTrue(self.visible(fresh))
+            self.assertTrue(fresh.rstrip().endswith("</sub>"))
+            # A kept comment inside GitHub's limit whose body the cut leaves open: its stale update must fit too.
+            previous = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
+                        "## Enrollment review\n\n" + "<!--" * 16_200 + "x" * 190 + "-->")
+            self.assertLessEqual(len(previous), 65_536)
+            (directory / "previous.md").write_text(previous)
+            (directory / "empty.md").write_text("")
+            kept = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "empty.md"),
+                                   "--head", "b" * 40, "--previous", str(directory / "previous.md")],
+                                  capture_output=True, text=True, check=True).stdout
+            self.assertIn("**Not current:**", kept)
+            self.assertLessEqual(len(kept), 65_536)
+            self.assertTrue(self.visible(kept))
 
 
 class ReviewRun(unittest.TestCase):
