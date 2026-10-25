@@ -28,9 +28,16 @@ HEADING = "## Enrollment review"
 MAX_COMMENT = 65_000
 MAX_REVIEW = 40_000
 MAX_CHECKS = 20_000
-# A GitHub identity token (a JWT), an Anthropic token or key, a GitHub token.
-CREDENTIAL = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|sk-ant-[A-Za-z0-9_-]{8,}|gh[opsu]_[A-Za-z0-9]{20,}"
-                        r"|github_pat_[A-Za-z0-9_]{20,}")
+# What a credential looks like: a GitHub identity token (a JWT), an Anthropic token or key, a GitHub token. The scan
+# below reads each run of token characters once, rather than a regular expression of these four alternatives, whose
+# JWT branch reads the rest of the text again at every "eyJ" that no dot follows.
+RUN = re.compile(r"[A-Za-z0-9_-]+")
+GITHUB = re.compile(r"gh[opsu]_")
+GITHUB_PAT = re.compile(r"github_pat_")
+GITHUB_BODY = re.compile(r"[A-Za-z0-9]{20}")
+GITHUB_PAT_BODY = re.compile(r"[A-Za-z0-9_]{20}")
+ANTHROPIC = "sk-ant-"
+JWT = "eyJ"
 # The metadata line, always the second line of the comment and written by this script alone: the format version, the
 # commit the review is of, and the status (review: a review is here; none: there is none; stale: a kept review that a
 # later push's review did not replace). It is the only place the status and the commit are read from.
@@ -64,9 +71,45 @@ def neutralize(text):
         at = end + 3
 
 
+def credential(text):
+    """Whether text holds what looks like a credential. One pass: every check below is bounded, and each run of token
+    characters is read a fixed number of times, so the cost is linear in the text."""
+    runs = [(found.start(), found.group()) for found in RUN.finditer(text)]
+    for index, (start, run) in enumerate(runs):
+        # An Anthropic token or key: sk-ant- and at least 8 more token characters, all inside this run. The first
+        # occurrence has the most of the run after it, so no later one needs trying.
+        at = run.find(ANTHROPIC)
+        if at != -1 and len(run) - at - len(ANTHROPIC) >= 8:
+            return True
+        # A GitHub token: its prefix and 20 more characters of the right kind, tried at each prefix (an earlier one can
+        # fail where a later one matches). Each try reads at most 20 characters, and prefixes do not overlap.
+        for prefix, body in ((GITHUB, GITHUB_BODY), (GITHUB_PAT, GITHUB_PAT_BODY)):
+            for found in prefix.finditer(run):
+                if body.match(run, found.end()):
+                    return True
+        # A JWT: eyJ, at least 10 more token characters, a dot, and at least 10 more. A dot ends a run, so the dot can
+        # only be the character after this run, and the second part can only be the run after it.
+        at = run.find(JWT)
+        after = start + len(run)
+        if (at != -1 and len(run) - at - len(JWT) >= 10 and text[after:after + 1] == "."
+                and index + 1 < len(runs) and runs[index + 1][0] == after + 1 and len(runs[index + 1][1]) >= 10):
+            return True
+    return False
+
+
+def close_comments(text):
+    """text with each HTML comment opener that nothing closes escaped: every <!-- after the last -->. A cut can leave
+    one, and GitHub's renderer would then hide everything after it, including the checks and the footer."""
+    end = text.rfind("-->")
+    tail = end + 3 if end != -1 else 0
+    return text[:tail] + text[tail:].replace("<!--", "&lt;!--")
+
+
 def cut(text, limit, where):
     text = text.strip()
-    return text if len(text) <= limit else text[:limit].rstrip() + f"\n\n(Cut at {limit:,} characters: {where}.)"
+    if len(text) <= limit:
+        return text
+    return close_comments(text[:limit].rstrip()) + f"\n\n(Cut at {limit:,} characters: {where}.)"
 
 
 def meta_line(head, status):
@@ -135,13 +178,13 @@ def main():
 
     review = options.review.read_text(encoding="utf-8", errors="replace") if options.review else ""
     why = ""
-    if CREDENTIAL.search(review):
+    if credential(review):
         review, why = "", "its text held what looks like a credential, so it was not posted"
     review = neutralize(review).strip()
     # No usable review (none, blank, refused, or only this script's markers): keep the one already posted, if any.
     if options.previous and not review:
         previous = options.previous.read_text(encoding="utf-8", errors="replace")
-        if CREDENTIAL.search(previous):
+        if credential(previous):
             why = why or "it wrote no comment"
             why += ", and the last review held what looks like a credential, so it is not kept"
         else:
@@ -159,7 +202,7 @@ def main():
                 "A person at Theorem reviews the enrollment.")
         status = "none"
     checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
-    if CREDENTIAL.search(checks):
+    if credential(checks):
         # The checks text comes from the project's source: refused on its own, so a safe review is still posted.
         checks = ("The report held what looks like a credential, so it was not posted. It is in the Build check's "
                   "summary.")

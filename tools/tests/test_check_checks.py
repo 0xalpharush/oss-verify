@@ -396,6 +396,140 @@ class CredentialArguments(unittest.TestCase):
             self.assertIn(f"Authorization: Basic {auth}", (directory / "git-env").read_text())
             # fetch_head fetches once, however often it is called.
             self.assertEqual((directory / "git-argv").read_text().split("\n").count("fetch"), 1)
+            # Nor in what keep gathered (python3-env and git-env are the fakes' deliberate captures of the environment).
+            gathered = sorted((directory / "out").iterdir())
+            self.assertTrue(gathered)
+            for path in gathered:
+                for value in (secret, auth):
+                    self.assertNotIn(value, path.read_text(), path.name)
+
+
+class PostingStep(unittest.TestCase):
+    """build.yaml's own "Post the comment" step, run with a fake gh: what it sends GitHub."""
+    OLD = "Thanks.\n\n1. Fix X.\n"
+
+    def post(self, review, existing=True):
+        workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
+        step = next(s for s in workflow["jobs"]["comment"]["steps"] if s.get("id") == "post")
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            bin = directory / "bin"
+            bin.mkdir()
+            first = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head", "a" * 40],
+                                   input=self.OLD, capture_output=True, text=True, check=True).stdout
+            (directory / "existing.md").write_text(first)
+            (bin / "gh").write_text(
+                "#!/bin/bash\n"
+                f'case "$*" in\n'
+                f'  *"--method PATCH"*) cat > {directory}/patch.json ;;\n'
+                f'  *"--method POST"*) cat > {directory}/post.json ;;\n'
+                f'  *"--paginate"*) {"echo 4242" if existing else "true"} ;;\n'
+                f'  *"issues/comments/4242"*) cat {directory}/existing.md ;;\n'
+                '  *) echo "unexpected gh $*" >&2; exit 1 ;;\n'
+                "esac\n")
+            (bin / "gh").chmod(0o755)
+            (directory / "temp").mkdir()
+            environment = {**os.environ, "PATH": f"{bin}:{os.environ['PATH']}", "GH_TOKEN": "x", "REPO": "o/r",
+                           "PR": "8", "REVIEW": review, "CHECKS": "### new report\n", "HEAD_SHA": "b" * 40,
+                           "RUN_URL": "https://github.com/o/r/actions/runs/7", "RUNNER_TEMP": str(directory / "temp"),
+                           "GITHUB_OUTPUT": str(directory / "output")}
+            run = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, env=environment, capture_output=True,
+                                 text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            sent = directory / ("patch.json" if existing else "post.json")
+            return json.loads(sent.read_text())["body"]
+
+    def status(self, body):
+        return review_comment.META.match(body.split("\n")[1]).group("status")
+
+    def test_an_unusable_review_keeps_the_posted_one(self):
+        # The review job succeeded with text that cannot be posted: the step still fetches and keeps the last review.
+        for review in ("", " \n\t\n", "Here: ghs_" + "b" * 36, "<!-- oss-verify-review -->\n"):
+            body = self.post(review)
+            self.assertEqual(self.status(body), "stale", repr(review))
+            self.assertIn("1. Fix X.", body)
+            self.assertNotIn("ghs_" + "b" * 36, body)
+
+    def test_a_usable_review_replaces_the_posted_one(self):
+        body = self.post("Thanks again.\n\n2. Fix Y.\n")
+        self.assertEqual(self.status(body), "review")
+        self.assertIn("2. Fix Y.", body)
+        self.assertNotIn("1. Fix X.", body)
+        self.assertIn("### new report", body)
+
+    def test_without_a_posted_comment_it_posts_one(self):
+        self.assertEqual(self.status(self.post(" \n", existing=False)), "none")
+
+
+class Screening(unittest.TestCase):
+    """review-comment's credential scan and its cuts."""
+    OLD = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|sk-ant-[A-Za-z0-9_-]{8,}|gh[opsu]_[A-Za-z0-9]{20,}"
+                     r"|github_pat_[A-Za-z0-9_]{20,}")
+
+    def test_the_scan_finds_what_the_regular_expression_found(self):
+        jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXBvOngifQ.c2lnbmF0dXJl"
+        for text in (jwt, f"a {jwt} b", "sk-ant-oat01-abcdefghijkl", "x sk-ant-abcdefgh", "ghs_" + "a" * 20,
+                     "ghp_" + "a" * 19 + "_", "github_pat_" + "a" * 20, "github_pat_-github_pat_" + "a" * 20,
+                     "gho_" + "-" * 20 + "ghu_" + "B" * 20, "eyJ" + "a" * 10 + ".", "eyJ" + "a" * 9 + "." + "b" * 10,
+                     "eyJ" + "a" * 10 + ". " + "b" * 10, "eyJ" + "a" * 10 + "." + "b" * 10, "sk-ant-" + "a" * 7,
+                     "eyJ" * 30, "plain words", ""):
+            self.assertEqual(review_comment.credential(text), bool(self.OLD.search(text)), text)
+        # And on random text over the characters these patterns turn on.
+        import random
+        rng = random.Random(36)
+        pieces = ["eyJ", "sk-ant-", "gho_", "ghs_", "github_pat_", ".", "-", "_", " ", "a", "B", "7", "aaaaaaaaaa"]
+        for _ in range(20_000):
+            text = "".join(rng.choice(pieces) for _ in range(rng.randrange(1, 14)))
+            self.assertEqual(review_comment.credential(text), bool(self.OLD.search(text)), text)
+
+    def test_the_scan_is_linear(self):
+        # Inputs that hold no credential, built to make a backtracking scan reread the text at every prefix.
+        for hostile in ("eyJ" * 100_000, "eyJ" + "a" * 300_000, "ghs_" * 75_000, "github_pat_-" * 25_000,
+                        ("eyJ" + "a" * 9 + ".") * 20_000):
+            self.assertFalse(self.OLD.search(hostile[:2_000]))
+            started = time.monotonic()
+            self.assertFalse(review_comment.credential(hostile))
+            self.assertLess(time.monotonic() - started, 1.0, hostile[:20])
+
+    def visible(self, text):
+        """No comment opener is left open, so GitHub's renderer hides nothing after it."""
+        last = text.rfind("<!--")
+        return last == -1 or text.find("-->", last) != -1
+
+    def test_a_cut_never_leaves_a_comment_open(self):
+        harmless = "\n\n<!-- harmless comment " + "z" * 200 + " -->"
+        review = "Safe review above.\n\n" + "x" * (review_comment.MAX_REVIEW - 60) + harmless
+        checks = "### report\n" + "y" * (review_comment.MAX_CHECKS - 60) + harmless
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            (directory / "review.md").write_text(review)
+            (directory / "checks.md").write_text(checks)
+            text = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
+                                   "--checks", str(directory / "checks.md"), "--head", "a" * 40],
+                                  capture_output=True, text=True, check=True).stdout
+            self.assertIn("Cut at 40,000", text)
+            self.assertIn("Cut at 20,000", text)
+            self.assertTrue(self.visible(text.split("<details>")[0]))
+            self.assertTrue(self.visible(text))
+            self.assertTrue(text.rstrip().endswith("</sub>"))
+            # A kept comment cut inside a comment: the same.
+            previous = text.split("\n## Enrollment review\n", 1)[0] + "\n## Enrollment review\n\n" + \
+                "w" * (review_comment.MAX_COMMENT - 400) + harmless
+            (directory / "previous.md").write_text(previous)
+            (directory / "empty.md").write_text("")
+            kept = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "empty.md"),
+                                   "--head", "b" * 40, "--previous", str(directory / "previous.md")],
+                                  capture_output=True, text=True, check=True).stdout
+            self.assertIn("**Not current:**", kept)
+            self.assertIn("Cut at", kept)
+            self.assertTrue(self.visible(kept))
+
+    def test_close_comments(self):
+        close = review_comment.close_comments
+        self.assertEqual(close("a <!-- b"), "a &lt;!-- b")
+        self.assertEqual(close("a <!-- b --> c"), "a <!-- b --> c")
+        self.assertEqual(close("<!-- a --> <!-- b <!-- c"), "<!-- a --> &lt;!-- b &lt;!-- c")
+        self.assertEqual(close("<!-- a <!-- b -->"), "<!-- a <!-- b -->")
 
 
 class ReviewRun(unittest.TestCase):
