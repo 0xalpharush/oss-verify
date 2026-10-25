@@ -94,7 +94,7 @@ name: "Build"
 # token), tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
 # theorem.credential=oss-verify-ci (.github/scripts/review-run sets them). The review fails if either is not set, or if
 # the collector does not answer 200 to an empty export with the token before the review starts, rather than lose the
-# review's spend in silence.
+# review's spend in silence. If it refuses one after the review, the comment is still posted and the review job fails.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -327,7 +327,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -m 700 "$RUNNER_TEMP/oidc"
-          curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          # The request token reaches curl through a pipe, not an argument, which other processes can read.
+          curl -q -sSf -H @<(printf 'Authorization: Bearer %s\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN") \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value > "$RUNNER_TEMP/oidc/jwt"
           echo "::add-mask::$(cat "$RUNNER_TEMP/oidc/jwt")"
 
@@ -363,19 +364,35 @@ jobs:
           .github/scripts/review-run .review || code=$?
           rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
           echo "::$resume::"
-          [ "$code" = 0 ] || exit "$code"
-          # The collector's token never leaves this job (review-comment refuses the other credentials).
-          if [ -n "$OTEL_COLLECTOR_TOKEN" ] && grep -qF -- "$OTEL_COLLECTOR_TOKEN" .review/comment.md; then
+          # 3: the review is written, but the collector refused the token after it. The comment is still posted, and
+          # the next step fails the job.
+          if [ "$code" = 3 ]; then
+            echo "collector=refused" >> "$GITHUB_OUTPUT"
+          elif [ "$code" != 0 ]; then
+            exit "$code"
+          fi
+          # The collector's token never leaves this job (review-comment refuses the other credentials). Compared in
+          # this shell, so that the token is no process's argument.
+          if [ -n "$OTEL_COLLECTOR_TOKEN" ] && [[ $(< .review/comment.md) == *"$OTEL_COLLECTOR_TOKEN"* ]]; then
             echo "::error::The review's comment holds the collector's token; it is not posted."
             exit 1
           fi
           delimiter="review-$(openssl rand -hex 16)"
           { echo "comment<<$delimiter"; head -c 60000 .review/comment.md; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
 
+      - name: Fail if the collector refused the token after the review
+        if: ${{ steps.review.outputs.collector == 'refused' }}
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+        run: |
+          echo "::error::The collector at $OTEL_EXPORTER_OTLP_ENDPOINT refused OTEL_COLLECTOR_TOKEN after the review, so the review's usage is likely lost. The comment is posted; check the token."
+          exit 1
+
   comment:
     needs: [project-builds, review]
-    # After a review that wrote a comment, it posts it. After a review that failed, it marks the comment already there
-    # as not current, naming the commit it is of, or posts that the review did not run if there is none.
+    # After a review that wrote a comment, it posts it, also when the collector refused the token after the review.
+    # After a review that wrote none, it marks the comment already there as not current, naming the commit it is of,
+    # or posts that the review did not run if there is none.
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' && (needs.review.result != 'success' || needs.review.outputs.comment != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -451,5 +468,6 @@ jobs:
           printf '%s' "$BINARIES" > "$RUNNER_TEMP/binaries.md"
           python3 .github/scripts/slack-notice --name "$NAME" --language "$LANGUAGE" --url "$URL" --result "$RESULT" \
             --binaries "$RUNNER_TEMP/binaries.md" > "$RUNNER_TEMP/slack.json"
-          curl -sSf --retry 2 -H 'Content-Type: application/json' --data-binary @"$RUNNER_TEMP/slack.json" \
-            "$SLACK_WEBHOOK_URL" > /dev/null
+          # The webhook URL is the credential: it reaches curl as a config file through a pipe, not an argument.
+          curl -q -sSf --retry 2 -H 'Content-Type: application/json' --data-binary @"$RUNNER_TEMP/slack.json" \
+            -K <(printf 'url = "%s"\n' "$SLACK_WEBHOOK_URL") > /dev/null

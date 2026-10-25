@@ -22,13 +22,18 @@ MARKER = "<!-- oss-verify-review -->"
 # GitHub refuses a comment over 65,536 characters.
 MAX_REVIEW = 40_000
 MAX_CHECKS = 20_000
+MAX_COMMENT = 65_000
 # A GitHub identity token (a JWT), an Anthropic token or key, a GitHub token.
 CREDENTIAL = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|sk-ant-[A-Za-z0-9_-]{8,}|gh[opsu]_[A-Za-z0-9]{20,}"
                         r"|github_pat_[A-Za-z0-9_]{20,}")
-# The line that marks a kept review as not current, and the footer's commit, by which the next mark finds it.
-NOT_CURRENT = "**Not current:**"
 HEADING = "\n## Enrollment review\n\n"
-REVIEW_OF = re.compile(r"It is the review of `([0-9a-f]{7,40})`")
+# What this script writes for itself, in hidden lines: the marker, the not-current notice between two of them, the
+# commit the review is of, and that there is no review. It removes every such line from the text it is given, so that
+# what the model wrote can never read as one.
+OWNED = re.compile(r"<!--\s*oss-verify-.*?-->", re.S)
+STATUS, STATUS_END = "<!-- oss-verify-status -->", "<!-- oss-verify-status-end -->"
+REVIEW_OF = re.compile(r"<!-- oss-verify-review-of ([0-9a-f]{7,40}) -->")
+NO_REVIEW_MARK = "<!-- oss-verify-no-review -->"
 NO_REVIEW = "The review agent did not run"
 
 
@@ -38,22 +43,24 @@ def cut(text, limit, where):
 
 
 def not_current(previous, head, run):
-    """The comment already posted, with a first line that says it is not the review of head; None if it holds none."""
+    """The comment already posted, with a notice first that it is not the review of head; None if it holds none."""
     previous = previous.replace("\r\n", "\n")
     top, heading, body = previous.partition(HEADING)
     if not heading:
         top, body = MARKER, previous.replace(MARKER, "").strip() + "\n"
-    if body.startswith(NOT_CURRENT):
-        body = body.split("\n\n", 1)[1] if "\n\n" in body else ""
-    if not body.strip() or body.startswith(NO_REVIEW):
+    if body.startswith(STATUS) and STATUS_END in body:
+        body = body.split(STATUS_END, 1)[1].lstrip("\n")
+    # A comment from before the no-review line was written has only the sentence.
+    if not body.strip() or NO_REVIEW_MARK in body or body.startswith(NO_REVIEW):
         return None
     of = REVIEW_OF.findall(body)
-    of = f"`{of[-1]}`" if of else "an earlier commit"
+    of = f"`{of[-1][:7]}`" if of else "an earlier commit"
     this = f"`{head[:7]}`" if head else "the last push"
     where = f" ([the run]({run}))" if run else ""
-    note = (f"{NOT_CURRENT} this is the review of {of}. The review of {this} did not finish{where}. "
-            "A person at Theorem reviews the enrollment.")
-    return f"{top}{HEADING}{note}\n\n{body}"
+    note = (f"{STATUS}\n**Not current:** this is the review of {of}. The review of {this} did not finish{where}. "
+            f"A person at Theorem reviews the enrollment.\n{STATUS_END}\n\n")
+    room = MAX_COMMENT - len(top) - len(HEADING) - len(note) - 100
+    return f"{top}{HEADING}{note}{cut(body, room, 'the rest is in an earlier run of the review job')}\n"
 
 
 def main():
@@ -68,30 +75,35 @@ def main():
     run = options.run if re.fullmatch(r"https://[A-Za-z0-9./_-]+", options.run) else ""
 
     review = options.review.read_text(encoding="utf-8", errors="replace") if options.review else ""
-    if options.previous and not review.strip():
-        kept = not_current(options.previous.read_text(encoding="utf-8", errors="replace"), head, run)
-        if kept is not None:
-            sys.stdout.write(kept)
-            return 0
     why = ""
+    if options.previous and not review.strip():
+        previous = options.previous.read_text(encoding="utf-8", errors="replace")
+        if CREDENTIAL.search(previous):
+            why = "it wrote no comment, and the last review held what looks like a credential, so it is not kept"
+        else:
+            kept = not_current(previous, head, run)
+            if kept is not None:
+                sys.stdout.write(kept)
+                return 0
     if CREDENTIAL.search(review):
         review, why = "", "its text held what looks like a credential, so it was not posted"
-    review = review.replace(MARKER, "")
+    review = OWNED.sub("", review)
     parts = [MARKER, "## Enrollment review", ""]
     if review.strip():
         parts.append(cut(review, MAX_REVIEW, "the rest is in the review job's log"))
     else:
         this = f" (`{head[:7]}`)" if head else ""
         where = f" ([the run]({run}))" if run else ""
-        parts.append(f"{NO_REVIEW} on this push{this}: {why or 'it wrote no comment'}{where}. "
-                     "A person at Theorem reviews the enrollment.")
+        parts += [NO_REVIEW_MARK, f"{NO_REVIEW} on this push{this}: {why or 'it wrote no comment'}{where}. "
+                  "A person at Theorem reviews the enrollment."]
     checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
     if checks.strip():
         parts += ["", "<details><summary>What the breakage and coverage checks measured</summary>", "",
-                  cut(checks.replace(MARKER, ""), MAX_CHECKS, "the rest is in the Build check's summary"), "",
+                  cut(OWNED.sub("", checks), MAX_CHECKS, "the rest is in the Build check's summary"), "",
                   "</details>"]
     of = f"It is the review of `{head[:7]}`. " if head else ""
-    parts += ["", "<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
+    parts += [""] + ([f"<!-- oss-verify-review-of {head} -->"] if head else [])
+    parts += ["<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
               f"`tools/check --checks` measured the checks. It can be wrong. {of}Each push replaces it, or marks it "
               "not current if the push's review does not finish. It decides nothing: a person at Theorem reviews "
               "the enrollment.</sub>"]

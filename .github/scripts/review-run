@@ -19,7 +19,9 @@
 # theorem.lane=enroll-review-ci, and theorem.credential=oss-verify-ci when the run trades an identity token for that
 # service account (build.yaml's review job does; a person's own login does not). Before the review it sends the
 # collector an export of no records with the token, and stops if the collector does not answer 200: a wrong or revoked
-# token would otherwise lose the usage in silence. Without the two variables it exports nothing.
+# token would otherwise lose the usage in silence. After the review it sends one again: if the collector refuses it
+# then, the review's comment.md is still written, and review-run exits 3 (not 0) and says that its usage may be lost.
+# Without the two variables it exports nothing.
 # No value of that environment is ever an argument of a process: another user on the machine can read a process's
 # arguments, but not its environment.
 set -euo pipefail
@@ -36,13 +38,19 @@ describes, as its section \"In CI\" says. The workflow gathered the inputs into 
 projects/$NAME/ is in this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing \
 else: it starts with the sentence of thanks, with no line before it about you or your review."
 
+# The HTTP status that the collector answers to an export of no records with the token (000 when it did not answer in
+# time). The header reaches curl through a pipe that the builtin printf writes, not an argument; -q, first, keeps a
+# .curlrc from turning on --verbose or a trace, which would print the header. Neither the header nor the collector's
+# answer is printed.
+collector() {
+  curl -q -s -o /dev/null -w '%{http_code}' --max-time 20 -H 'Content-Type: application/json' \
+    -H @<(builtin printf 'Authorization: Bearer %s\n' "$OTEL_COLLECTOR_TOKEN") --data-binary '{}' \
+    "${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/logs" || true
+}
+
 telemetry=()
 if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
-  # The header reaches curl through a pipe that the builtin printf writes, not an argument. Neither the header nor the
-  # collector's answer is printed: only its HTTP status (000 when it did not answer in time).
-  answer=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -H 'Content-Type: application/json' \
-    -H @<(builtin printf 'Authorization: Bearer %s\n' "$OTEL_COLLECTOR_TOKEN") --data-binary '{}' \
-    "${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/logs") || true
+  answer=$(collector)
   if [ "$answer" != 200 ]; then
     echo "review-run: the collector at $OTEL_EXPORTER_OTLP_ENDPOINT answered ${answer:-nothing} to an empty export" \
       "with OTEL_COLLECTOR_TOKEN, not 200: the review's usage would be lost. Check the token and the endpoint." >&2
@@ -65,9 +73,9 @@ else
 fi
 status=0
 # Claude Code's whole environment, one NUL-ended entry each, goes through a pipe to a launcher that execs it with that
-# environment only, as env -i would, and stdin from /dev/null. env -i took the entries as arguments. A shell cannot do
-# it: bash passes on environment entries whose names are not variable names, and exported functions, which it cannot
-# unset.
+# environment only, as env -i would, and stdin from /dev/null. env -i took the entries as arguments. A loop of
+# `export -n` over `compgen -e` in this shell would not do it: bash passes on environment entries whose names are not
+# variable names, such as A.B=1, and the loop does not remove exported functions either.
 {
   builtin printf '%s\0' "PATH=$PATH" "HOME=$HOME" LANG=C.UTF-8
   for variable in $(compgen -e); do
@@ -98,3 +106,12 @@ jq -r 'if .is_error then error("the review ended with an error: \(.result // .su
                           END { printf "%s", held }' > "$in/comment.md"
 [ -s "$in/comment.md" ] || { echo "review-run: the review wrote no comment" >&2; exit 1; }
 echo "review-run: $(wc -c < "$in/comment.md") bytes in $in/comment.md, by $model"
+if [ ${#telemetry[@]} != 0 ]; then
+  answer=$(collector)
+  if [ "$answer" != 200 ]; then
+    echo "review-run: the review is in $in/comment.md, but the collector at $OTEL_EXPORTER_OTLP_ENDPOINT answered" \
+      "${answer:-nothing}, not 200, to an empty export with OTEL_COLLECTOR_TOKEN after it: the token was refused or" \
+      "the collector went away during the review, so its usage is likely lost." >&2
+    exit 3
+  fi
+fi
