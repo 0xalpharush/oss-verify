@@ -220,7 +220,7 @@ From [this commit of OSS-Fuzz](https://github.com/google/oss-fuzz/tree/bd2ce2199
 A core maintainer can adopt a seeded project:
 
 1. Copy its `projects/<name>/`, or its `tools/seeds/<name>/`, to `projects/<name>/` in a branch of your fork.
-2. Remove each patch that fixes a bug from the directory and from `series`. Such a patch is permitted in a port that we publish, but not in an enrolled project ([above](#build-patches)).
+2. Remove each patch that fixes a bug. Such a patch is permitted in a port that we publish, but not in an enrolled project ([above](#build-patches)). For each one, delete the patch file, its line in `series`, its `patch` line in `sources`, and its name where the `Dockerfile` or `build.sh` copies or applies it. `lay-out-sources` applies each `patch` line of `sources` in turn, and stops when those lines are not the patches that `series` lists, in the same order. So keep the patches that remain in their order in both files.
 3. Set `primary_contact` to the address that gets findings.
 4. Remove the two comment lines.
 5. Do the steps in the [README](../README.md#enroll-a-project) from step 3.
