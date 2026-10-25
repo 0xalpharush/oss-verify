@@ -74,9 +74,10 @@ name: "Build"
 # and a pull request cannot change it, because pull_request_target runs the default branch's workflow. Renaming this
 # file needs the rule changed. Only the review job asks for an identity token.
 #
-# The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector when the repository secrets
-# OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN are set, tagged theorem.project=oss-verify-enrollment and
-# theorem.subproject=<name>. Without them it exports nothing.
+# The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector when the repository variable
+# OTEL_EXPORTER_OTLP_ENDPOINT (the collector's public URL) and the repository secret OTEL_COLLECTOR_TOKEN (its bearer
+# token) are both set, tagged theorem.project=oss-verify, theorem.subproject=<name> and theorem.lane=enroll-review-ci.
+# Without them it exports nothing, and the review runs as before.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -290,7 +291,7 @@ jobs:
           ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01WdHTLcJPEfiPttcuLK1hGT
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Qr1iUVcow4jdgQM7Amfks5
           # Usage, to Theorem's cost collector, if its secrets are set (review-run exports only with an endpoint).
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_COLLECTOR_TOKEN: ${{ secrets.OTEL_COLLECTOR_TOKEN }}
         run: |
           # Until the token is printed again, the runner reads none of the review's output as a workflow command.

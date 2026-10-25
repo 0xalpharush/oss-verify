@@ -14,8 +14,9 @@
 # this checkout: no shell, no network tool, no file writes, no MCP server. It reads what the pull request and the
 # project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the
 # ANTHROPIC_* variables of its credential (in CI, those of workload identity federation), and, when
-# OTEL_EXPORTER_OTLP_ENDPOINT is set, the OpenTelemetry settings that send its usage to Theorem's cost collector, with
-# the bearer token OTEL_COLLECTOR_TOKEN, tagged theorem.project=oss-verify-enrollment and theorem.subproject=<name>.
+# both OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN are set, the OpenTelemetry settings that send its usage to
+# Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name> and
+# theorem.lane=enroll-review-ci. Without them it exports nothing.
 set -euo pipefail
 
 in=${1:?usage: review-run <directory>}
@@ -33,13 +34,15 @@ pass=()
 for variable in $(compgen -e); do
   case $variable in ANTHROPIC_*|CLAUDE_CODE_*) pass+=("$variable=${!variable}") ;; esac
 done
-if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-  pass+=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=otlp
+if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
+  # OTEL_EXPORTER_OTLP_HEADERS values are percent-encoded: %20 is the space after Bearer.
+  pass+=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=none
          OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
-         "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify-enrollment,theorem.subproject=$NAME")
-  if [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
-    pass+=("OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20$OTEL_COLLECTOR_TOKEN")
-  fi
+         "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20$OTEL_COLLECTOR_TOKEN"
+         "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci")
+  echo "review-run: exporting usage to $OTEL_EXPORTER_OTLP_ENDPOINT"
+else
+  echo "review-run: no OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN: usage is not exported"
 fi
 env -i PATH="$PATH" HOME="$HOME" LANG=C.UTF-8 "${pass[@]}" \
   claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \

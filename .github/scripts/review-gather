@@ -32,7 +32,7 @@ keep review-comments.txt gh api --paginate "repos/$REPO/pulls/$PR/comments" \
   --jq '.[] | "\(.user.login) \(.path):\(.line) \(.body)"'
 jq -r '.comments[]?.body | select(startswith("<!-- oss-verify-triage -->"))' "$out/pr.json" \
   > "$out/triage-comment.md" 2>/dev/null || true
-keep triage-today.md env GITHUB_TOKEN="$GH_TOKEN" python3 .github/scripts/triage.py --repo "$REPO" --pr "$PR"
+keep triage-today.md env GITHUB_TOKEN="${GH_TOKEN:-}" python3 .github/scripts/triage.py --repo "$REPO" --pr "$PR"
 keep validate.txt python3 tools/validate.py "$dir"
 
 # Check B of the skill: each box of the description against today's template.
