@@ -27,13 +27,27 @@ class Shifts(unittest.TestCase):
         patch = (b"diff --git a/fuzz/f.c b/fuzz/f.c\n--- a/fuzz/f.c\n+++ b/fuzz/f.c\n"
                  b"@@ -10,3 +10,2 @@\n a\n-b\n c\n@@ -40 +39,3 @@\n-x\n+y\n+z\n+w\n")
         shifts = check_checks.hunk_shifts(patch, "/src/p")
-        self.assertEqual(shifts, {"/src/p/fuzz/f.c": [(10, 3, 2), (40, 1, 3)]})
+        self.assertEqual(shifts, {"/src/p/fuzz/f.c": [(11, -1), (40, -1), (41, 1), (41, 1), (41, 1)]})
 
         def check(line):
             return check_records.Check(line, None, path="/src/p/fuzz/f.c")
         self.assertEqual(check_checks.moved(check(5), shifts), 5)
         self.assertEqual(check_checks.moved(check(20), shifts), 19)
         self.assertEqual(check_checks.moved(check(50), shifts), 51)
+        # A check in the trailing context of a hunk moves too.
+        near = check_checks.hunk_shifts(b"+++ b/fuzz/f.c\n@@ -10,7 +10,6 @@\n a\n b\n-c\n d\n e\n f\n g\n", "/src/p")
+        self.assertEqual(check_checks.moved(check(15), near), 14)
+
+    def test_record_patches_split_on_newlines_only(self):
+        data = "int x;\n/* \u00c5 */\nif (a) abort();\n".encode()
+        record = check_records.Record("fuzz/f.c", 3, "(a)", "(!a)", "s")
+        changed, _ = check_records.mutate(data, record)
+        import difflib
+        before = [line + b"\n" for line in data.split(b"\n")]
+        after = [line + b"\n" for line in changed.split(b"\n")]
+        diff = b"".join(difflib.diff_bytes(difflib.unified_diff, before, after, b"a/f", b"b/f"))
+        self.assertIn("\u00c5".encode(), diff)
+        self.assertEqual(diff.count(b"\n-"), 1)
 
 
 class Positions(unittest.TestCase):

@@ -107,15 +107,18 @@ jobs:
   project-builds:
     # A static name: GitHub reports the check under it on every run, and a required job has no job-level if:.
     name: project-builds
-    runs-on: ubuntu-latest
-    # tools/check has no time limit of its own: this one is the runner's, for two builds.
-    timeout-minutes: 240
+    # 24.04, not ubuntu-latest: Ubuntu 26.04 has no qemu-user-static package, which --checks takes qemu from.
+    runs-on: ubuntu-24.04
+    # tools/check has no time limit of its own: this one is the runner's, for two builds and --checks (at most 2 x 20
+    # minutes of seed runs on the unchanged code, and the 60-minute budget of the breakages).
+    timeout-minutes: 330
     permissions:
       contents: read
       pull-requests: read
     # Text that this repository's tools wrote, for the review and comment jobs.
     outputs:
       name: ${{ steps.project.outputs.name }}
+      sha: ${{ steps.project.outputs.sha }}
       commit: ${{ steps.build.outputs.commit }}
       result: ${{ steps.build.outputs.result }}
       binaries: ${{ steps.build.outputs.binaries }}
@@ -231,6 +234,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # For the pull request's checks, which the review reads.
+      checks: read
+      statuses: read
+      actions: read
       # Only for the GitHub identity token that workload identity federation trades for an Anthropic token.
       id-token: write
     outputs:
@@ -248,7 +255,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The head that the build took, also on a run started by hand.
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
         run: GITHUB_STEP_SUMMARY=/dev/null .github/scripts/take-project build
 
       - name: Gather what the review reads

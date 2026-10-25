@@ -48,9 +48,10 @@ fi
 env -i PATH="$PATH" HOME="$HOME" LANG=C.UTF-8 "${pass[@]}" \
   claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \
     --model "$model" --effort xhigh --max-turns 300 --output-format json < /dev/null > "$in/claude.json"
-# The comment only: a line such as "Here is the comment:" and a rule (---) in its first six lines go.
+# The comment only: a line that ends in a colon, such as "Here is the comment:", and a rule (---) after it, in its first
+# six lines, go. Any other rule stays.
 jq -r 'if .is_error then error("the review ended with an error: \(.result // .subtype)") else .result end' \
-  "$in/claude.json" | awk 'NR <= 6 && !cut && /^---+[[:space:]]*$/ { cut = 1; held = ""; next }
+  "$in/claude.json" | awk 'NR <= 6 && !cut && /^---+[[:space:]]*$/ && held ~ /:[[:space:]]*\n[[:space:]]*$/ { cut = 1; held = ""; next }
                           NR <= 6 && !cut { held = held $0 "\n"; next }
                           { printf "%s", held; held = ""; print }
                           END { printf "%s", held }' > "$in/comment.md"

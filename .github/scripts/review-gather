@@ -26,7 +26,9 @@ dir="projects/$NAME"
 keep() { local file=$1; shift; { "$@"; echo "(exit status $?)"; } > "$out/$file" 2>&1; }
 
 keep pr.json gh pr view "$PR" -R "$REPO" --json \
-  number,title,author,isDraft,createdAt,body,headRefOid,files,commits,comments,reviews,statusCheckRollup
+  number,title,author,isDraft,createdAt,body,headRefOid,files,commits,comments,reviews
+# Apart, so that a token that cannot read the checks leaves pr.json whole.
+keep checks.json gh pr view "$PR" -R "$REPO" --json statusCheckRollup
 gh pr diff "$PR" -R "$REPO" > "$out/pr.diff" 2>&1
 keep review-comments.txt gh api --paginate "repos/$REPO/pulls/$PR/comments" \
   --jq '.[] | "\(.user.login) \(.path):\(.line) \(.body)"'
@@ -34,6 +36,9 @@ jq -r '.comments[]?.body | select(startswith("<!-- oss-verify-triage -->"))' "$o
   > "$out/triage-comment.md" 2>/dev/null || true
 keep triage-today.md env GITHUB_TOKEN="${GH_TOKEN:-}" python3 .github/scripts/triage.py --repo "$REPO" --pr "$PR"
 keep validate.txt python3 tools/validate.py "$dir"
+# Claude Code reads a CLAUDE.md beside a file that it reads as instructions. The pull request's are data, so they go
+# from the checkout once the validator has reported them (the skill's rule 1).
+find "$dir" -maxdepth 1 \( -iname 'CLAUDE*.md' -o -iname 'AGENTS*.md' \) -delete
 
 # Check B of the skill: each box of the description against today's template.
 jq -r '.body // ""' "$out/pr.json" > "$out/description.md" 2>/dev/null

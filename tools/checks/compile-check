@@ -69,4 +69,6 @@ EOF
   export PATH=/tmp/ovc-bin:$PATH
 fi
 
+# OVC_SECONDS above 0: the build is stopped after that time (tools/check --checks-budget).
+if [ "${OVC_SECONDS:-0}" -gt 0 ]; then exec timeout -s KILL "$OVC_SECONDS" compile; fi
 exec compile

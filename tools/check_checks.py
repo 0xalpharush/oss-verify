@@ -57,6 +57,8 @@ RUN_TIMEOUT = 120
 PASSES = (0, 2)
 # The status of a run that tools/checks/run-seeds stopped at the time limit (SIGKILL). It is neither a pass nor a catch.
 KILLED = 137
+# The status this step gives an input that did not run before a total time limit stopped the runs.
+NOT_RUN = -1
 # The driver's header in front of each seed input: no config bytes and no allocation mask (docs/build-contract.md).
 HEADER = b"\0" * 6
 # The sanitizer builds, the most checking first: a breakage is also run on the first one the project has.
@@ -90,7 +92,7 @@ class Run:
         return self.status in PASSES
 
     def caught(self):
-        return self.status is not None and self.status not in PASSES
+        return self.status is not None and self.status != NOT_RUN and self.status not in PASSES
 
 
 @dataclasses.dataclass
@@ -154,21 +156,30 @@ def files_of(export):
 
 
 def hunk_shifts(patch, workdir):
-    """{path in the image: [(old start, old length, new length)]}: where a unified diff adds or removes lines, so that a
-    check's line in the unchanged file can be moved to its line in the changed one."""
-    shifts, path = {}, None
-    for line in patch.decode("utf-8", "replace").splitlines():
+    """{path in the image: [(old line, +1 or -1)]}: each line that a unified diff adds (before that old line) or removes
+    (that old line), so that a check's line in the unchanged file can be moved to its line in the changed one."""
+    shifts, path, old = {}, None, None
+    for line in patch.decode("utf-8", "replace").split("\n"):
         if line.startswith("+++ "):
             name = line[4:].strip().split("\t")[0]
             path = None if name == "/dev/null" else str(pathlib.PurePosixPath(workdir) / name.removeprefix("b/"))
-        elif path and (found := re.match(r"@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@", line)):
-            shifts.setdefault(path, []).append((int(found[1]), int(found[2] or 1), int(found[3] or 1)))
+            old = None
+        elif path and (found := re.match(r"@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@", line)):
+            old = int(found[1])
+        elif path and old is not None and line[:1] in ("-", "+", " "):
+            if line[0] == "-":
+                shifts.setdefault(path, []).append((old, -1))
+                old += 1
+            elif line[0] == "+":
+                shifts.setdefault(path, []).append((old, +1))
+            else:
+                old += 1
     return shifts
 
 
 def moved(check, shifts):
     """The line of `check` in the changed file."""
-    return check.line + sum(new - old for start, old, new in shifts.get(check.path, []) if start + old <= check.line)
+    return check.line + sum(d for at, d in shifts.get(check.path, []) if at < check.line or (d > 0 and at == check.line))
 
 
 # ── running ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -177,10 +188,10 @@ def qemu():
     """The path of a static qemu-riscv64, which runs inside the project image too, or raise Failed."""
     found = shutil.which("qemu-riscv64-static")
     if not found:
-        raise Failed("--checks runs the riscv64 binaries with qemu-riscv64-static, which is not on PATH. Take it out of "
-                     "Ubuntu's package without installing it (installing registers it with the kernel): "
-                     "apt-get download qemu-user-static && dpkg-deb -x qemu-user-static_*.deb <directory>, then put "
-                     "<directory>/usr/bin on PATH")
+        raise Failed("--checks runs the riscv64 binaries with qemu-riscv64-static, which is not on PATH. On Ubuntu "
+                     "24.04, take it out of its package without installing it (installing registers it with the "
+                     "kernel): apt-get download qemu-user-static && dpkg-deb -x qemu-user-static_*.deb <directory>, "
+                     "then put <directory>/usr/bin on PATH")
     return pathlib.Path(found).resolve()
 
 
@@ -237,7 +248,10 @@ def run_all(tag, binaries, inputs, names, build, results, *, labels, total=0):
         numbered = names[target] if isinstance(names[target], dict) else dict(enumerate(names[target]))
         for n, seed in sorted(numbered.items()):
             status = results / target / f"{n}.status"
-            text = status.read_text()[:16].strip() if status.is_file() and not status.is_symlink() else ""
+            if not status.is_file() or status.is_symlink():
+                runs.append(Run(target, seed, NOT_RUN, build, n))
+                continue
+            text = status.read_text()[:16].strip()
             runs.append(Run(target, seed, int(text) if text.isdigit() and text != str(KILLED) else None, build, n))
     return runs
 
@@ -278,12 +292,13 @@ def compiler_rt(version):
     return source
 
 
-def compile_check(tag, out, sanitizer, targets, *, labels, patch=None, runtime=None, ubsan=None):
+def compile_check(tag, out, sanitizer, targets, *, labels, patch=None, runtime=None, ubsan=None, seconds=0):
     """Build into `out` with tools/checks/compile-check: the build `sanitizer` names, with the coverage changes if
     `runtime` (compiler-rt's source) is given, and with the breakage `patch` applied if given. `ubsan` is as for
-    check_build.compile_build. Return None if it built each of `targets`, else why not, with the end of its output."""
+    check_build.compile_build. With `seconds`, the build is stopped after that time. Return None if it built each of
+    `targets`, else why not, with the end of its output."""
     check_build.empty_directory(out, tag, labels=labels)
-    mounts = ["-v", f"{CHECKS_DIR}:/ovc:ro", "-v", f"{out}:/out"]
+    mounts = ["-v", f"{CHECKS_DIR}:/ovc:ro", "-v", f"{out}:/out", "-e", f"OVC_SECONDS={max(0, int(seconds))}"]
     if patch is not None:
         mounts += ["-v", f"{patch}:/ovc-mutant.patch:ro"]
     if runtime is not None:
@@ -380,10 +395,12 @@ def record_breakages(checks, tag, workdir, *, labels):
         if changed is None:
             breakages.append(Breakage(label, None, records, problem=why))
             continue
-        before = data.decode("latin-1").splitlines(keepends=True)
-        after = changed.decode("latin-1").splitlines(keepends=True)
-        diff = "".join(difflib.unified_diff(before, after, f"a/{path}", f"b/{path}"))
-        breakages.append(Breakage(label, f"diff --git a/{path} b/{path}\n{diff}".encode("latin-1"), records))
+        # Split on \n only: str.splitlines would also split at bytes such as \x0c and \x85.
+        before = [line + b"\n" for line in data.split(b"\n")]
+        after = [line + b"\n" for line in changed.split(b"\n")]
+        diff = b"".join(difflib.diff_bytes(difflib.unified_diff, before, after, f"a/{path}".encode(),
+                                           f"b/{path}".encode()))
+        breakages.append(Breakage(label, f"diff --git a/{path} b/{path}\n".encode() + diff, records))
     return breakages
 
 
@@ -421,6 +438,8 @@ def describe(run):
     """What a failed run did, in words."""
     if run.status is None:
         return f"did not end within {RUN_TIMEOUT} seconds"
+    if run.status == NOT_RUN:
+        return "did not run before the time limit of the step"
     return f"exit status {run.status}" + (f" ({STATUS_NAMES[run.status]})" if run.status in STATUS_NAMES else "")
 
 
@@ -491,7 +510,10 @@ def evaluate(ctx, number, breakage, record_targets):
             breakage.outcome, breakage.detail = "measured", "no seed input to run"
             return breakage
         why = compile_check(ctx.tag, home / "coverage", "none", ctx.targets, labels=ctx.labels, patch=patch,
-                            runtime=ctx.runtime)
+                            runtime=ctx.runtime, seconds=max(60, ctx.deadline - time.monotonic()))
+        if why and time.monotonic() > ctx.deadline:
+            breakage.outcome = "not checked"
+            return breakage
         if why:
             breakage.outcome, breakage.detail = "does not build", why
             return breakage
@@ -501,9 +523,12 @@ def evaluate(ctx, number, breakage, record_targets):
         breakage.fired = {(check.path, check.line, check.column) for check in ctx.checks
                           if coverage.count(check.path, moved(check, shifts), check.column)}
         breakage.builds = ("coverage",)
-        if ctx.sanitizer and not any(run.caught() for run in runs):
+        caught = any(run.caught() and run.key() in ctx.passing for run in runs)
+        if ctx.sanitizer and not caught and time.monotonic() > ctx.deadline:
+            breakage.detail = f"the {ctx.sanitizer[0]} build was not made: the time budget ran out"
+        elif ctx.sanitizer and not caught:
             why = compile_check(ctx.tag, home / ctx.sanitizer[0], ctx.sanitizer[1], ctx.targets, labels=ctx.labels,
-                                patch=patch, ubsan=ctx.ubsan)
+                                patch=patch, ubsan=ctx.ubsan, seconds=max(60, ctx.deadline - time.monotonic()))
             if why:
                 breakage.detail = f"the {ctx.sanitizer[0]} build: {why}"
             else:
@@ -511,7 +536,9 @@ def evaluate(ctx, number, breakage, record_targets):
                                 labels=ctx.labels, total=max(60, ctx.deadline - time.monotonic()))
                 breakage.builds += (ctx.sanitizer[0],)
         breakage.runs = runs
-        breakage.outcome = "measured"
+        unrun = any(run.status == NOT_RUN for run in runs)
+        caught = any(run.caught() and run.key() in ctx.passing for run in runs)
+        breakage.outcome = "not checked" if unrun and not caught else "measured"
     except Failed as failure:
         breakage.outcome, breakage.detail = "does not build", str(failure)
     finally:
@@ -554,8 +581,9 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
     found = [check for path in harness
              for check in check_records.find_checks(sources.get(path, b"").decode("latin-1"), path)]
     notes = [check for check in found if check.note]
-    exempt = [check for check in found if not check.note and check.not_property is not None]
-    properties = [check for check in found if not check.note and check.not_property is None]
+    exempt = [check for check in found if not check.note and check.not_property is not None and not check.problems]
+    properties = [check for check in found if not check.note and check not in exempt]
+    badly_written = [check for check in found if check.problems]
     unreached = [check for check in properties if base.count(check.path, *check.guard_at) == 0]
     unmapped = [check for check in properties if base.count(check.path, *check.guard_at) is None]
     record_targets = {}
@@ -566,7 +594,8 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
     sanitizer = next(((build, value) for build, value in SANITIZER_BUILDS if build in job.builds), None)
     sanitizer_base = (run_all(tag, raw / sanitizer[0], inputs, seeds, sanitizer[0], home / "results-sanitizer",
                               labels=labels, total=BASELINE_MINUTES * 60) if sanitizer else [])
-    failing = [run for run in base_runs + sanitizer_base if not run.passed()]
+    unrun = [run for run in base_runs + sanitizer_base if run.status == NOT_RUN]
+    failing = [run for run in base_runs + sanitizer_base if not run.passed() and run.status != NOT_RUN]
     # A run stopped at a time limit is listed as failing, with "did not end": its seed then counts as no catch.
     passing = {run.key() for run in base_runs + sanitizer_base if run.passed()}
 
@@ -578,6 +607,9 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
     if no_corpus:
         lines.append(f"- **No seed corpus:** {', '.join(code(t) for t in no_corpus)}. Step 3.3 of the add-project "
                      "skill asks for one for each fuzz target.")
+    if unrun:
+        lines.append(f"- **Not measured:** {len(unrun)} runs of seed inputs did not start before the time limit of "
+                     f"{BASELINE_MINUTES} minutes, so a check that only they reach shows as not reached.")
     if failing:
         lines.append(f"- **Seed inputs that fail on the unchanged code:** {len(failing)}.")
         lines += listed([f"  - {code(run.target)} on {code(run.seed, 60)}, {run.build} build: {describe(run)}"
@@ -597,8 +629,12 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
     if notes:
         lines.append(f"- **Not read as checks:** {len(notes)} `abort()` calls.")
         lines += listed([f"  - {code(where(c))}: {c.note}" for c in notes], 20)
+    if badly_written:
+        lines.append(f"- **Comments whose records cannot be read:** {len(badly_written)}. The record format is in "
+                     "docs/build-contract.md, \"The checks of a fuzz target\".")
+        lines += listed([f"  - {code(where(c))}: {code('; '.join(c.problems), 200)}" for c in badly_written], 30)
     if exempt:
-        lines.append(f"- **Marked `not a property`:** {len(exempt)}, which need no input and no breakage. A reviewer "
+        lines.append(f"- **Marked `not a property`:** {len(exempt)}, which need no input and no breakage. The review "
                      "reads each reason.")
         lines += listed([f"  - {code(where(c))}: {code(c.not_property, 90)}" for c in exempt], 30)
 
