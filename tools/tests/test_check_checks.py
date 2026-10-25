@@ -159,6 +159,21 @@ class ReviewComment(unittest.TestCase):
         text = self.comment("", why="the review is not set up in this repository yet")
         self.assertIn("did not run on this push: the review is not set up", text)
 
+    def test_a_review_that_did_not_run_keeps_the_last_one(self):
+        first = self.comment("Thanks.\n\n1. Fix X.\n")
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            for why in ("the review job ended with the result failure", "again"):
+                (directory / "previous.md").write_text(first)
+                (directory / "checks.md").write_text("### report\n")
+                first = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--previous", str(directory / "previous.md"),
+                                        "--why", why, "--checks", str(directory / "checks.md")],
+                                       capture_output=True, text=True, check=True).stdout
+                self.assertIn("1. Fix X.", first)
+                self.assertIn(f"did not run: {why}", first)
+                self.assertEqual(first.count("did not run"), 1)
+                self.assertEqual(first.count("### report"), 1)
+
     def test_a_credential_is_never_posted(self):
         token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXBvOngifQ.c2lnbmF0dXJl"
         for leak in (token, "sk-ant-oat01-abcdefghijkl", "ghs_" + "a" * 36):

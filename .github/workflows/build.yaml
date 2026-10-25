@@ -222,7 +222,12 @@ jobs:
               file=$summary
               [ "$output" = binaries ] || file=$checks
               echo "$output<<$delimiter"
-              if [ -f "$file" ]; then head -c 60000 "$file"; echo; fi
+              if [ -f "$file" ]; then
+                head -c 60000 "$file"; echo
+                if [ "$(wc -c < "$file")" -gt 60000 ]; then
+                  echo "(Cut at 60,000 bytes: the rest is in the Build check's step summary.)"
+                fi
+              fi
               echo "$delimiter"
             done
           } >> "$GITHUB_OUTPUT"
@@ -278,7 +283,9 @@ jobs:
           CHECKS: ${{ needs.project-builds.outputs.checks }}
           BUILD_CONCLUSION: ${{ needs.project-builds.result }}
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml unzip
+          dpkg -s python3-yaml unzip > /dev/null 2>&1 \
+            || sudo apt-get install -y -qq python3-yaml unzip \
+            || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml unzip; }
           mkdir -p .review/build
           printf 'The Build check %s: %s.\n' "$BUILD_CONCLUSION" "${RESULT:-no result}" > .review/build/result.md
           printf '%s\n' "$BINARIES" > .review/build/binaries.md
@@ -361,12 +368,21 @@ jobs:
             success) why="" ;;
             *) why="the review job ended with the result $REVIEW_RESULT" ;;
           esac
-          python3 .github/scripts/review-comment --review "$RUNNER_TEMP/review.md" --why "$why" \
-            --checks "$RUNNER_TEMP/checks.md" > "$RUNNER_TEMP/comment.md"
           # Other workflows may comment as github-actions[bot] too; ours is the one that starts with the marker.
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- oss-verify-review -->"))) | .id')
           existing=${existing%%$'\n'*}
+          # A review that did not run leaves the last one in place, and says so above it.
+          if [ -n "$why" ] && [ -n "$existing" ]; then
+            gh api "repos/$REPO/issues/comments/$existing" --jq .body > "$RUNNER_TEMP/previous.md"
+            python3 .github/scripts/review-comment --previous "$RUNNER_TEMP/previous.md" --why "$why" \
+              --checks "$RUNNER_TEMP/checks.md" > "$RUNNER_TEMP/comment.md"
+            jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \
+              | gh api --method PATCH "repos/$REPO/issues/comments/$existing" --input - > /dev/null
+            exit 0
+          fi
+          python3 .github/scripts/review-comment --review "$RUNNER_TEMP/review.md" --why "$why" \
+            --checks "$RUNNER_TEMP/checks.md" > "$RUNNER_TEMP/comment.md"
           if [ -n "$existing" ]; then
             jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \
               | gh api --method PATCH "repos/$REPO/issues/comments/$existing" --input - > /dev/null

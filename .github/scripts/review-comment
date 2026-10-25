@@ -34,9 +34,19 @@ def main():
     parser.add_argument("--review", type=pathlib.Path, help="the review's comment.md")
     parser.add_argument("--why", default="", help="why there is no review, if there is none")
     parser.add_argument("--checks", type=pathlib.Path, help="the report of tools/check --checks")
+    parser.add_argument("--previous", type=pathlib.Path,
+                        help="the comment already posted: with --why, keep its review, below a note that this push "
+                             "had none")
     options = parser.parse_args()
 
     review = options.review.read_text(encoding="utf-8", errors="replace") if options.review else ""
+    if options.previous and options.why:
+        previous = options.previous.read_text(encoding="utf-8", errors="replace")
+        body = previous.split("\n## Enrollment review\n", 1)[-1].split("\n<details><summary>", 1)[0]
+        body = re.sub(r"^\*\*The review of the last push did not run[^\n]*\n\n", "", body.strip())
+        if body and not body.startswith("The review agent did not run"):
+            review = (f"**The review of the last push did not run: {options.why}. This is the review of an earlier "
+                      "push.**\n\n" + body)
     if CREDENTIAL.search(review):
         review, options.why = "", "its text held what looks like a credential, so it was not posted"
     review = review.replace(MARKER, "")
