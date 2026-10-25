@@ -30,7 +30,7 @@ Each binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp6
 
 ## Static riscv64 programs
 
-The statements use a formal model of a riscv64 Linux process ([what-gets-proven.md](what-gets-proven.md#the-statements)). A statement is about each byte of the program. A static program holds all of its code: the library, the fuzz target, the driver and the C library. Thus no code from outside the binary runs.
+The statements use [Linux Process Semantics (LPS)](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process ([what-gets-proven.md](what-gets-proven.md#the-statements)). A statement is about each byte of the program. A static program holds all of its code: the library, the fuzz target, the driver and the C library. Thus no code from outside the binary runs.
 
 ## Toolchains
 
@@ -327,7 +327,7 @@ A `go.lock` in the project directory pins the modules. It has one row for each `
 
 These items are different from a Go fuzz target in OSS-Fuzz:
 
-* The build uses a patched Go runtime. The patches are an overlay of the standard library (the `-overlay` flag of `go build`), and a rebuilt compiler. The Go toolchain itself does not change. The patches remove what the process model does not have: signal handlers, the second thread of the scheduler, reads of the environment, of `/proc` and of `/sys`, and the vector instructions of riscv64. They also give the exit statuses below.
+* The build uses a patched Go runtime. The patches are an overlay of the standard library (the `-overlay` flag of `go build`), and a rebuilt compiler. The Go toolchain itself does not change. The patches remove what LPS does not have: signal handlers, the second thread of the scheduler, reads of the environment, of `/proc` and of `/sys`, and the vector instructions of riscv64. They also give the exit statuses below.
 * A load through a nil pointer is a segmentation fault (status 139), not a panic, because the runtime installs no signal handler. A statement counts 139 as a failure, as it counts a panic.
 * A panic, a runtime error, and `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test exit with status 79. In OSS-Fuzz, they crash the fuzz target.
 * `os.Exit` during a call of the fuzz target exits with status 77.
@@ -432,6 +432,6 @@ We checked each port with `tools/check --lock`, against each `harness.yaml` of t
 
 ## Build patches
 
-A build patch of an enrollment can only change how the project builds: static linking, cross-compilation, a version stamp or a generated file. `series` lists the build patches in the order of application. A change that fixes a bug is not a build patch of an enrollment. It never goes in the directory of an enrolled project. We send it to the project as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).
+A build patch of an enrolled project can only change how the project builds: static linking, cross-compilation, a version stamp or a generated file. `series` lists the build patches in the order of application. A change that fixes a bug is not a build patch of an enrolled project. It never goes in the directory of an enrolled project. We send it to the project as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)).
 
-A port that we publish can also carry a fix for a bug as a build patch, once the finding of that bug is public. A proof can then be about the fixed build. The project's facts in the proofs repository list each such patch, with its upstream state ([what-gets-proven.md](what-gets-proven.md#where-the-claims-come-from)). The build patches of an enrollment still only change how the project builds.
+A port that we publish can also have a patch that fixes a bug, once the finding of that bug is public. A proof can then be about the build with the fix. The project's facts in the proofs repository list each such patch, with its text, a summary, and whether the bug is reported to the project, fixed in the project, or not a bug ([what-gets-proven.md](what-gets-proven.md#where-the-claims-come-from)). The build patches of an enrolled project still only change how the project builds.

@@ -215,14 +215,15 @@ With each value, we hold back each statement that shows a finding that is not pu
 
 We seeded some projects ourselves. A project whose proofs we publish in [oss-verify-proofs](https://github.com/theorem-labs/oss-verify-proofs) is in `projects/<name>/`. Each other one is in [tools/seeds/](../tools/seeds/)`<name>/`: its `project.yaml`, and its build files if it has any. We used the build data of the oss-fuzz-theorems 2026.10 release. A seeded project has `primary_contact: n/a`. Its `project.yaml` starts with two comment lines that tell that we seeded it. `tools/validate.py` warns about `n/a`, and the triage comment on a pull request shows it.
 
-We seeded the projects of OSS-Fuzz, at its commit `bd2ce21991a94a362b92fb1bf25f86d5a1a60842`, that our builder can build and that we can describe honestly. A seeded `project.yaml` gives only what the recorded build data tells, and no guess. [seeded-projects.tsv](seeded-projects.tsv) lists each of the 1,381 projects of OSS-Fuzz at that commit. For a project that we did not seed, it gives the reason.
+From [this commit of OSS-Fuzz](https://github.com/google/oss-fuzz/tree/bd2ce21991a94a362b92fb1bf25f86d5a1a60842), we seeded each project that our builder can build and that we can describe honestly. A seeded `project.yaml` gives only what the recorded build data tells, and no guess. [seeded-projects.tsv](seeded-projects.tsv) lists each of the 1,381 projects of OSS-Fuzz at that commit. For a project that we did not seed, it gives the reason.
 
 A core maintainer can adopt a seeded project:
 
 1. Copy its `projects/<name>/`, or its `tools/seeds/<name>/`, to `projects/<name>/` in a branch of your fork.
-2. Set `primary_contact` to the address that gets findings.
-3. Remove the two comment lines.
-4. Do the steps in the [README](../README.md#enroll-a-project) from step 3.
+2. Remove each patch that fixes a bug from the directory and from `series`. Such a patch is permitted in a port that we publish, but not in an enrolled project ([above](#build-patches)).
+3. Set `primary_contact` to the address that gets findings.
+4. Remove the two comment lines.
+5. Do the steps in the [README](../README.md#enroll-a-project) from step 3.
 
 The build files of a seeded project come from the build recipe of that release. They make that release's binaries again, byte for byte. Keep them, or write your own. If a seeded project has no build files, [seeded-projects.tsv](seeded-projects.tsv) tells why. Add a `Dockerfile` and a `build.sh` before you open the pull request.
 
@@ -254,7 +255,7 @@ A seed corpus is a zip file of example inputs of one fuzz target. Together, its 
 
 `series` lists the build patches, one file name on each line, in the order in which we apply them. We ignore empty lines and lines that start with `#`. List each patch exactly once.
 
-A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the directory of your project. We send it to you as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)). Only a port that we publish can carry a fix for a bug, once its finding is public ([build-contract.md](build-contract.md#build-patches)).
+A build patch can only change how the project builds. For example, it can make the build static, set up cross-compilation, correct a version stamp or make a generated file. A change that fixes a bug is not a build patch. It never goes in the directory of your project. We send it to you as a patch, with its finding ([what-gets-proven.md](what-gets-proven.md#findings)). A seeded project that we publish can also have such a patch, after its finding is public ([build-contract.md](build-contract.md#build-patches)).
 
 ### Rules for each file
 

@@ -6,11 +6,11 @@ This repository tells how to build the fuzz targets of a project. The statements
 
 ## The statements
 
-A statement is about the exact bytes of one binary: one fuzz target in one build, pinned by its SHA-256 in the lock. We state it in [rocq-linux-process-semantics](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process. A statement is about each input that the process can get:
+A statement is about the exact bytes of one binary: one fuzz target in one build, pinned by its SHA-256 in the lock. We state it in [Linux Process Semantics (LPS)](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process. A statement is about each input that the process can get:
 
 * the input file and its contents, or no file;
 * the arguments and the environment;
-* the rest of the process's world, as the model defines it.
+* the rest of the process's world, as LPS defines it.
 
 There are two main statements:
 
@@ -40,11 +40,11 @@ There are exceptions, and this is the full list. Each exception is a limit of ho
 * **Leaks.** Leak detection is off in the AddressSanitizer builds (`detect_leaks=0`). The leak check of LeakSanitizer at exit cannot run in the sealed static runtime. Thus a leak, which OSS-Fuzz reports, is not an error here.
 * **A UBSan check that trap mode cannot make.** The UBSan builds trap, with no runtime. Thus they leave out `vptr`, which needs a runtime. OSS-Fuzz makes it ([below](#ubsan-checks)).
 * **No MemorySanitizer.** There is no MemorySanitizer build, so we do not check reads of uninitialized memory. OSS-Fuzz runs MemorySanitizer for some projects. MemorySanitizer needs each library in the program built with it, the C and C++ libraries included. This static riscv64 toolchain does not supply them.
-* **One thread.** The process model runs one thread. A fuzz target that starts a thread leaves the model. We cannot prove its statements until the model includes threads.
+* **One thread.** A process in LPS runs one thread. LPS does not cover a fuzz target that starts a thread. We cannot prove the statements of such a fuzz target until LPS includes threads.
 * **Inputs smaller than 64 MiB.** The driver refuses an input file of 64 MiB or more, with status 2. Thus no statement is about a larger input.
 * **The size classes of the AddressSanitizer allocator.** On riscv64, this allocator refuses a request when the size class of the request holds 3.5 GiB. The plain build can use up to 16 GiB. Thus an AddressSanitizer build can refuse memory to an input that the plain build accepts. For this cause, their budgets are different ([below](#memory-budgets)).
 
-*This list is a draft. We will audit it against the toolchain and the process model.*
+*This list is a draft. We will audit it against the toolchain and LPS.*
 
 ## UBSan checks
 
@@ -64,7 +64,7 @@ The default of a `c` or `python` project is the same, less `function`, and so ar
 
 A program can run out of memory, and a statement must tell what happens then. The statements obey these rules:
 
-* **Exhaustion is part of the statement.** The process model refuses a memory request only when the build has used its budget. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
+* **Exhaustion is part of the statement.** LPS refuses a memory request only when the build has used its budget. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
 * **Refusals at start do not count.** A statement is not about a program that gets no memory before it gets to the fuzz target.
 * **No allocation fails at random.** No statement lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
 
@@ -121,7 +121,7 @@ A proof does not cover these items:
 * the exceptions above, and errors that no sanitizer checks, here or in OSS-Fuzz, for example an access through another live object;
 * code that no sanitizer instruments: the C library, the compiler's runtime libraries and the sanitizer runtime. OSS-Fuzz does not instrument them either;
 * inputs that need more memory than the budget;
-* what the process model leaves out. The model's documentation tells where it is narrower than Linux.
+* what LPS leaves out. The documentation of LPS tells where it is narrower than Linux.
 
 ## Findings
 
@@ -139,7 +139,7 @@ A seeded project has `primary_contact: n/a`, because no maintainer has adopted i
 * We send a finding for a seeded project to no one. Nothing goes automatically to the project, to its security contact or to another person.
 * There is no deadline.
 * The finding stays with us until a person gives it to the project by hand.
-* While the finding stands, we do not publish the project's statements and proofs.
+* Until the finding is public, we do not publish the project's statements and proofs.
 
 To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).
 
@@ -163,7 +163,7 @@ The `publish` field tells us when to publish the proofs, and the `proofs` field 
 We write the lock from the manifest of `tools/check` ([build-contract.md](build-contract.md#the-manifest)). Each value of `publish` obeys these rules:
 
 * We publish nothing that shows a finding that is not public yet. We hold back the statements that the finding affects until it is public. What we publish does not tell why.
-* We publish a seeded project only while it has no findings.
+* We publish a seeded project only while none of its findings is private.
 * If a proof needed a patch to the project's code, we publish it only once the finding that the patch fixes is public. We list the patch with the proof: its text, a summary, and whether the project has it.
 
 ## Where the claims come from
@@ -174,6 +174,8 @@ Each public claim rests on three pinned inputs:
 * the commit of this repository that holds the build files;
 * the digest of the toolchain image.
 
-We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released process model, these build files, and the project's source. The build files can apply patches to the source, in the order that `series` gives. Thus a published proof can be about a build that carries patches. The project's facts in the proofs repository list each patch of such a build, with its upstream state: whether we reported it to the project, and whether the project has it ([facts.md](https://github.com/theorem-labs/oss-verify-proofs/blob/main/docs/facts.md)). A patch that fixes a bug can be in the build files of a port that we publish, and only once its finding is public ([above](#publishing), [build-contract.md](build-contract.md#build-patches)).
+We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released version of LPS, these build files, and the project's source. The build files can apply patches to the source, in the order that `series` gives. A published proof can thus be about a build that has patches.
 
-To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. `tools/check` uses the build files at the commit that the lock names, with their patches. Thus it also rebuilds a binary whose build carries patches.
+A patch that fixes a bug can be in the build files of a port that we publish, and only once its finding is public ([above](#publishing), [build-contract.md](build-contract.md#build-patches)). The project's facts in the proofs repository list each such patch, with its text, a summary, and whether the bug is reported to the project, fixed in the project, or not a bug. They also give the number of all the patches that the build applies ([facts.md](https://github.com/theorem-labs/oss-verify-proofs/blob/main/docs/facts.md)).
+
+To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. Check out this repository at the commit that built the binary. `tools/check` then applies the patches that `series` lists at that commit. Thus it rebuilds a published port that has patches.

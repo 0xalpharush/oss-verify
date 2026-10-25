@@ -115,7 +115,7 @@ The decoding is total (3.1). Also bound each count, size and loop that comes fro
 
 ### 3.6 Depend only on the input
 
-The process model has one thread, and the input is its only data. Thus obey these rules:
+The statements use [Linux Process Semantics (LPS)](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process. In LPS, a process has one thread, and the input is its only data. Thus obey these rules:
 
 - Do not start a thread.
 - Do not read a clock.
@@ -175,7 +175,7 @@ Copy `templates/Dockerfile` and `templates/build.sh` into `projects/<name>/`, an
 - In `build.sh`, compile each fuzz target. Link it into `$OUT` with `$LIB_FUZZING_ENGINE`, through `$CC` or `$CXX`.
 - Make static riscv64 Linux programs. Do not use shared libraries, run a compiled program, use the network in `build.sh`, or strip a binary after the link.
 
-If a dependency needs a patch to build, make it a build patch in `projects/<name>/`. List it in `series`. A change that fixes a bug in the project is not a build patch. It never goes in the project directory.
+If a dependency needs a patch to build, make it a build patch in `projects/<name>/`. List it in `series`. A change that fixes a bug in the project is not a build patch. It never goes in the project directory. If you start from a seeded project that we publish, remove each patch that fixes a bug from the directory and from `series` (`docs/project-yaml.md`, "Seeded projects").
 
 ## 5. Write project.yaml
 

@@ -34,7 +34,7 @@ trees out under /work, where the release's build had them.
     gomodules <path>  <project file>          the Go modules that a go.lock pins, as a module proxy directory for
                                               GOPROXY=file://<root>/<path>: each .mod and .zip downloaded from
                                               proxy.golang.org and checked, each .info as the lock holds it
-    patch    <path>  <project file>           a build-only patch, applied to the tree at <path> with git apply
+    patch    <path>  <project file>           a patch, applied to the tree at <path> with git apply
 
 The directives run in order, and the patches in the order the project's series file lists them, which must be the
 order they appear here. A commit and a sha256 are the pins of a project's dependencies: this file is their only home

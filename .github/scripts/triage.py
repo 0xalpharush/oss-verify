@@ -464,8 +464,8 @@ def seeded_contact_row(config: dict, association: str) -> tuple[str, str]:
     an enrollment names the address that gets findings."""
     if association in ASSOCIATIONS:
         return INFO, ("`n/a`: a project seeded by this repository's maintainers, not enrolled by the project's own. It is "
-                      "published only while it has no findings, and a finding for it is sent to no one automatically "
-                      "(docs/what-gets-proven.md, Findings)")
+                      "published only while none of its findings is private, and a finding for it is sent to no one "
+                      "automatically (docs/what-gets-proven.md, Findings)")
     return WARN, (
         "`primary_contact` is `n/a`, which only a project seeded by this repository's maintainers may say: an "
         "enrollment names the address that gets findings"
