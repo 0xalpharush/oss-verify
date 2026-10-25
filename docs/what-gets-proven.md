@@ -6,11 +6,11 @@ This repository tells how to build the fuzz targets of a project. The statements
 
 ## The statements
 
-A statement is about the exact bytes of one binary: one fuzz target in one build, pinned by its SHA-256 in the lock. We state it in [rocq-linux-process-semantics](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process. A statement is about each input that the process can get:
+A statement is about the exact bytes of one binary: one fuzz target in one build, pinned by its SHA-256 in the lock. We state it in [Linux Process Semantics (LPS)](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process. A statement is about each input that the process can get:
 
 * the input file and its contents, or no file;
 * the arguments and the environment;
-* the rest of the process's world, as the model defines it.
+* the rest of the process's world, as LPS defines it.
 
 There are two main statements:
 
@@ -40,11 +40,11 @@ There are exceptions, and this is the full list. Each exception is a limit of ho
 * **Leaks.** Leak detection is off in the AddressSanitizer builds (`detect_leaks=0`). The leak check of LeakSanitizer at exit cannot run in the sealed static runtime. Thus a leak, which OSS-Fuzz reports, is not an error here.
 * **A UBSan check that trap mode cannot make.** The UBSan builds trap, with no runtime. Thus they leave out `vptr`, which needs a runtime. OSS-Fuzz makes it ([below](#ubsan-checks)).
 * **No MemorySanitizer.** There is no MemorySanitizer build, so we do not check reads of uninitialized memory. OSS-Fuzz runs MemorySanitizer for some projects. MemorySanitizer needs each library in the program built with it, the C and C++ libraries included. This static riscv64 toolchain does not supply them.
-* **One thread.** The process model runs one thread. A fuzz target that starts a thread leaves the model. We cannot prove its statements until the model includes threads.
+* **One thread.** A process in LPS runs one thread. LPS does not cover a fuzz target that starts a thread. We cannot prove the statements of such a fuzz target until LPS includes threads.
 * **Inputs smaller than 64 MiB.** The driver refuses an input file of 64 MiB or more, with status 2. Thus no statement is about a larger input.
 * **The size classes of the AddressSanitizer allocator.** On riscv64, this allocator refuses a request when the size class of the request holds 3.5 GiB. The plain build can use up to 16 GiB. Thus an AddressSanitizer build can refuse memory to an input that the plain build accepts. For this cause, their budgets are different ([below](#memory-budgets)).
 
-*This list is a draft. We will audit it against the toolchain and the process model.*
+*This list is a draft. We will audit it against the toolchain and LPS.*
 
 ## UBSan checks
 
@@ -64,7 +64,7 @@ The default of a `c` or `python` project is the same, less `function`, and so ar
 
 A program can run out of memory, and a statement must tell what happens then. The statements obey these rules:
 
-* **Exhaustion is part of the statement.** The process model refuses a memory request only when the build has used its budget. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
+* **Exhaustion is part of the statement.** LPS refuses a memory request only when the build has used its budget. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
 * **Refusals at start do not count.** A statement is not about a program that gets no memory before it gets to the fuzz target.
 * **No allocation fails at random.** No statement lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
 
@@ -121,7 +121,7 @@ A proof does not cover these items:
 * the exceptions above, and errors that no sanitizer checks, here or in OSS-Fuzz, for example an access through another live object;
 * code that no sanitizer instruments: the C library, the compiler's runtime libraries and the sanitizer runtime. OSS-Fuzz does not instrument them either;
 * inputs that need more memory than the budget;
-* what the process model leaves out. The model's documentation tells where it is narrower than Linux.
+* what LPS leaves out. The documentation of LPS tells where it is narrower than Linux.
 
 ## Findings
 
@@ -175,6 +175,6 @@ Each public claim rests on three pinned inputs, and on a fourth when a proof nee
 * the digest of the toolchain image;
 * for a proof that needed a patch to the project's code, the patch, which we publish with the proof ([above](#publishing)).
 
-We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released process model, these build files, and the project's source as it is, or with the published patch. A patch that fixes a bug is never in the project directory: the build files there contain build patches only, which change how the project builds and fix no bug ([project-yaml.md](project-yaml.md#build-patches)).
+We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released version of LPS, these build files, and the project's source as it is, or with the published patch. A patch that fixes a bug is never in the project directory: the build files there contain build patches only, which change how the project builds and fix no bug ([project-yaml.md](project-yaml.md#build-patches)).
 
 To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. `tools/check` builds the project's source as it is, so it does not rebuild a binary that needed a patch to the project's code.

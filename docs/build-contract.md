@@ -30,7 +30,7 @@ Each binary is a static riscv64 Linux program for RV64G (`-march=rv64g -mabi=lp6
 
 ## Static riscv64 programs
 
-The statements use a formal model of a riscv64 Linux process ([what-gets-proven.md](what-gets-proven.md#the-statements)). A statement is about each byte of the program. A static program holds all of its code: the library, the fuzz target, the driver and the C library. Thus no code from outside the binary runs.
+The statements use [Linux Process Semantics (LPS)](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process ([what-gets-proven.md](what-gets-proven.md#the-statements)). A statement is about each byte of the program. A static program holds all of its code: the library, the fuzz target, the driver and the C library. Thus no code from outside the binary runs.
 
 ## Toolchains
 
@@ -306,7 +306,7 @@ A `go.lock` in the project directory pins the modules. It has one row for each `
 
 These items are different from a Go fuzz target in OSS-Fuzz:
 
-* The build uses a patched Go runtime. The patches are an overlay of the standard library (the `-overlay` flag of `go build`), and a rebuilt compiler. The Go toolchain itself does not change. The patches remove what the process model does not have: signal handlers, the second thread of the scheduler, reads of the environment, of `/proc` and of `/sys`, and the vector instructions of riscv64. They also give the exit statuses below.
+* The build uses a patched Go runtime. The patches are an overlay of the standard library (the `-overlay` flag of `go build`), and a rebuilt compiler. The Go toolchain itself does not change. The patches remove what LPS does not have: signal handlers, the second thread of the scheduler, reads of the environment, of `/proc` and of `/sys`, and the vector instructions of riscv64. They also give the exit statuses below.
 * A load through a nil pointer is a segmentation fault (status 139), not a panic, because the runtime installs no signal handler. A statement counts 139 as a failure, as it counts a panic.
 * A panic, a runtime error, and `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test exit with status 79. In OSS-Fuzz, they crash the fuzz target.
 * `os.Exit` during a call of the fuzz target exits with status 77.
