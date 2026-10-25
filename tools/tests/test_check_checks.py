@@ -38,6 +38,13 @@ class Shifts(unittest.TestCase):
         near = check_checks.hunk_shifts(b"+++ b/fuzz/f.c\n@@ -10,7 +10,6 @@\n a\n b\n-c\n d\n e\n f\n g\n", "/src/p")
         self.assertEqual(check_checks.moved(check(15), near), 14)
 
+    def test_two_files(self):
+        patch = (b"--- a/fuzz/f.c\n+++ b/fuzz/f.c\n@@ -10,1 +10,1 @@\n-x\n+y\n"
+                 b"--- a/src/lib.c\n+++ b/src/lib.c\n@@ -5 +5,2 @@\n-p\n+q\n+r\n")
+        shifts = check_checks.hunk_shifts(patch, "/src/p")
+        self.assertEqual(shifts["/src/p/fuzz/f.c"], [(10, -1), (11, 1)])
+        self.assertEqual(check_checks.moved(check_records.Check(40, None, path="/src/p/fuzz/f.c"), shifts), 40)
+
     def test_record_patches_apply_on_the_last_lines(self):
         import subprocess, tempfile
         for ending in (b"\n", b""):

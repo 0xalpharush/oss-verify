@@ -395,7 +395,7 @@ def find_checks(text, path=""):
                       guard_at=(first, column_of(guard[0])) if guard else None,
                       text=source_lines[first - 1].strip())
         parse_records([clean(part) for number in sorted(lines) for part in pieces.get(number, [])], check)
-        if guard is None and check.not_property is None:
+        if guard is None and (check.not_property is None or check.problems):
             check.note = ("no condition in its function guards this abort(), so no seed that passes reaches it: "
                           "write `if (!condition) abort();`")
         checks.append(check)
@@ -415,7 +415,8 @@ def mutate(data, record):
     lines = data.split(b"\n")
     if not 1 <= record.line <= len(lines):
         return None, f"{record.path} has {len(lines)} lines, not {record.line}"
-    old, new = record.old.encode(), record.new.encode()
+    # The comment was read as latin-1, so its text is encoded back the same way: byte for byte.
+    old, new = record.old.encode("latin-1"), record.new.encode("latin-1")
     count = lines[record.line - 1].count(old)
     if count != 1:
         return None, f"`{record.old}` occurs {count} times on {record.path}:{record.line}, not once"

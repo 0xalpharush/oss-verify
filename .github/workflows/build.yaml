@@ -109,9 +109,9 @@ jobs:
     name: project-builds
     # 24.04, not ubuntu-latest: Ubuntu 26.04 has no qemu-user-static package, which --checks takes qemu from.
     runs-on: ubuntu-24.04
-    # tools/check has no time limit of its own: this one is the runner's, for two builds and --checks (at most 2 x 20
-    # minutes of seed runs on the unchanged code, and the 60-minute budget of the breakages).
-    timeout-minutes: 330
+    # tools/check has no time limit of its own: this one is the runner's, the most it allows, for two builds and
+    # --checks (at most 2 x 20 minutes of seed runs on the unchanged code, and the 45-minute budget of the breakages).
+    timeout-minutes: 360
     permissions:
       contents: read
       pull-requests: read
@@ -145,13 +145,18 @@ jobs:
           # Unused toolchains, removed to free disk for the build: the toolchain image alone is about 6 GB.
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
-          sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml
+          dpkg -s python3-yaml > /dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
           # qemu-riscv64-static runs the fuzz targets for tools/check --checks, inside a container of the project image.
           # It is taken out of its package, not installed: the package registers qemu with the kernel for riscv64
           # programs (binfmt_misc), and a build.sh could then run the riscv64 programs that it makes. (From #24.)
-          mkdir "$RUNNER_TEMP/qemu" && cd "$RUNNER_TEMP/qemu" && apt-get download -q qemu-user-static
-          dpkg-deb -x qemu-user-static_*.deb . && test -x usr/bin/qemu-riscv64-static
-          echo "$RUNNER_TEMP/qemu/usr/bin" >> "$GITHUB_PATH"
+          # Without it, --checks says that it could not measure, and the build is checked as before.
+          mkdir "$RUNNER_TEMP/qemu" && cd "$RUNNER_TEMP/qemu"
+          if { apt-get download -q qemu-user-static || { sudo apt-get update -qq && apt-get download -q qemu-user-static; }; } \
+              && dpkg-deb -x qemu-user-static_*.deb . && test -x usr/bin/qemu-riscv64-static; then
+            echo "$RUNNER_TEMP/qemu/usr/bin" >> "$GITHUB_PATH"
+          else
+            echo "::warning::No qemu-riscv64-static: tools/check --checks cannot run the fuzz targets."
+          fi
 
       - name: Pull the pinned toolchain image
         if: steps.project.outputs.name != ''
@@ -184,7 +189,8 @@ jobs:
           # The path, as in the pull step, never the bare name: tools/check reads a bare name as a directory of the
           # checkout's root when that directory has a project.yaml, as templates/ does. Its table shows a target name,
           # which the pull request chooses, in code with every unusual byte as %XX. --checks changes no exit status.
-          python3 tools/check --no-shell --twice --summary "$summary" --checks "$checks" "projects/$NAME" < /dev/null \
+          python3 tools/check --no-shell --twice --summary "$summary" --checks "$checks" --checks-budget 45 \
+            "projects/$NAME" < /dev/null \
             || code=$?
           echo "::$resume::"
 

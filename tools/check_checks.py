@@ -158,15 +158,19 @@ def files_of(export):
 def hunk_shifts(patch, workdir):
     """{path in the image: [(old line, +1 or -1)]}: each line that a unified diff adds (before that old line) or removes
     (that old line), so that a check's line in the unchanged file can be moved to its line in the changed one."""
-    shifts, path, old = {}, None, None
+    shifts, path, old, left = {}, None, None, 0
     for line in patch.decode("utf-8", "replace").split("\n"):
-        if line.startswith("+++ "):
+        if line.startswith("diff --git "):
+            path, old = None, None
+        elif (old is None or left <= 0) and line.startswith("+++ "):
             name = line[4:].strip().split("\t")[0]
             path = None if name == "/dev/null" else str(pathlib.PurePosixPath(workdir) / name.removeprefix("b/"))
             old = None
-        elif path and (found := re.match(r"@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@", line)):
+        elif path and (found := re.match(r"@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@", line)):
             old = int(found[1])
-        elif path and old is not None and line[:1] in ("-", "+", " "):
+            left = int(found[2] or 1) + int(found[3] or 1)
+        elif path and old is not None and left > 0 and line[:1] in ("-", "+", " "):
+            left -= 1 if line[0] != " " else 2
             if line[0] == "-":
                 shifts.setdefault(path, []).append((old, -1))
                 old += 1
