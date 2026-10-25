@@ -83,15 +83,31 @@ Write a small set of example inputs. Together, they must run each API call and e
 
 ### 3.4 Show that each property can fail
 
-For each property, find a distinguishing mutant:
+For each property, find a breakage: a one-line change that makes the property fail on an input of the seed corpus.
 
 1. Make a one-line change that breaks the property, in the library or in the fuzz target. For example, flip a comparison or remove an update.
 2. Rebuild the fuzz target of 3.3.
-3. Find an input that makes the fuzz target abort. Run the fuzz target as a fuzzer, or write the input by hand. A run of a few minutes is usually enough: for example, `./<target> -max_total_time=120 <directory>`.
-4. Undo the change.
-5. In the comment of the property, record the change and the input.
+3. Find an input that makes the fuzz target abort. Run the fuzz target as a fuzzer, or write the input by hand. A run of a few minutes is usually enough: for example, `./<target> -max_total_time=120 <directory>`. Add the input to the seed corpus.
+4. Undo the change, and record it in the comment of the property, with the input:
 
-A property that no change can make fail checks nothing. Write it again.
+       /* The checksum of the block closes.
+        * mutant: src/checksum.c:51 `return sum == 0;` -> `return 1;`
+        * input: corrupt-block */
+       if (!block_sums_to_zero(frame)) abort();
+
+   The path starts at the `WORKDIR` of the `Dockerfile`. The line is the line number at the commit that `repo` names. The old text occurs once on that line. `docs/build-contract.md`, "The checks of a fuzz target", gives the format.
+
+A property that no change can make fail checks nothing. Write it again. A stop that is not a property, for example `if (!buf) abort();` after a failed allocation, gets the line `not a property: <reason>` in its comment, in place of a record.
+
+A change of several lines can be a patch instead: save it with `git diff`, in one directory for all such patches, and set `mutants` in `project.yaml` to that directory ([docs/project-yaml.md](../../../docs/project-yaml.md#mutants)).
+
+**These checks run on each pull request.** The Build check measures steps 3.3 and 3.4 for a C or C++ project ([docs/build-contract.md](../../../docs/build-contract.md#the-checks-of-a-fuzz-target)). It builds the fuzz targets with coverage and runs each one on each seed input. Then it applies each breakage in turn, a `mutant:` record or a patch, builds again, and runs the seed inputs again. Then Claude reviews the fuzz targets with `.claude/skills/review-enrollment/SKILL.md`: whether each check tests what its comment says, in both directions, and whether a check takes its expected value from the library under test. The maintainer sees one comment on the pull request, which the next push replaces. It asks for each fix, and under it, the Build check's report lists:
+
+- each check `if (...) abort();` that no seed input reaches;
+- each `mutant:` record whose input does not make its check fire, and each breakage patch that no seed input catches;
+- each check that no breakage, record or patch, makes fire.
+
+To see the same report before you open the pull request, run `tools/check --no-shell --checks report.md <name>`. It needs `qemu-riscv64-static` on `PATH` ([docs/build-contract.md](../../../docs/build-contract.md#the-checks-of-a-fuzz-target) says how to get it).
 
 ### 3.5 Make each run end quickly
 
@@ -185,7 +201,7 @@ For `ubsan_checks`, suggest the default: it is the list of OSS-Fuzz for the proj
 2. Run `tools/check --no-shell --twice <name>`. Correct each problem.
 3. Make sure that the fuzz targets that `tools/check` finds in each build are those in `fuzz_targets`.
 4. Make sure that `tools/check` tells you that the second build has the same bytes.
-5. Make sure that each property has a coverage witness (3.3) and a distinguishing mutant (3.4).
+5. Make sure that each property has a coverage witness (3.3) and a breakage (3.4): a `mutant:` record or a patch. `tools/check --no-shell --checks report.md <name>` lists each check that misses one.
 
 ## 7. Prepare the pull request
 

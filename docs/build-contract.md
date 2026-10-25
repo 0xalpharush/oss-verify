@@ -291,10 +291,31 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 
 * Each property is a check that calls `abort()`, not an `assert()`, which `NDEBUG` removes.
 * A seed corpus runs each API call and each property check at least once ([project-yaml.md](project-yaml.md#seed-corpora)).
-* For each property, a one-line change to the code makes the fuzz target abort on a recorded input.
+* For each property, a one-line change to the code makes the fuzz target abort on an input of the seed corpus. The change is a `mutant:` record in the check's comment, or a patch in the directory that `mutants` names ([below](#the-checks-of-a-fuzz-target), [project-yaml.md](project-yaml.md#mutants)).
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
 * `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+
+## The checks of a fuzz target
+
+`tools/check --checks <file>` measures the second and third rules above for a C or C++ project, on the inputs of its seed corpora, and writes a report in Markdown. The Build check of each enrollment pull request runs it and shows the report in its step summary and in its comment on the pull request. What it finds changes no exit status. It does these steps:
+
+1. **A coverage build.** It builds the `plain` build again, with `-O0 -fprofile-instr-generate -fcoverage-mapping`, with LLVM's profile runtime, and with `abort()` wrapped so that the profile is written before the program aborts. The toolchain image has no profile runtime, so `tools/check` downloads compiler-rt's source for the toolchain's LLVM version once, checks its SHA-256, and compiles the runtime in the build's container ([tools/checks/compile-check](../tools/checks/compile-check)).
+2. **The runs.** It runs each fuzz target on each input of its seed corpus, with the six-byte header in front ([above](#the-driver)), with `qemu-riscv64-static` in a container of the project image with no network ([tools/checks/run-seeds](../tools/checks/run-seeds)). A run that does not end in 120 seconds counts as a failure. The inputs also run on the project's most checking sanitizer build: `asan-ubsan`, else `asan`, else `ubsan`.
+3. **The checks.** A check is a call of `abort()` in a file that defines `LLVMFuzzerTestOneInput`, or in another file of its directory. Its guard is what decides whether it runs: the condition of the `if`, `while` or `for` of which it is the body (also through `else`, and also after other statements of the block), or the `switch` of a `case` or `default` label. A check is reached when a run evaluates its guard. The report lists each check that no input reaches. It lists apart, and does not measure, an `abort()` that nothing guards, one inside an expression, and one in a macro definition.
+4. **The breakages.** A breakage is a change to the code that must make a check fire. There are two kinds, and a project can use both:
+   - **A record in the check's comment** (step 3.4 of the add-project skill), one or more pairs of lines:
+
+         mutant: <path>:<line> `<old>` -> `<new>`
+         input: <file name in the seed corpus>
+
+     `<path>` starts at the `WORKDIR` of the `Dockerfile`, and `<line>` is its line at the built commit, after the `Dockerfile` copies the project's files in. `<old>` occurs once on that line, and the change replaces it with `<new>`, which can be empty. The record is met when its input fails with the change, and passes without it.
+   - **A patch in the `mutants` directory** ([project-yaml.md](project-yaml.md#mutants)). A patch is caught when any seed input that passes without it fails with it.
+
+   For each breakage, it makes the coverage build with the change and runs the inputs: a record's own input, or every input for a patch. If no run failed, it also makes the sanitizer build with the change and runs the inputs on it. A run fails when it exits with a status other than 0 and 2. A run that does not end within 120 seconds counts as neither a pass nor a failure. The coverage build also shows which checks fired. The breakages build in parallel, for at most `--checks-budget` minutes (60 by default). The report lists each record that is not met, each patch that no input catches, each breakage that does not apply or build, each one that the budget left unchecked, and each check that no breakage makes fire. A patch is applied with `git apply` in the `WORKDIR`, and can change only files under it.
+5. **Not a property.** A stop that is not a property, for example `if (!buf) abort();` after a failed allocation, has one line `not a property: <reason>` in its comment, in place of the records. It needs no input and no breakage. The report lists it with its reason, for the review.
+
+It needs `qemu-riscv64-static` on `PATH`, and compiler-rt's source from GitHub on the first run. On Ubuntu 24.04, take qemu out of its package, and do not install it, because the package registers qemu with the kernel for riscv64 programs: `apt-get download qemu-user-static && dpkg-deb -x qemu-user-static_*.deb <directory>`, then add `<directory>/usr/bin` to `PATH`.
 
 ## Go fuzz targets
 

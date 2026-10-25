@@ -62,7 +62,7 @@ PROJECTS = pathlib.Path(__file__).resolve().parent.parent / "projects"
 REQUIRED_KEYS = ("repo", "primary_contact", "language")
 OPTIONAL_KEYS = (
     "auto_ccs", "homepage", "pgp", "disabled", "dockerfile",
-    "sanitizers", "ubsan_checks", "fuzz_targets", "patch_style", "budgets", "proofs", "publish",
+    "sanitizers", "ubsan_checks", "fuzz_targets", "patch_style", "budgets", "proofs", "publish", "mutants",
 )
 ALLOWED_KEYS = REQUIRED_KEYS + OPTIONAL_KEYS
 # Settings controlled by the program's operators. A pull request may not set them. There are none yet.
@@ -277,9 +277,11 @@ def check_keys(config):
 
 def check_types(config):
     """Yield a problem for each field that has the wrong YAML type."""
-    for key in ("primary_contact", "homepage", "pgp", "language", "publish", "dockerfile", "patch_style"):
+    for key in ("primary_contact", "homepage", "pgp", "language", "publish", "dockerfile", "patch_style", "mutants"):
         if config.get(key) is not None and not isinstance(config[key], str):
             yield f"{key} must be a string"
+    if isinstance(config.get("mutants"), str) and not REPO_PATH.fullmatch(config["mutants"]):
+        yield "mutants must be a relative path, from the Dockerfile's WORKDIR, to a directory of breakage patches"
     if config.get("disabled") is not None and not isinstance(config["disabled"], bool):
         yield "disabled must be true or false"
     for key in ("budgets", "proofs"):

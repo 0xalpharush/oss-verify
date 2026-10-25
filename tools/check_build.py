@@ -56,6 +56,7 @@ class Job:
     fuzz_targets: list | None  # None: every fuzz target the build produces
     ubsan_checks: list | None = None  # the UBSan checks in effect if the project changes them; None: the default
     language: str = "c"  # project.yaml's language, which chooses the toolchain
+    mutants: str | None = None  # project.yaml's mutants: the directory of breakage patches, from the image's WORKDIR
 
 
 _UNSAFE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")

@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# Gathers what the enrollment review reads, so that the review agent needs no shell, no network and no token:
+#
+#   GH_TOKEN=<read-only token> REPO=<owner>/<name> PR=<number> NAME=<project> COMMIT=<built commit> \
+#     .github/scripts/review-gather <directory>
+#
+# build.yaml's review job runs it from the base branch's checkout, after take-project has put the pull request's
+# projects/<name>/ into that checkout. It runs no code of the pull request or of the project: it reads the pull request
+# through the API, clones the project's repository at the built commit as data, and runs this repository's own
+# tools/validate.py and .github/scripts/triage.py on them, as the validate and triage workflows do. The directory gets
+# the files that the section "In CI" of .claude/skills/review-enrollment/SKILL.md lists; the build's results
+# (build/*.md) are written by the workflow beforehand. A failed read leaves its file with the error in it, and the
+# review says what it could not check.
+set -uo pipefail
+export LC_ALL=C
+
+out=${1:?usage: review-gather <directory>}
+mkdir -p "$out/build" "$out/seeds"
+[[ $PR =~ ^[0-9]+$ ]] || { echo "review-gather: PR is not a number" >&2; exit 2; }
+[[ $NAME =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || { echo "review-gather: NAME is not a project name" >&2; exit 2; }
+dir="projects/$NAME"
+# Run a command, and keep its standard output and error in a file, whatever its status.
+keep() { local file=$1; shift; { "$@"; echo "(exit status $?)"; } > "$out/$file" 2>&1; }
+
+keep pr.json gh pr view "$PR" -R "$REPO" --json \
+  number,title,author,isDraft,createdAt,body,headRefOid,files,commits,comments,reviews
+# Apart, so that a token that cannot read the checks leaves pr.json whole.
+keep checks.json gh pr view "$PR" -R "$REPO" --json statusCheckRollup
+gh pr diff "$PR" -R "$REPO" > "$out/pr.diff" 2>&1
+keep review-comments.txt gh api --paginate "repos/$REPO/pulls/$PR/comments" \
+  --jq '.[] | "\(.user.login) \(.path):\(.line) \(.body)"'
+jq -r '.comments[]?.body | select(startswith("<!-- oss-verify-triage -->"))' "$out/pr.json" \
+  > "$out/triage-comment.md" 2>/dev/null || true
+keep triage-today.md env GITHUB_TOKEN="${GH_TOKEN:-}" python3 .github/scripts/triage.py --repo "$REPO" --pr "$PR"
+keep validate.txt python3 tools/validate.py "$dir"
+# Claude Code reads a CLAUDE.md beside a file that it reads as instructions. The pull request's are data, so they go
+# from the checkout once the validator has reported them (the skill's rule 1).
+find "$dir" -maxdepth 1 \( -iname 'CLAUDE*.md' -o -iname 'AGENTS*.md' \) -delete
+
+# Check B of the skill: each box of the description against today's template.
+jq -r '.body // ""' "$out/pr.json" > "$out/description.md" 2>/dev/null
+keep checklist.txt python3 - "$NAME" "$out/description.md" <<'EOF'
+import re, sys
+name, body = sys.argv[1], open(sys.argv[2], encoding="utf-8", errors="replace").read()
+box = re.compile(r'^\s*[-*] \[([ xX])\] (.*?)\s*$', re.M)
+norm = lambda t: re.sub(r'\s+', ' ', t.replace('<name>', name)).strip()
+want = [norm(t) for _, t in box.findall(open('.github/PULL_REQUEST_TEMPLATE.md').read())]
+got = {norm(t): m for m, t in box.findall(body.replace('\r', ''))}
+for t in want:
+    print('ticked  ' if got.get(t, ' ') != ' ' else 'unticked' if t in got else 'MISSING ', t[:90])
+for t in got:
+    if t not in want:
+        print('EXTRA   ', t[:90])
+EOF
+keep template-history.txt git log --format='%h %cI %s' -- .github/PULL_REQUEST_TEMPLATE.md
+
+# Each seed corpus: its listing, and the first 512 bytes of each of its first 200 inputs, in hexadecimal.
+for zip in "$dir"/*_seed_corpus.zip; do
+  [ -f "$zip" ] || continue
+  target=$(basename "$zip" _seed_corpus.zip)
+  keep "seeds/$target.listing.txt" unzip -l "$zip"
+  python3 - "$zip" "$out/seeds/$target.hex.txt" <<'EOF'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as archive, open(sys.argv[2], "w") as out:
+    for info in [i for i in archive.infolist() if not i.is_dir()][:200]:
+        data = archive.read(info)[:512]
+        out.write(f"== {info.filename!r}: {info.file_size} bytes\n")
+        for at in range(0, len(data), 16):
+            row = data[at:at + 16]
+            text = "".join(chr(b) if 32 <= b < 127 else "." for b in row)
+            out.write(f"{at:04x}  {row.hex(' '):<47}  {text}\n")
+EOF
+done
+
+# The project's repository: the facts of check G1, and its source at the built commit, as data.
+# repo comes from the pull request: it is used only if tools/validate.py's rule for it holds, and its ref is used in
+# an API path only if it has no `..` part.
+url=$(python3 - "$dir/project.yaml" <<'EOF' 2>/dev/null
+import sys
+sys.path.insert(0, "tools")
+import validate
+url = validate.yaml.safe_load(open(sys.argv[1])).get("repo")
+print(url if validate.is_https_url(url) else "")
+EOF
+)
+repo=${url%%#*} ref=${url#*#}
+[ "$ref" = "$url" ] && ref=""
+[[ $ref =~ (^|/)\.\.?(/|$) ]] && ref=""
+{
+  if [ -z "$url" ]; then
+    echo "repo: not read: project.yaml's repo does not follow the rule of tools/validate.py"
+  fi
+  echo "repo: $repo"
+  echo "ref: ${ref:-(the default branch)}"
+  echo "built commit: ${COMMIT:-(unknown: the build did not get as far as resolving it)}"
+  echo
+  echo "== git ls-remote <repo> HEAD <ref> refs/heads/<ref> refs/tags/<ref>"
+  [ -z "$repo" ] || GIT_TERMINAL_PROMPT=0 timeout 60 git -c credential.helper= -c protocol.allow=never \
+    -c protocol.https.allow=always ls-remote -- "$repo" HEAD ${ref:+"$ref" "refs/heads/$ref" "refs/tags/$ref"}
+  echo "(exit status $?)"
+  if [[ $repo =~ ^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/?$ ]] \
+      && [[ ${BASH_REMATCH[1]} != .* && ${BASH_REMATCH[2]} != .* ]]; then
+    slug="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+    echo
+    echo "== the repository on GitHub"
+    gh api "repos/$slug" --jq '{full_name, default_branch, fork, archived, pushed_at, created_at, stargazers_count, forks_count, license: .license.spdx_id}'
+    echo
+    echo "== contributors (the top 5, with their commits)"
+    gh api "repos/$slug/contributors?per_page=5" --jq '.[] | "\(.login) \(.contributions)"'
+    if [[ ${COMMIT:-} =~ ^[0-9a-f]{40}$ ]]; then
+      default=$(gh api "repos/$slug" --jq .default_branch)
+      echo
+      echo "== the built commit against the default branch ($default): status, ahead, behind"
+      gh api "repos/$slug/compare/$default...$COMMIT" --jq '"\(.status) \(.ahead_by) \(.behind_by)"'
+      if [ -n "$ref" ]; then
+        echo
+        echo "== the built commit against the ref now: status, ahead, behind"
+        gh api "repos/$slug/compare/$COMMIT...$ref" --jq '"\(.status) \(.ahead_by) \(.behind_by)"'
+        echo
+        echo "== pull requests whose head branch is the ref"
+        gh pr list -R "$slug" --head "$ref" --state all --json number,state,title,url
+      fi
+    fi
+  fi
+} > "$out/repository.txt" 2>&1
+
+if [[ ${COMMIT:-} =~ ^[0-9a-f]{40}$ ]]; then
+  source="$out/source"
+  rm -rf "$source"
+  git init -q "$source"
+  if GIT_TERMINAL_PROMPT=0 timeout 600 git -C "$source" -c credential.helper= -c protocol.allow=never \
+      -c protocol.https.allow=always fetch -q --depth 1 -- "$repo" "$COMMIT" \
+      && git -C "$source" -c advice.detachedHead=false checkout -q FETCH_HEAD; then
+    # Data only: no git metadata, and no symbolic link, which could point the reader outside the directory.
+    rm -rf "$source/.git"
+    find "$source" -type l -delete
+    # Claude Code reads a CLAUDE.md or .claude/ in a directory whose files it reads as instructions: the project's are
+    # data, so they go (the skill's rule 1).
+    find "$source" \( -iname 'CLAUDE*.md' -o -iname 'AGENTS*.md' -o -name .claude \) -prune -exec rm -rf {} +
+  else
+    rm -rf "$source"
+    echo "review-gather: could not fetch $COMMIT from $repo" > "$out/source.txt"
+  fi
+fi
+ls -la "$out"

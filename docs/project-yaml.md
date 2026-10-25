@@ -21,6 +21,7 @@ The field names come from OSS Scanner if it has the field, then from OSS-Fuzz. W
 | `sanitizers` | no | the sanitizer builds in addition to `plain` | `[address, undefined]` |
 | `ubsan_checks` | no | changes to the UBSan checks of the `ubsan` and `asan-ubsan` builds, with the next toolchain version ([below](#ubsan_checks)) | none: the checks that OSS-Fuzz makes fatal, for the project's language |
 | `fuzz_targets` | no | the fuzz targets to verify | each fuzz target that the build makes |
+| `mutants` | no | the directory of the breakage patches, from the `WORKDIR` of the `Dockerfile` ([below](#mutants)) | none |
 | `patch_style` | no | the path of your `patch_style.md` in your repository ([below](#patch_style)) | |
 | `budgets` | no | the memory budgets of the statements | today's values |
 | `proofs` | no | where we publish the proofs ([below](#proofs)) | the proofs repository |
@@ -139,6 +140,22 @@ ubsan_checks:
 Give the names of the fuzz targets that `build.sh` puts in `$OUT`. If you do not give this field, we verify each fuzz target that the build makes. A fuzz target is an executable in `$OUT` whose symbol table defines `LLVMFuzzerTestOneInput`. It must be in each build.
 
 The manifest and the lock record the list that a build used. Thus "each fuzz target" cannot change what a proof is about without a record. A build that does not make a fuzz target in this list fails.
+
+### mutants
+
+Give the directory that holds breakage patches of your fuzz targets: changes to the library or to a fuzz target that make a check fail on an input in the seed corpus. A one-line change is usually a `mutant:` record in the check's comment instead, and a project can use both ([.claude/skills/add-project/SKILL.md](../.claude/skills/add-project/SKILL.md), step 3.4). The path starts at the `WORKDIR` of the `Dockerfile`, where `build.sh` runs. For a `Dockerfile` that fetches your repository into `$SRC/<name>` and works there, it is a directory of your repository, for example `fuzz/mutants`.
+
+Each file in the directory whose name ends in `.patch` is one breakage patch, as `git diff` writes it, with paths from that `WORKDIR`. Before its `diff --git` line, write which check it breaks and the seed input that catches it. `git apply` ignores that text. For example:
+
+```
+Breaks the check of fuzz/fuzz_ctrl.c:91 (an 0x8819 frame of 50 bytes or more is parsed as REAC).
+Caught by the seed input "breakages" of fuzz_ctrl.
+
+diff --git a/src/reac_ctrlblk.c b/src/reac_ctrlblk.c
+...
+```
+
+The Build check of each enrollment pull request applies each patch in turn, builds again, and runs each fuzz target on each input of its seed corpus. It reports each patch that no input catches, and each check that no breakage, record or patch, makes fire ([build-contract.md](build-contract.md#the-checks-of-a-fuzz-target)). A breakage patch is never applied to a binary that we prove things about.
 
 ### patch_style
 
