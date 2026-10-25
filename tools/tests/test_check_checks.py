@@ -3,6 +3,7 @@
 """Tests for tools/check_checks.py and .github/scripts/review-comment and review-run that need no Docker:
 python3 -m pytest tools/tests"""
 import base64
+import json
 import os
 import importlib.machinery
 import importlib.util
@@ -410,7 +411,8 @@ class PostingStep(unittest.TestCase):
 
     def post(self, review, existing=True):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
-        step = next(s for s in workflow["jobs"]["comment"]["steps"] if s.get("id") == "post")
+        step = next(s for s in workflow["jobs"]["comment"]["steps"]
+                    if s.get("name") == "Post the comment, or update the one already there")
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             bin = directory / "bin"
@@ -492,8 +494,8 @@ class Screening(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 1.0, hostile[:20])
 
     def visible(self, text):
-        """No comment is left open, so GitHub's renderer hides nothing after it. Parsed as HTML does: a comment starts at
-        <!--, and ends at once if it is <!--> or <!--->, else at the first --> after the <!--."""
+        """No comment is left open, so GitHub's renderer hides nothing after it. Parsed as HTML does: a comment starts
+        at <!--, and ends at once if it is <!--> or <!--->, else at the first --> after the <!--."""
         at = 0
         while (start := text.find("<!--", at)) != -1:
             if text.startswith(">", start + 4) or text.startswith("->", start + 4):
