@@ -13,7 +13,12 @@ name: "Triage"
 #            branch (the default for pull_request_target), never the pull request, so no code from the pull request runs.
 #   comment  does nothing but post the text gather produced, as the oss-verify GitHub App (oss-verify[bot]), with an
 #            installation token that can write pull requests in this repository only. It makes that token from the
-#            App's client id and its private key, the repository secret OSS_VERIFY_APP_PRIVATE_KEY.
+#            App's client id and its private key, which it reads at run time from Secret Manager
+#            (oss-verify-github-app-key in theorem-agent-infra), signing in with this job's GitHub identity token by
+#            Google workload identity federation (agent-infra bootstrap/, declareOssvCI). This repository stores no
+#            copy of the key. The provider admits this file and build.yaml alone, on refs/heads/main, from
+#            pull_request_target or workflow_dispatch; a token carries no job name, so what keeps the Google account
+#            to this job is this file: gather must never be given id-token: write.
 # Values from the event reach the scripts through environment variables, never by ${{ }} substitution into them.
 #
 # A pull request that has had none of the events below since this workflow was added has no comment. Someone with
@@ -78,14 +83,53 @@ jobs:
     if: needs.gather.outputs.comment != ''
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    permissions: {}
+    permissions:
+      # Only for the GitHub identity token that Google's federation trades for an access token of
+      # ossv-ci@theorem-agent-infra, which reads the App's key. This job posts text and runs no code of the pull request.
+      id-token: write
+    env:
+      # Theorem's Google project, as agent-infra bootstrap/ declares them (declareOssvCI). Public identifiers, not
+      # credentials: the provider admits only this file and build.yaml, on refs/heads/main.
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
+      GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
     steps:
+      - name: Sign in to Google Cloud
+        id: gcp
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (sha-pinned)
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 300s
+          # Nothing is written to the workspace and nothing is exported: the token is this step's output alone.
+          create_credentials_file: false
+          export_environment_variables: false
+
+      # The key is masked line by line, because ::add-mask:: masks one line at a time, and as its base64 too, so
+      # neither form can be printed.
+      - name: Read the oss-verify App's key
+        id: key
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          payload=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
+            'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/oss-verify-github-app-key/versions/latest:access' \
+            | jq -r '.payload.data')
+          builtin printf '::add-mask::%s\n' "$payload"
+          key=$(builtin printf '%s' "$payload" | base64 -d)
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then builtin printf '::add-mask::%s\n' "$line"; fi
+          done <<< "$key"
+          delimiter="key-$(openssl rand -hex 16)"
+          { echo "key<<$delimiter"; builtin printf '%s\n' "$key"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+
       - name: Get the oss-verify App's token
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0 (sha-pinned)
         with:
           client-id: Iv23liAWPMahJZYsw3un
-          private-key: ${{ secrets.OSS_VERIFY_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.key.outputs.key }}
           permission-pull-requests: write
 
       - name: Post the comment, or update the one already there

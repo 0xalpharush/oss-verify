@@ -52,13 +52,21 @@ name: "Build"
 # one image tools/check will build FROM without signing in, for every pull request, before the pull request's
 # Dockerfile or build.sh runs. Never add a secret, a cache, an artifact, an identity token or a write permission to that
 # job. Its results reach the other jobs only as job outputs, which this repository's tools write: text, never code.
-# The review job runs no code of the pull request or the project. It holds the only identity token (id-token: write),
-# which it trades for a short-lived Anthropic token by workload identity federation: no API key is stored. Claude gets
-# three tools only, Read, Glob and Grep, inside the checkout (.github/scripts/review-run), and an environment without
-# the runner's tokens. The comment job alone writes: it posts text, refused if it holds what looks like a credential
-# (.github/scripts/review-comment), as the oss-verify GitHub App (oss-verify[bot]), with an installation token that
-# can write pull requests in this repository only. It makes that token from the App's client id below and its
-# private key, the repository secret OSS_VERIFY_APP_PRIVATE_KEY, and runs no code of the pull request or the project.
+# The review job runs no code of the pull request or the project. It and the comment job hold identity tokens
+# (id-token: write), which they trade for short-lived tokens: the review's for an Anthropic token by workload identity
+# federation, so no API key is stored, and both jobs' for a Google access token of the service account
+# ossv-ci@theorem-agent-infra, by Google workload identity federation (agent-infra bootstrap/, declareOssvCI). Claude
+# gets three tools only, Read, Glob and Grep, inside the checkout (.github/scripts/review-run), and an environment
+# without the runner's tokens. The comment job alone writes: it posts text, refused if it holds what looks like a
+# credential (.github/scripts/review-comment), as the oss-verify GitHub App (oss-verify[bot]), with an installation
+# token that can write pull requests in this repository only. It makes that token from the App's client id below and
+# its private key, which it reads at run time from Secret Manager (oss-verify-github-app-key), and runs no code of the
+# pull request or the project.
+#
+# This repository stores no long-lived credential for any of that. Google's provider admits this file alone, on
+# refs/heads/main, from pull_request_target or workflow_dispatch: a token carries no job name, so what keeps the
+# Google account to these two jobs is this file. project-builds, the job that builds the pull request's code, must
+# never be given id-token: write.
 # Runs do not wait for a maintainer's approval. To build only on request, remove pull_request_target below.
 #
 # The review reaches Claude by workload identity federation, with no stored key: the review job's GitHub identity token
@@ -89,12 +97,14 @@ name: "Build"
 # #proving-oss-fuzz, through the incoming webhook in the repository secret SLACK_WEBHOOK_URL, which can post to that
 # one channel only. Without the secret it sends nothing, and says so in a warning.
 #
-# The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, with the repository variable
-# OTEL_EXPORTER_OTLP_ENDPOINT (the collector's public URL) and the repository secret OTEL_COLLECTOR_TOKEN (its bearer
-# token), tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
-# theorem.credential=oss-verify-ci (.github/scripts/review-run sets them). The review fails if either is not set, or if
-# the collector does not answer 200 to an empty export with the token before the review starts, rather than lose the
-# review's spend in silence. If it refuses one after the review, the comment is still posted and the review job fails.
+# The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, at the public URL below
+# (agent-infra spend/'s stack output publicCollectorUrl, a literal here because it is public), with the collector's
+# bearer token, which the Review step reads at run time from Secret Manager (agent-spend-otel-token, whose readers
+# agent-infra spend/ names in its tokenReaders config). The export is tagged theorem.project=oss-verify,
+# theorem.subproject=<name>, theorem.lane=enroll-review-ci and theorem.credential=oss-verify-ci
+# (.github/scripts/review-run sets them). The review fails if the token cannot be read, or if the collector does not
+# answer 200 to an empty export with the token before the review starts, rather than lose the review's spend in
+# silence. If it refuses one after the review, the comment is still posted and the review job fails.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -273,8 +283,14 @@ jobs:
       checks: read
       statuses: read
       actions: read
-      # Only for the GitHub identity token that workload identity federation trades for an Anthropic token.
+      # Only for the GitHub identity tokens that federation trades for an Anthropic token and for a Google access
+      # token of ossv-ci@theorem-agent-infra. This job runs no code of the pull request.
       id-token: write
+    env:
+      # Theorem's Google project, as agent-infra bootstrap/ declares them (declareOssvCI). Public identifiers, not
+      # credentials: the provider admits only this workflow file on refs/heads/main.
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
+      GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
     outputs:
       comment: ${{ steps.review.outputs.comment }}
     steps:
@@ -332,6 +348,20 @@ jobs:
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value > "$RUNNER_TEMP/oidc/jwt"
           echo "::add-mask::$(cat "$RUNNER_TEMP/oidc/jwt")"
 
+      # Theorem's Google project trusts this workflow's identity token (agent-infra bootstrap/, declareOssvCI), so the
+      # collector's token is read at run time instead of being stored here. Nothing is written to the workspace and
+      # nothing is exported: the Google access token is this step's output alone, and it lives five minutes.
+      - name: Sign in to Google Cloud
+        id: gcp
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (sha-pinned)
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 300s
+          create_credentials_file: false
+          export_environment_variables: false
+
       - name: Review
         id: review
         timeout-minutes: 45
@@ -347,14 +377,26 @@ jobs:
           ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01WdHTLcJPEfiPttcuLK1hGT
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Qr1iUVcow4jdgQM7Amfks5
           # Usage, to Theorem's cost collector. review-run checks that the collector takes the token.
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
-          OTEL_COLLECTOR_TOKEN: ${{ secrets.OTEL_COLLECTOR_TOKEN }}
+          # The collector's public URL: agent-infra spend/'s stack output publicCollectorUrl.
+          OTEL_EXPORTER_OTLP_ENDPOINT: https://agent-otel-public-6acxmql5za-uw.a.run.app
+          GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
         run: |
-          # Without the two, review-run exports nothing, which is for a person's own run: here it would lose the
-          # review's spend in silence.
+          # The collector's bearer token: Secret Manager agent-spend-otel-token, which agent-infra spend/ declares and
+          # grants this job's account. It stays a variable of this shell, masked in the log and no process's argument;
+          # without it review-run exports nothing, which is for a person's own run: here it would lose the review's
+          # spend in silence.
+          if ! OTEL_COLLECTOR_TOKEN=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
+            'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/agent-spend-otel-token/versions/latest:access' \
+            | jq -r '.payload.data' | base64 -d); then
+            rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
+            echo "::error::Could not read the cost collector's token (Secret Manager agent-spend-otel-token in theorem-agent-infra), so the review's usage would not reach Theorem's cost collector."
+            exit 1
+          fi
+          builtin printf '::add-mask::%s\n' "$OTEL_COLLECTOR_TOKEN"
+          export OTEL_COLLECTOR_TOKEN
           if [ -z "$OTEL_EXPORTER_OTLP_ENDPOINT" ] || [ -z "$OTEL_COLLECTOR_TOKEN" ]; then
             rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
-            echo "::error::The repository variable OTEL_EXPORTER_OTLP_ENDPOINT or the repository secret OTEL_COLLECTOR_TOKEN is not set, so the review's usage would not reach Theorem's cost collector."
+            echo "::error::The collector's endpoint or token is empty, so the review's usage would not reach Theorem's cost collector."
             exit 1
           fi
           # Until the token is printed again, the runner reads none of the review's output as a workflow command.
@@ -383,9 +425,9 @@ jobs:
       - name: Fail if the collector refused the token after the review
         if: ${{ steps.review.outputs.collector == 'refused' }}
         env:
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: https://agent-otel-public-6acxmql5za-uw.a.run.app
         run: |
-          echo "::error::The collector at $OTEL_EXPORTER_OTLP_ENDPOINT refused OTEL_COLLECTOR_TOKEN after the review, so the review's usage is likely lost. The comment is posted; check the token."
+          echo "::error::The collector at $OTEL_EXPORTER_OTLP_ENDPOINT refused its token after the review, so the review's usage is likely lost. The comment is posted; check Secret Manager agent-spend-otel-token."
           exit 1
 
   comment:
@@ -400,18 +442,57 @@ jobs:
       # contents: read only for the checkout of .github/scripts, which a job with no contents permission cannot make.
       # It writes with the oss-verify App's token, not this job's.
       contents: read
+      # Only for the GitHub identity token that Google's federation trades for an access token of
+      # ossv-ci@theorem-agent-infra, which reads the App's key. This job runs no code of the pull request.
+      id-token: write
+    env:
+      # The same public identifiers as the review job's (agent-infra bootstrap/, declareOssvCI).
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
+      GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
           persist-credentials: false
           sparse-checkout: .github/scripts
 
+      - name: Sign in to Google Cloud
+        id: gcp
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (sha-pinned)
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 300s
+          create_credentials_file: false
+          export_environment_variables: false
+
+      # The App's private key: Secret Manager oss-verify-github-app-key in theorem-agent-infra, which agent-infra
+      # bootstrap/ declares and versions from its encrypted stack config. This repository stores no copy of it. The
+      # key is masked line by line, because ::add-mask:: masks one line at a time, and the whole PEM is masked as its
+      # base64 too, so neither form can be printed.
+      - name: Read the oss-verify App's key
+        id: key
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          payload=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
+            'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/oss-verify-github-app-key/versions/latest:access' \
+            | jq -r '.payload.data')
+          builtin printf '::add-mask::%s\n' "$payload"
+          key=$(builtin printf '%s' "$payload" | base64 -d)
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then builtin printf '::add-mask::%s\n' "$line"; fi
+          done <<< "$key"
+          delimiter="key-$(openssl rand -hex 16)"
+          { echo "key<<$delimiter"; builtin printf '%s\n' "$key"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+
       - name: Get the oss-verify App's token
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0 (sha-pinned)
         with:
           client-id: Iv23liAWPMahJZYsw3un
-          private-key: ${{ secrets.OSS_VERIFY_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.key.outputs.key }}
           permission-pull-requests: write
 
       - name: Post the comment, or update the one already there

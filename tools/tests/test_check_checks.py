@@ -280,22 +280,39 @@ class ReviewComment(unittest.TestCase):
         self.assertIn("### new report", text)
 
 
-class CredentialArguments(unittest.TestCase):
-    """The workflow and its helpers give credentials to commands through env/pipes, never as a process's argument."""
+class WorkflowArguments(unittest.TestCase):
+    """build.yaml and triage.yaml give their credentials to commands through pipes and builtins, never as a process's
+    argument. A credential read at run time (the cost collector's token, the App's key) is checked the same way."""
 
-    def test_build_yaml_keeps_the_three_credentials_out_of_argv(self):
-        steps = [step for job in yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())["jobs"]
-                 .values() for step in job["steps"] if "run" in step]
-        for name in ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "OTEL_COLLECTOR_TOKEN", "SLACK_WEBHOOK_URL"):
-            used = 0
-            for step in steps:
-                variable = re.escape(f'"${name}"')
-                # The forms a builtin or a pipe reads, not argv: printf into a process substitution, a test, a pattern.
-                rest = re.sub(rf"<\(printf '[^']*' {variable}\)|\[ -[zn] {variable} \]|\*{variable}\*", "",
-                              step["run"])
-                used += step["run"].count(f"${name}")
-                self.assertNotIn(f"${name}", rest, f"{step.get('name')}: ${name} is an argument")
-            self.assertGreater(used, 0, name)
+    def steps(self, workflow):
+        jobs = yaml.safe_load((ROOT / ".github" / "workflows" / workflow).read_text())["jobs"]
+        return [step for job in jobs.values() for step in job["steps"] if "run" in step]
+
+    def test_no_credential_is_an_argument(self):
+        for workflow, names in (("build.yaml", ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "OTEL_COLLECTOR_TOKEN",
+                                                "SLACK_WEBHOOK_URL", "GCP_ACCESS_TOKEN")),
+                                ("triage.yaml", ("GCP_ACCESS_TOKEN",))):
+            steps = self.steps(workflow)
+            for name in names:
+                used = 0
+                for step in steps:
+                    variable = re.escape(f'"${name}"')
+                    # The forms a builtin reads: printf into a process substitution, printf itself (the shell's
+                    # builtin, so no process holds the value), a test, a [[ ]] pattern.
+                    rest = re.sub(rf"<\((?:builtin )?printf '[^']*' {variable}\)|builtin printf '[^']*' {variable}"
+                                  rf"|\[ -[zn] {variable} \]|\*{variable}\*", "", step["run"])
+                    used += step["run"].count(f"${name}")
+                    self.assertNotIn(f"${name}", rest, f"{workflow} {step.get('name')}: ${name} is an argument")
+                self.assertGreater(used, 0, f"{workflow} {name}")
+
+    def test_only_the_jobs_that_run_no_pull_request_code_hold_an_identity_token(self):
+        # A GitHub identity token names no job, so Google's provider cannot keep ossv-ci to these jobs: these files
+        # are what does. project-builds builds the pull request's code and triage's gather reads its text, so neither
+        # may ever ask for one.
+        for workflow, want in (("build.yaml", {"review", "comment"}), ("triage.yaml", {"comment"})):
+            jobs = yaml.safe_load((ROOT / ".github" / "workflows" / workflow).read_text())["jobs"]
+            got = {name for name, job in jobs.items() if (job.get("permissions") or {}).get("id-token") == "write"}
+            self.assertEqual(got, want, f"{workflow}: the jobs with id-token: write")
 
     def test_the_helpers_use_no_argv_form_for_the_github_token(self):
         gather = (ROOT / ".github" / "scripts" / "review-gather").read_text()
