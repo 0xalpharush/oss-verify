@@ -63,6 +63,8 @@ HEADER = b"\0" * 6
 SANITIZER_BUILDS = (("asan-ubsan", "address-undefined"), ("asan", "address"), ("ubsan", "undefined"))
 # The time the breakages may take together, in minutes, by default.
 BUDGET_MINUTES = 60
+# The most time each run of all the seed inputs on the unchanged code may take, in minutes.
+BASELINE_MINUTES = 20
 MAX_PATCH_BYTES = 256 * 1024
 MAX_PATCHES = 200
 MAX_LISTED = 60
@@ -79,6 +81,10 @@ class Run:
     seed: str
     status: int | None
     build: str  # "coverage", or the sanitizer build's name
+    index: int = 0  # the input's position in its zip file: two inputs can have one name
+
+    def key(self):
+        return (self.build, self.target, self.index)
 
     def passed(self):
         return self.status in PASSES
@@ -212,15 +218,16 @@ def subset(inputs, names, wanted, directory):
     return chosen
 
 
-def run_all(tag, binaries, inputs, names, build, results, *, labels):
+def run_all(tag, binaries, inputs, names, build, results, *, labels, total=0):
     """Run each fuzz target in the directory `binaries` on each of its seed inputs, in a container of the project image
     with no network (tools/checks/run-seeds). `names` maps a target to its seed names, as a list (input n is the n-th)
-    or a dict {n: name}. Keep each run's status and profile in `results`. Return [Run]."""
+    or a dict {n: name}. Keep each run's status and profile in `results`. With `total`, stop all runs after that many
+    seconds: an input that did not run has no status, as one stopped at the time limit. Return [Run]."""
     check_build.empty_directory(results, tag, labels=labels)
     command = ["docker", "run", "--rm", "--init", "--network=none", *labels, "-e", f"OV_OWNER={os.getuid()}:{os.getgid()}",
                "-v", f"{qemu()}:/ovc-qemu:ro", "-v", f"{CHECKS_DIR}:/ovc:ro", "-v", f"{binaries}:/bins:ro",
                "-v", f"{inputs}:/inputs:ro", "-v", f"{results}:/results", "--entrypoint", "/ovc/run-seeds", tag,
-               str(os.cpu_count() or 2), str(RUN_TIMEOUT)]
+               str(os.cpu_count() or 2), str(RUN_TIMEOUT), str(max(0, int(total)))]
     if check_build.run(*command, quiet=True) != 0:
         raise Failed(f"could not run the fuzz targets of the {build} build on their seed inputs")
     runs = []
@@ -231,7 +238,7 @@ def run_all(tag, binaries, inputs, names, build, results, *, labels):
         for n, seed in sorted(numbered.items()):
             status = results / target / f"{n}.status"
             text = status.read_text()[:16].strip() if status.is_file() and not status.is_symlink() else ""
-            runs.append(Run(target, seed, int(text) if text.isdigit() and text != str(KILLED) else None, build))
+            runs.append(Run(target, seed, int(text) if text.isdigit() and text != str(KILLED) else None, build, n))
     return runs
 
 
@@ -451,9 +458,9 @@ class Context:
     deadline: float
 
 
-def measure(ctx, binaries, inputs, names, results):
+def measure(ctx, binaries, inputs, names, results, total=0):
     """Run the coverage build's binaries on the inputs. Return (runs, Coverage, exports)."""
-    runs = run_all(ctx.tag, binaries, inputs, names, "coverage", results, labels=ctx.labels)
+    runs = run_all(ctx.tag, binaries, inputs, names, "coverage", results, labels=ctx.labels, total=total)
     exports = export_coverage(ctx.tag, {target: binaries / target for target in names if (binaries / target).is_file()},
                               results, labels=ctx.labels)
     coverage = Coverage()
@@ -488,7 +495,8 @@ def evaluate(ctx, number, breakage, record_targets):
         if why:
             breakage.outcome, breakage.detail = "does not build", why
             return breakage
-        runs, coverage, _ = measure(ctx, home / "coverage", inputs, names, home / "results")
+        runs, coverage, _ = measure(ctx, home / "coverage", inputs, names, home / "results",
+                                    max(60, ctx.deadline - time.monotonic()))
         shifts = {} if breakage.records else hunk_shifts(breakage.patch, ctx.workdir)
         breakage.fired = {(check.path, check.line, check.column) for check in ctx.checks
                           if coverage.count(check.path, moved(check, shifts), check.column)}
@@ -500,7 +508,7 @@ def evaluate(ctx, number, breakage, record_targets):
                 breakage.detail = f"the {ctx.sanitizer[0]} build: {why}"
             else:
                 runs += run_all(ctx.tag, home / ctx.sanitizer[0], inputs, names, ctx.sanitizer[0], home / "results-san",
-                                labels=ctx.labels)
+                                labels=ctx.labels, total=max(60, ctx.deadline - time.monotonic()))
                 breakage.builds += (ctx.sanitizer[0],)
         breakage.runs = runs
         breakage.outcome = "measured"
@@ -513,7 +521,7 @@ def evaluate(ctx, number, breakage, record_targets):
 
 def catches(breakage, passing, target=None, seed=None):
     """The runs of `breakage` that failed where the unchanged code passes: of one target and seed, if given."""
-    return [run for run in breakage.runs if run.caught() and (run.build, run.target, run.seed) in passing
+    return [run for run in breakage.runs if run.caught() and run.key() in passing
             and (target is None or run.target == target) and (seed is None or run.seed == seed)]
 
 
@@ -535,7 +543,7 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
     if why:
         raise Failed(f"the coverage build failed: {why}")
     ctx = Context(tag, labels, home, targets, inputs, seeds, runtime, None, ubsan, workdir, [], set(), 0.0)
-    base_runs, base, exports = measure(ctx, home / "coverage", inputs, seeds, home / "results")
+    base_runs, base, exports = measure(ctx, home / "coverage", inputs, seeds, home / "results", BASELINE_MINUTES * 60)
 
     # The checks: the abort() calls in each file that defines LLVMFuzzerTestOneInput, and in the other files of its
     # directory that the coverage build compiled.
@@ -557,9 +565,10 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
 
     sanitizer = next(((build, value) for build, value in SANITIZER_BUILDS if build in job.builds), None)
     sanitizer_base = (run_all(tag, raw / sanitizer[0], inputs, seeds, sanitizer[0], home / "results-sanitizer",
-                              labels=labels) if sanitizer else [])
+                              labels=labels, total=BASELINE_MINUTES * 60) if sanitizer else [])
     failing = [run for run in base_runs + sanitizer_base if not run.passed()]
-    passing = {(run.build, run.target, run.seed) for run in base_runs + sanitizer_base if run.passed()}
+    # A run stopped at a time limit is listed as failing, with "did not end": its seed then counts as no catch.
+    passing = {run.key() for run in base_runs + sanitizer_base if run.passed()}
 
     no_corpus = [target for target in targets if target not in seeds]
     lines.append(f"Each fuzz target ran on each input of its seed corpus ({sum(map(len, seeds.values()))} inputs), "
@@ -644,8 +653,12 @@ def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MI
     directory = [b for b in breakages if not b.records]
     if job.mutants:
         uncaught = [b for b in directory if b.outcome == "measured" and not catches(b, passing)]
-        lines.append(f"- **Breakage patches** in {code(job.mutants)}: {len(directory)}, of which {len(uncaught)} no "
-                     "seed input catches. Step 3.4 asks for an input that catches each one. Add it to the seed corpus.")
+        broken = [b for b in directory if b.outcome == "does not build"]
+        late = [b for b in directory if b.outcome == "not checked"]
+        lines.append(f"- **Breakage patches** in {code(job.mutants)}: {len(directory)}. No seed input catches "
+                     f"{len(uncaught)}: step 3.4 asks for an input that catches each one, in the seed corpus."
+                     + (f" {len(broken)} do not apply or build: correct the patch." if broken else "")
+                     + (f" {len(late)} were not checked in the time budget." if late else ""))
         if directory:
             lines += ["", "  | patch | result | checks that fired |", "  |---|---|---|"]
             for b in directory:

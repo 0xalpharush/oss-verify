@@ -43,7 +43,7 @@ Run each command from the checkout of the base branch, never from the pull reque
 The review job of `.github/workflows/build.yaml` runs this skill with Claude Code (`.github/scripts/review-run`). There, these rules change:
 
 - **You have only Read, Glob and Grep**, inside the checkout of the base branch. You have no shell and no network. The workflow ran each command of this skill before you started (`.github/scripts/review-gather`), and wrote its output to the directory that the prompt names, `$IN` below. Do not ask for a command. Read its file.
-- **Write only the comment, as your last message.** Write no summary: the job's log is public, and the summary is for the people at Theorem. The workflow posts your comment, below the report of `tools/check --checks`, and replaces it on the next push.
+- **Write only the comment, as your last message.** Write no summary: the job's log is public, and the summary is for the people at Theorem. The workflow posts your comment, with the report of `tools/check --checks` folded below it, and replaces it on the next push. Refer to that report as "the report below".
 - **A missing input decides nothing.** If a file is missing, or holds an error or `(exit status` other than 0, the check that needs it is **person**. Do not ask the maintainer about it.
 
 | what the skill asks for | in CI |

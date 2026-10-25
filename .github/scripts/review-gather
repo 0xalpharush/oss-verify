@@ -71,18 +71,33 @@ EOF
 done
 
 # The project's repository: the facts of check G1, and its source at the built commit, as data.
-url=$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["repo"])' "$dir/project.yaml" 2>/dev/null)
+# repo comes from the pull request: it is used only if tools/validate.py's rule for it holds, and its ref is used in
+# an API path only if it has no `..` part.
+url=$(python3 - "$dir/project.yaml" <<'EOF' 2>/dev/null
+import sys
+sys.path.insert(0, "tools")
+import validate
+url = validate.yaml.safe_load(open(sys.argv[1])).get("repo")
+print(url if validate.is_https_url(url) else "")
+EOF
+)
 repo=${url%%#*} ref=${url#*#}
 [ "$ref" = "$url" ] && ref=""
+[[ $ref =~ (^|/)\.\.?(/|$) ]] && ref=""
 {
+  if [ -z "$url" ]; then
+    echo "repo: not read: project.yaml's repo does not follow the rule of tools/validate.py"
+  fi
   echo "repo: $repo"
   echo "ref: ${ref:-(the default branch)}"
   echo "built commit: ${COMMIT:-(unknown: the build did not get as far as resolving it)}"
   echo
   echo "== git ls-remote <repo> HEAD <ref> refs/heads/<ref> refs/tags/<ref>"
-  GIT_TERMINAL_PROMPT=0 timeout 60 git -c credential.helper= ls-remote -- "$repo" HEAD ${ref:+"$ref" "refs/heads/$ref" "refs/tags/$ref"}
+  [ -z "$repo" ] || GIT_TERMINAL_PROMPT=0 timeout 60 git -c credential.helper= -c protocol.allow=never \
+    -c protocol.https.allow=always ls-remote -- "$repo" HEAD ${ref:+"$ref" "refs/heads/$ref" "refs/tags/$ref"}
   echo "(exit status $?)"
-  if [[ $repo =~ ^https://github\.com/([^/]+)/([^/]+)/?$ ]]; then
+  if [[ $repo =~ ^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/?$ ]] \
+      && [[ ${BASH_REMATCH[1]} != .* && ${BASH_REMATCH[2]} != .* ]]; then
     slug="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
     echo
     echo "== the repository on GitHub"
