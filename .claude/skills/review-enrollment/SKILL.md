@@ -116,6 +116,7 @@ The triage row "Checklist" counts only the ticked boxes. It does not compare the
 4. **The contact field is present.** `primary_contact` is set and is not `n/a`: **pass**.
 5. **The build files.** Read the `Dockerfile`, `build.sh`, `sources` and each patch in `series`. Each image is pinned by digest, and each dependency comes from a lockfile or from a line in `sources` with a commit or a SHA-256: **pass**. A build patch must change only how the project builds (`docs/project-yaml.md`, "Build patches"). A patch that fixes a bug is **fail**.
 6. **Terms.** The `terms-accepted` check passed. If the description says that an agent accepted the terms for the maintainer, write it in the summary.
+7. **Licence lines (add-project step 3.8).** Each file of code in `DIR` (fuzz targets, `Dockerfile`, `build.sh`, scripts) begins with comment lines that say whose it is and its licence, after only a `#!`, `# syntax=` or `coding:` line. Build patches, `project.yaml`, `sources`, `series`, `patch_style.md`, locks and seed inputs need none. A file copied from elsewhere keeps its licence lines, and a changed copy has a `Modified` line. A file that the maintainer wrote is `Apache-2.0`, or `MIT OR Apache-2.0` for a GPL-2.0-only project. Each file that breaks this is **fail**: name it and the lines to add. A file whose origin you cannot tell is **person**.
 
 ### D. Size and static linking
 
