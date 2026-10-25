@@ -115,7 +115,7 @@ The decoding is total (3.1). Also bound each count, size and loop that comes fro
 
 ### 3.6 Depend only on the input
 
-The process model has one thread, and the input is its only data. Thus obey these rules:
+The statements use [Linux Process Semantics (LPS)](https://github.com/theorem-labs/rocq-linux-process-semantics), a formal model of a riscv64 Linux process. In LPS, a process has one thread, and the input is its only data. Thus obey these rules:
 
 - Do not start a thread.
 - Do not read a clock.
