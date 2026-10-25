@@ -3,6 +3,8 @@
 """Tests for tools/check_checks.py and .github/scripts/review-comment and review-run that need no Docker:
 python3 -m pytest tools/tests"""
 import base64
+import html.parser
+import itertools
 import json
 import os
 import importlib.machinery
@@ -494,18 +496,13 @@ class Screening(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 1.0, hostile[:20])
 
     def visible(self, text):
-        """No comment is left open, so GitHub's renderer hides nothing after it. Parsed as HTML does: a comment starts
-        at <!--, and ends at once if it is <!--> or <!--->, else at the first --> after the <!--."""
-        at = 0
-        while (start := text.find("<!--", at)) != -1:
-            if text.startswith(">", start + 4) or text.startswith("->", start + 4):
-                at = start + 4
-                continue
-            end = text.find("-->", start + 4)
-            if end == -1:
-                return False
-            at = end + 3
-        return True
+        """Whether GitHub's renderer hides nothing at the end: no opener is left open. Python's own HTML parser
+        decides, so this test cannot be wrong about a shape the way a hand-written rule was about <!---> ."""
+        parser = html.parser.HTMLParser(convert_charrefs=False)
+        parser.feed(text)
+        left = parser.rawdata
+        parser.close()
+        return not left.startswith("<")
 
     def test_a_cut_never_leaves_a_comment_open(self):
         harmless = "\n\n<!-- harmless comment " + "z" * 200 + " -->"
@@ -542,6 +539,21 @@ class Screening(unittest.TestCase):
         self.assertEqual(close("<!-- a --> <!-- b <!-- c"), "<!-- a --> &lt;!-- b &lt;!-- c")
         self.assertEqual(close("<!-- a <!-- b -->"), "<!-- a <!-- b -->")
         self.assertEqual(close("<!--> after"), "<!--> after")
+        # A bogus opener and an unfinished tag close at the first > after them, so they hide text too.
+        self.assertEqual(close("a <!- b"), "a &lt;!- b")
+        self.assertEqual(close("a <b"), "a &lt;b")
+        self.assertEqual(close("a <!- b > c"), "a <!- b > c")
+        # Markup a review may hold is untouched.
+        for ok in ("<details><summary>x</summary>y</details>", "<sub>a</sub>", "<!-- c -->", "a < b and 1 > 0"):
+            self.assertEqual(close(ok), ok)
+
+    def test_close_comments_leaves_nothing_open_for_any_shape(self):
+        # Every string of up to three of these pieces: Python's HTML parser finds no opener left open afterwards.
+        pieces = ("<!--", "-->", "<!-", "<!--->", "<!-->", "-", ">", "x", " ", "</s", "<b", "<details>")
+        for length in (1, 2, 3):
+            for combination in itertools.product(pieces, repeat=length):
+                text = "".join(combination)
+                self.assertTrue(self.visible(review_comment.close_comments(text)), text)
 
     def test_a_cut_at_every_point_inside_a_comment_leaves_nothing_open(self):
         # Each limit that splits <!-- or --> (or falls between them), after an earlier complete comment.

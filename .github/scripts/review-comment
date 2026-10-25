@@ -98,11 +98,17 @@ def credential(text):
 
 
 def close_comments(text):
-    """text with each HTML comment opener that nothing closes escaped: every <!-- after the last -->. A cut can leave
-    one, and GitHub's renderer would then hide everything after it, including the checks and the footer."""
-    end = text.rfind("-->")
-    tail = end + 3 if end != -1 else 0
-    return text[:tail] + text[tail:].replace("<!--", "&lt;!--")
+    """text with each opener that nothing closes escaped. A cut can leave one, and GitHub's renderer would then hide
+    what follows it: an <!-- hides the rest of the comment, and any other < the rest of the tag, which can take in the
+    checks and the footer. An <!-- is closed only by a later -->, and any other < by a later >. The last position of
+    each closer is found once, so this is one pass over the text."""
+    arrow, gt = text.rfind("-->"), text.rfind(">")
+    out, at = [], 0
+    while (start := text.find("<", at)) != -1:
+        closed = arrow > start if text.startswith("<!--", start) else gt > start
+        out += [text[at:start], "<" if closed else "&lt;"]
+        at = start + 1
+    return "".join(out) + text[at:]
 
 
 def cut(text, limit, where):
