@@ -140,7 +140,10 @@ def assemble(head, status, body, footer=True):
                 "not current if the push's review does not finish. It decides nothing: a person at Theorem reviews "
                 "the enrollment.</sub>"]
     room = MAX_COMMENT - len("\n".join(parts + ["", *tail])) - 1
-    return "\n".join(parts + [cut(body, room, "the rest is in the review job's log"), *tail]) + "\n"
+    # Every body, cut or not: a kept comment that an older renderer wrote can hold an opener that nothing closes, and
+    # cut() closes again any opener that its own clip leaves open.
+    body = cut(close_comments(body), room, "the rest is in the review job's log")
+    return "\n".join(parts + [body, *tail]) + "\n"
 
 
 def not_current(previous, head, run):

@@ -530,6 +530,24 @@ class Screening(unittest.TestCase):
         self.assertEqual(close("a <!-- b --> c"), "a <!-- b --> c")
         self.assertEqual(close("<!-- a --> <!-- b <!-- c"), "<!-- a --> &lt;!-- b &lt;!-- c")
         self.assertEqual(close("<!-- a <!-- b -->"), "<!-- a <!-- b -->")
+        self.assertEqual(close("<!--> after"), "<!--> after")
+
+    def test_a_cut_at_every_point_inside_a_comment_leaves_nothing_open(self):
+        # Each limit that splits <!-- or --> (or falls between them), after an earlier complete comment.
+        text = "<!-- first --> words <!-- c -->"
+        for limit in range(1, len(text)):
+            out = review_comment.cut(text, limit, "w")
+            self.assertTrue(self.visible(out), (limit, out))
+
+    def test_a_kept_comment_with_an_opener_left_open_is_closed_without_a_cut(self):
+        # A comment an older renderer posted, with an unclosed <!-- in its review, short enough not to be cut.
+        old = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n## Enrollment review\n\n"
+               "Thanks.\n\n<!-- left open by an old renderer\n\n1. Fix X.\n")
+        kept = review_comment.not_current(old, "b" * 40, "")
+        self.assertNotIn("Cut at", kept)
+        self.assertIn("&lt;!-- left open", kept)
+        self.assertIn("1. Fix X.", kept)
+        self.assertTrue(self.visible(kept))
 
 
 class ReviewRun(unittest.TestCase):
