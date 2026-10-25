@@ -5,13 +5,16 @@
 
     review-comment [--review <comment.md>] [--checks <checks.md>] [--head <sha>] [--run <url>] [--previous <comment>]
 
-It prints the comment: the marker that build.yaml's comment job finds it by, the review's comment to the maintainer
-(or, when there is none, why), the report of tools/check --checks, folded, and a footer that names the commit the review
-is of. The review's text comes from a model that read the pull request, so it is refused if it holds what looks like a
-credential, and cut to a length that GitHub takes.
+It prints the comment: the marker that build.yaml's comment job finds it by, a metadata line, the review's comment to
+the maintainer (or, when there is none, why), and the report of tools/check --checks, folded. The review's text comes
+from a model that read the pull request and the checks text from the project, so each is refused if it holds what looks
+like a credential, cut to a length that GitHub takes, and stripped of any line that could read as this script's own
+metadata.
 
-With --previous and no review, the review of this push did not run: it prints the comment already posted, unchanged
-but for a first line that says it is not current, naming the commit it is of and the commit that had no review.
+The commit the review is of and whether there is a review live in the metadata line only, the second line of the
+comment, which this script alone writes. They are never read from the body. So with --previous and no review (the review
+of this push did not finish), it keeps the comment already posted, unchanged but for a metadata line and a first
+paragraph that say it is not current, naming the commit it is of and the commit that had no review.
 """
 import argparse
 import pathlib
@@ -19,22 +22,32 @@ import re
 import sys
 
 MARKER = "<!-- oss-verify-review -->"
-# GitHub refuses a comment over 65,536 characters.
+HEADING = "## Enrollment review"
+# GitHub refuses a comment over 65,536 characters; stay below with a margin for the pieces this script adds.
+MAX_COMMENT = 65_000
 MAX_REVIEW = 40_000
 MAX_CHECKS = 20_000
-MAX_COMMENT = 65_000
 # A GitHub identity token (a JWT), an Anthropic token or key, a GitHub token.
 CREDENTIAL = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|sk-ant-[A-Za-z0-9_-]{8,}|gh[opsu]_[A-Za-z0-9]{20,}"
                         r"|github_pat_[A-Za-z0-9_]{20,}")
-HEADING = "\n## Enrollment review\n\n"
-# What this script writes for itself, in hidden lines: the marker, the not-current notice between two of them, the
-# commit the review is of, and that there is no review. It removes every such line from the text it is given, so that
-# what the model wrote can never read as one.
-OWNED = re.compile(r"<!--\s*oss-verify-.*?-->", re.S)
-STATUS, STATUS_END = "<!-- oss-verify-status -->", "<!-- oss-verify-status-end -->"
-REVIEW_OF = re.compile(r"<!-- oss-verify-review-of ([0-9a-f]{7,40}) -->")
-NO_REVIEW_MARK = "<!-- oss-verify-no-review -->"
-NO_REVIEW = "The review agent did not run"
+# The metadata line, always the second line of the comment and written by this script alone: the format version, the
+# commit the review is of, and the status (review: a review is here; none: there is none; stale: a kept review that a
+# later push's review did not replace). It is the only place the status and the commit are read from.
+META = re.compile(r"^<!-- oss-verify-meta v=1"
+                  r"(?: head=(?P<head>[0-9a-f]{7,40}))?"
+                  r" status=(?P<status>review|none|stale) -->$")
+# Any HTML comment that names this script's prefix, removed from text that this script did not write so that it can
+# never read, or be read by a person, as this script's own line. Applied until the text stops changing, so that no
+# splicing of two fragments can rebuild one.
+OWNED = re.compile(r"<!--[^>]*oss-verify[^>]*-->", re.I)
+
+
+def neutralize(text):
+    while True:
+        stripped = OWNED.sub(" ", text)
+        if stripped == text:
+            return stripped
+        text = stripped
 
 
 def cut(text, limit, where):
@@ -42,25 +55,56 @@ def cut(text, limit, where):
     return text if len(text) <= limit else text[:limit].rstrip() + f"\n\n(Cut at {limit:,} characters: {where}.)"
 
 
+def meta_line(head, status):
+    return f"<!-- oss-verify-meta v=1{f' head={head}' if head else ''} status={status} -->"
+
+
+def read_previous(previous):
+    """The posted comment's (status, head, body): status/head from the metadata line only, None when it is legacy."""
+    lines = previous.replace("\r\n", "\n").split("\n")
+    status = head = None
+    if len(lines) >= 2 and lines[0].strip() == MARKER:
+        match = META.match(lines[1].strip())
+        if match:
+            status, head = match.group("status"), match.group("head")
+    start = previous.find("\n" + HEADING + "\n")
+    body = previous[start + len(HEADING) + 2:] if start != -1 else previous.replace(MARKER, "")
+    return status, head, body.strip()
+
+
+def assemble(head, status, body, footer=True):
+    """The comment: marker, metadata, heading, body, and (by default) the footer, cut so the whole stays in bounds."""
+    parts = [MARKER, meta_line(head, status), "", HEADING, ""]
+    tail = []
+    if footer:
+        of = f"It is the review of `{head[:7]}`. " if head else ""
+        tail = ["", "<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
+                f"`tools/check --checks` measured the checks. It can be wrong. {of}Each push replaces it, or marks it "
+                "not current if the push's review does not finish. It decides nothing: a person at Theorem reviews "
+                "the enrollment.</sub>"]
+    room = MAX_COMMENT - len("\n".join(parts + ["", *tail])) - 1
+    return "\n".join(parts + [cut(body, room, "the rest is in the review job's log"), *tail]) + "\n"
+
+
 def not_current(previous, head, run):
-    """The comment already posted, with a notice first that it is not the review of head; None if it holds none."""
-    previous = previous.replace("\r\n", "\n")
-    top, heading, body = previous.partition(HEADING)
-    if not heading:
-        top, body = MARKER, previous.replace(MARKER, "").strip() + "\n"
-    if body.startswith(STATUS) and STATUS_END in body:
-        body = body.split(STATUS_END, 1)[1].lstrip("\n")
-    # A comment from before the no-review line was written has only the sentence.
-    if not body.strip() or NO_REVIEW_MARK in body or body.startswith(NO_REVIEW):
+    """The comment already posted, kept but marked not the review of head; None when it holds no review to keep."""
+    status, of_head, body = read_previous(previous)
+    if status == "stale":
+        # Drop the notice this script put first last time, so the marks do not stack; the review follows it.
+        body = body.split("\n\n", 1)[1].strip() if "\n\n" in body else ""
+    if status == "none" or not body.strip():
         return None
-    of = REVIEW_OF.findall(body)
-    of = f"`{of[-1][:7]}`" if of else "an earlier commit"
+    if status is None:
+        # Legacy, before the metadata line: keep it unless it is the exact no-review sentence this script used to write.
+        if body.startswith("The review agent did not run on this push"):
+            return None
+        of_head = None
+    of = f"`{of_head[:7]}`" if of_head else "an earlier commit"
     this = f"`{head[:7]}`" if head else "the last push"
     where = f" ([the run]({run}))" if run else ""
-    note = (f"{STATUS}\n**Not current:** this is the review of {of}. The review of {this} did not finish{where}. "
-            f"A person at Theorem reviews the enrollment.\n{STATUS_END}\n\n")
-    room = MAX_COMMENT - len(top) - len(HEADING) - len(note) - 100
-    return f"{top}{HEADING}{note}{cut(body, room, 'the rest is in an earlier run of the review job')}\n"
+    note = (f"**Not current:** this is the review of {of}. The review of {this} did not finish{where}. "
+            "A person at Theorem reviews the enrollment.")
+    return assemble(of_head, "stale", f"{note}\n\n{body}", footer=False)
 
 
 def main():
@@ -87,27 +131,21 @@ def main():
                 return 0
     if CREDENTIAL.search(review):
         review, why = "", "its text held what looks like a credential, so it was not posted"
-    review = OWNED.sub("", review)
-    parts = [MARKER, "## Enrollment review", ""]
-    if review.strip():
-        parts.append(cut(review, MAX_REVIEW, "the rest is in the review job's log"))
+    review = neutralize(review).strip()
+    if review:
+        body = cut(review, MAX_REVIEW, "the rest is in the review job's log")
+        status = "review"
     else:
         this = f" (`{head[:7]}`)" if head else ""
         where = f" ([the run]({run}))" if run else ""
-        parts += [NO_REVIEW_MARK, f"{NO_REVIEW} on this push{this}: {why or 'it wrote no comment'}{where}. "
-                  "A person at Theorem reviews the enrollment."]
+        body = (f"The review agent did not run on this push{this}: {why or 'it wrote no comment'}{where}. "
+                "A person at Theorem reviews the enrollment.")
+        status = "none"
     checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
     if checks.strip():
-        parts += ["", "<details><summary>What the breakage and coverage checks measured</summary>", "",
-                  cut(OWNED.sub("", checks), MAX_CHECKS, "the rest is in the Build check's summary"), "",
-                  "</details>"]
-    of = f"It is the review of `{head[:7]}`. " if head else ""
-    parts += [""] + ([f"<!-- oss-verify-review-of {head} -->"] if head else [])
-    parts += ["<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
-              f"`tools/check --checks` measured the checks. It can be wrong. {of}Each push replaces it, or marks it "
-              "not current if the push's review does not finish. It decides nothing: a person at Theorem reviews "
-              "the enrollment.</sub>"]
-    sys.stdout.write("\n".join(parts) + "\n")
+        body += ("\n\n<details><summary>What the breakage and coverage checks measured</summary>\n\n"
+                 + cut(neutralize(checks), MAX_CHECKS, "the rest is in the Build check's summary") + "\n\n</details>")
+    sys.stdout.write(assemble(head, status, body))
     return 0
 
 
