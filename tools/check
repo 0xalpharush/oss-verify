@@ -225,6 +225,8 @@ def main():
                         help="also write the binaries of the first build to this file, as a Markdown table")
     parser.add_argument("--checks", type=pathlib.Path,
                         help="then measure what the fuzz targets' checks catch, and write it to this file as Markdown")
+    parser.add_argument("--checks-budget", type=int, default=check_checks.BUDGET_MINUTES, metavar="MINUTES",
+                        help="the most time the breakages of --checks may take together (default: %(default)s)")
     parser.add_argument("--dir", type=pathlib.Path, help=f"where to work (default: {check_build.CACHE}/<name>)")
     parser.add_argument("--print-toolchain", action="store_true",
                         help="print the toolchain image the build is FROM, and build nothing (exit 0)")
@@ -356,9 +358,12 @@ def main():
 
     if options.checks:
         try:
-            report = check_checks.checks(job, tag, targets, work, work / "raw", labels=check_build.work_label(work))
-        except Failed as failure:
-            report = f"### The checks of the fuzz targets\n\n`tools/check --checks` could not measure them: {failure}\n"
+            report = check_checks.checks(job, tag, targets, work, work / "raw", labels=check_build.work_label(work),
+                                         ubsan=ubsan_settings(job, toolchain), budget=options.checks_budget)
+        # Any error: the step must never change tools/check's exit status.
+        except Exception as failure:
+            report = ("### The checks of the fuzz targets\n\n`tools/check --checks` could not measure them: "
+                      f"{check_checks.code(f'{type(failure).__name__}: {failure}', 1500)}\n")
         step("--checks: what the fuzz targets' checks catch")
         say(report)
         options.checks.write_text(report, encoding="utf-8")

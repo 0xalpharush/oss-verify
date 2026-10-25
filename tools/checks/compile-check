@@ -25,7 +25,12 @@ set -euo pipefail
 
 if [ -f /ovc-mutant.patch ]; then
   echo "compile-check: applying the breakage patch in $PWD"
-  git apply --verbose /ovc-mutant.patch
+  # Paths start at this directory: git looks for no repository above it, so it never reads them from the top of an
+  # enclosing repository. git apply skips a path outside the directory and still exits 0, so a skip is a failure.
+  applied=$(GIT_CEILING_DIRECTORIES=$(dirname "$PWD") git apply --verbose /ovc-mutant.patch 2>&1) || {
+    echo "$applied"; exit 3; }
+  echo "$applied"
+  case $applied in *"Skipped patch"*) echo "compile-check: git apply skipped a file of the patch" >&2; exit 3 ;; esac
 fi
 
 if [ "${OVC_COVERAGE:-}" = 1 ]; then

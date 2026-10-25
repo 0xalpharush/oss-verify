@@ -12,6 +12,7 @@ import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import check_checks  # noqa: E402
+import check_records  # noqa: E402
 import validate  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -21,45 +22,26 @@ SPEC = importlib.util.spec_from_loader("review_comment", LOADER)
 review_comment = importlib.util.module_from_spec(SPEC)
 LOADER.exec_module(review_comment)
 
-SOURCE = b"""\
-/* abort() in a comment is not a check */
-#define CHECK(x) do { if (!(x)) abort(); } while (0)
-static void helper(void) { abort(); }
-int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-\tif (size > 4 &&
-\t    data[0] == 'x')
-\t\tabort();   /* "abort()" in a string: */ puts("abort()");
-\tif (size == 1) {
-\t\tlog_it();
-\t\tabort();
-\t} else if (size == 2) {
-\t\tabort();
-\t}
-\tswitch (data[0]) {
-\tdefault:
-\t\tabort();
-\t}
-\tfor (int i = 0; i < 2; i++) { abort(); }
-\treturn 0;
-}
-"""
+class Shifts(unittest.TestCase):
+    def test_a_patch_moves_the_lines_after_its_hunks(self):
+        patch = (b"diff --git a/fuzz/f.c b/fuzz/f.c\n--- a/fuzz/f.c\n+++ b/fuzz/f.c\n"
+                 b"@@ -10,3 +10,2 @@\n a\n-b\n c\n@@ -40 +39,3 @@\n-x\n+y\n+z\n+w\n")
+        shifts = check_checks.hunk_shifts(patch, "/src/p")
+        self.assertEqual(shifts, {"/src/p/fuzz/f.c": [(10, 3, 2), (40, 1, 3)]})
+
+        def check(line):
+            return check_records.Check(line, None, path="/src/p/fuzz/f.c")
+        self.assertEqual(check_checks.moved(check(5), shifts), 5)
+        self.assertEqual(check_checks.moved(check(20), shifts), 19)
+        self.assertEqual(check_checks.moved(check(50), shifts), 51)
 
 
-class FindChecks(unittest.TestCase):
-    def setUp(self):
-        self.checks = {check.line: check for check in check_checks.find_checks("/src/x/fuzz.c", SOURCE)}
-
-    def test_the_calls(self):
-        # Not the comment, the string, or the macro definition.
-        self.assertEqual(sorted(self.checks), [3, 7, 10, 12, 16, 18])
-
-    def test_guards(self):
-        self.assertEqual(self.checks[7].guard, (5, 6))  # the first byte of `size > 4 &&`
-        self.assertEqual(self.checks[7].text, "if (size > 4 &&")
-        self.assertEqual(self.checks[10].guard, (8, 6))  # after another statement of the block
-        self.assertEqual(self.checks[12].guard, (11, 13))  # else if
-        for unguarded in (3, 16, 18):  # a helper, a default:, a loop
-            self.assertIsNone(self.checks[unguarded].guard, unguarded)
+class Positions(unittest.TestCase):
+    def test_the_reader_gives_columns_for_coverage(self):
+        source = "int f(int a) {\n\tif (a > 4 &&\n\t    a < 9)\n\t\tabort();\n\treturn 0;\n}\n"
+        (found,) = check_records.find_checks(source, "/src/x/f.c")
+        self.assertEqual((found.path, found.line, found.column, found.guard_at), ("/src/x/f.c", 4, 3, (2, 2)))
+        self.assertEqual(found.text, "if (a > 4 &&")
 
 
 class Coverage(unittest.TestCase):
@@ -90,9 +72,11 @@ class Report(unittest.TestCase):
         self.assertTrue(check_checks.code("y" * 500, 10).endswith("…`"))
 
     def test_runs(self):
-        self.assertFalse(check_checks.Run("t", "s", 2, "coverage").failed())
-        self.assertTrue(check_checks.Run("t", "s", 134, "coverage").failed())
-        self.assertTrue(check_checks.Run("t", "s", None, "coverage").failed())
+        self.assertTrue(check_checks.Run("t", "s", 2, "coverage").passed())
+        self.assertTrue(check_checks.Run("t", "s", 134, "coverage").caught())
+        # A run stopped at the time limit neither passes nor catches a breakage.
+        self.assertFalse(check_checks.Run("t", "s", None, "coverage").passed())
+        self.assertFalse(check_checks.Run("t", "s", None, "coverage").caught())
         self.assertIn("abort()", check_checks.describe(check_checks.Run("t", "s", 134, "asan")))
 
     def test_seeds_get_the_driver_header(self):

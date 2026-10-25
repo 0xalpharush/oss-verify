@@ -7,19 +7,25 @@ A property of a fuzz target is a check that calls abort() (step 3.2 of .claude/s
 proof says no more than its checks. This step measures what steps 3.3 and 3.4 of that skill ask for:
 
 1. Reach. It builds the fuzz targets again with coverage (tools/checks/compile-check), runs each one on each input of
-   its seed corpus, and lists each check `if (<condition>) abort();` whose condition no seed input evaluates.
-2. Breakage. For each patch in the directory that project.yaml's `mutants` names, it builds the coverage build and the
-   project's most checking sanitizer build again with the patch applied, runs each fuzz target on each seed input, and
-   says whether a run fails: an exit status other than 0 and 2, or no end within RUN_TIMEOUT seconds. The coverage
-   build also says which checks fired. Then it lists each check that no patch makes fire.
+   its seed corpus, and lists each check whose guard (the `if`, `while`, `for` or `switch` that decides whether its
+   abort() runs) no seed input reaches. tools/check_records.py reads the checks and their comments.
+2. Breakage. Each breakage is a change to the code that should make a check fire: a `mutant:` record in the check's
+   comment, with the seed `input:` that must catch it, or a patch in the directory that project.yaml's `mutants`
+   names. For each one, it builds the coverage build again with the change, runs the inputs (a record's own input, or
+   every seed for a patch), and, if no run failed, builds and runs the project's most checking sanitizer build too. A
+   run fails with an exit status other than 0 and 2. A record is met when a run of its input fails, and that input
+   passes on the unchanged code. The coverage build also says which checks fired. The breakages build in parallel,
+   until a time budget runs out; the rest are listed as not checked.
 
 docs/build-contract.md, "The checks of a fuzz target", says what it measures and what it does not. It works for C and
-C++ fuzz targets. It runs the riscv64 binaries with qemu-riscv64-static (on Ubuntu, apt install qemu-user-static),
-inside a container of the project image with no network. The coverage build needs compiler-rt's source for the
-toolchain's LLVM version, which it downloads once and checks.
+C++ fuzz targets. It runs the riscv64 binaries with qemu-riscv64-static, inside a container of the project image with
+no network. The coverage build needs compiler-rt's source for the toolchain's LLVM version, which it downloads once
+and checks.
 """
 import bisect
+import concurrent.futures
 import dataclasses
+import difflib
 import hashlib
 import io
 import json
@@ -29,10 +35,12 @@ import re
 import shutil
 import subprocess
 import tarfile
+import time
 import urllib.request
 import zipfile
 
 import check_build
+import check_records
 from check_build import Failed, step
 
 TOOLS = pathlib.Path(__file__).resolve().parent
@@ -43,33 +51,24 @@ COMPILER_RT = {
     "20.1.8": ("https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/compiler-rt-20.1.8.src.tar.xz",
                "15277402f6fd63397c0917a5c7171cda82d16d226094b828c1ed0f58f73b9c69"),
 }
-# The longest a run of a fuzz target on one input may take, in seconds. A run that takes longer counts as a failure.
+# The longest a run of a fuzz target on one input may take, in seconds.
 RUN_TIMEOUT = 120
 # The exit statuses of a run that passes (docs/build-contract.md, "Exit statuses").
 PASSES = (0, 2)
-# The status of a run that tools/checks/run-seeds stopped at the time limit (SIGKILL).
+# The status of a run that tools/checks/run-seeds stopped at the time limit (SIGKILL). It is neither a pass nor a catch.
 KILLED = 137
 # The driver's header in front of each seed input: no config bytes and no allocation mask (docs/build-contract.md).
 HEADER = b"\0" * 6
-# The sanitizer builds, the most checking first: a breakage patch is also run on the first one the project has.
+# The sanitizer builds, the most checking first: a breakage is also run on the first one the project has.
 SANITIZER_BUILDS = (("asan-ubsan", "address-undefined"), ("asan", "address"), ("ubsan", "undefined"))
+# The time the breakages may take together, in minutes, by default.
+BUDGET_MINUTES = 60
 MAX_PATCH_BYTES = 256 * 1024
 MAX_PATCHES = 200
+MAX_LISTED = 60
 LANGUAGES = ("c", "c++")
 STATUS_NAMES = {134: "abort()", 132: "a UBSan trap", 139: "a segmentation fault", 77: "exit()",
                 78: "a return value other than 0 or -1"}
-
-
-@dataclasses.dataclass
-class Check:
-    """One abort() call in a fuzz target's source. `guard` is the position of the first byte of the condition of the
-    `if` that guards it, or None if no `if (...)` guards it (a `default:` of a switch, an else branch, a helper)."""
-
-    path: str  # as the coverage build names it: the path in the project image
-    line: int
-    column: int
-    guard: tuple | None
-    text: str  # the source line of the guard, or of the call
 
 
 @dataclasses.dataclass
@@ -81,93 +80,27 @@ class Run:
     status: int | None
     build: str  # "coverage", or the sanitizer build's name
 
-    def failed(self):
-        return self.status not in PASSES
+    def passed(self):
+        return self.status in PASSES
+
+    def caught(self):
+        return self.status is not None and self.status not in PASSES
 
 
-# ── reading C and C++ ────────────────────────────────────────────────────────────────────────────────────────────────
+@dataclasses.dataclass
+class Breakage:
+    """One change to the code: a patch of the `mutants` directory, or the change of one or more `mutant:` records."""
 
-_LITERAL = re.compile(rb'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
-_TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|\S")
-_ABORT = re.compile(rb"\babort\s*\(\s*\)")
-
-
-def blank_literals(source):
-    """`source` (bytes) with each comment and each string and character literal replaced by spaces, newlines kept, so
-    that each byte keeps its line and column."""
-    return _LITERAL.sub(lambda m: re.sub(rb"[^\n]", b" ", m.group()), source)
-
-
-def find_checks(path, source):
-    """Each abort() call in `source` (bytes), with the `if` that guards it."""
-    code = blank_literals(source)
-    starts = [0] + [m.end() for m in re.finditer(rb"\n", code)]
-    lines = source.split(b"\n")
-
-    def position(offset):
-        line = bisect.bisect_right(starts, offset)
-        return line, offset - starts[line - 1] + 1
-
-    tokens = [(m.group(), m.start()) for m in _TOKEN.finditer(code)]
-    index = {offset: i for i, (_, offset) in enumerate(tokens)}
-    checks = []
-    for match in _ABORT.finditer(code):
-        line, column = position(match.start())
-        if code[starts[line - 1]:match.start()].lstrip().startswith(b"#"):
-            continue  # in a macro definition: its uses are the checks, which this does not find
-        guard = guard_of(tokens, index[match.start()])
-        where = position(guard) if guard is not None else (line, column)
-        text = lines[where[0] - 1].decode("utf-8", "replace").strip()
-        checks.append(Check(path, line, column, where if guard is not None else None, text))
-    return checks
-
-
-def _match_back(tokens, close, opener, closer):
-    """The index of the token that opens the bracket closed at tokens[close], or None."""
-    depth = 0
-    for i in range(close, -1, -1):
-        if tokens[i][0] == closer:
-            depth += 1
-        elif tokens[i][0] == opener:
-            depth -= 1
-            if depth == 0:
-                return i
-    return None
-
-
-def guard_of(tokens, i):
-    """The offset of the first byte of the condition of the `if` that guards the call at tokens[i], or None.
-
-    It walks back from the call: `if (<condition>) abort();` and `if (<condition>) { ...; abort(); }` have a guard. A
-    call after other statements of a block takes the guard of the block. Any other form (`else`, `case`, `default`, a
-    loop, a function body) has none."""
-    j = i - 1
-    while j >= 0:
-        token = tokens[j][0]
-        if token == b")":
-            opened = _match_back(tokens, j, b"(", b")")
-            if opened and tokens[opened - 1][0] == b"if" and opened + 1 < j:
-                return tokens[opened + 1][1]
-            return None
-        if token == b"{":
-            if j > 0 and tokens[j - 1][0] == b")":
-                j -= 1
-                continue
-            return None
-        if token in (b";", b"}"):
-            # An earlier statement of the same block: the `{` that opens the block decides.
-            depth = 0
-            while j >= 0:
-                if tokens[j][0] == b"}":
-                    depth += 1
-                elif tokens[j][0] == b"{":
-                    if depth == 0:
-                        break
-                    depth -= 1
-                j -= 1
-            continue
-        return None
-    return None
+    label: str
+    patch: bytes | None
+    records: list = dataclasses.field(default_factory=list)  # [(check, record)]; empty for a patch of the directory
+    problem: str = ""  # why it could not be made, for a record
+    # Set by evaluate():
+    outcome: str = ""  # "measured", "does not build", "not checked"
+    detail: str = ""
+    runs: list = dataclasses.field(default_factory=list)
+    fired: set = dataclasses.field(default_factory=set)  # (path, line, column) of the checks that fired
+    builds: tuple = ()
 
 
 # ── coverage ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -209,14 +142,39 @@ def fuzz_target_files(export):
             if function.get("name") == "LLVMFuzzerTestOneInput" for name in function.get("filenames", [])[:1]}
 
 
+def files_of(export):
+    """The source files that one llvm-cov export maps."""
+    return {entry["filename"] for data in export.get("data", []) for entry in data.get("files", [])}
+
+
+def hunk_shifts(patch, workdir):
+    """{path in the image: [(old start, old length, new length)]}: where a unified diff adds or removes lines, so that a
+    check's line in the unchanged file can be moved to its line in the changed one."""
+    shifts, path = {}, None
+    for line in patch.decode("utf-8", "replace").splitlines():
+        if line.startswith("+++ "):
+            name = line[4:].strip().split("\t")[0]
+            path = None if name == "/dev/null" else str(pathlib.PurePosixPath(workdir) / name.removeprefix("b/"))
+        elif path and (found := re.match(r"@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@", line)):
+            shifts.setdefault(path, []).append((int(found[1]), int(found[2] or 1), int(found[3] or 1)))
+    return shifts
+
+
+def moved(check, shifts):
+    """The line of `check` in the changed file."""
+    return check.line + sum(new - old for start, old, new in shifts.get(check.path, []) if start + old <= check.line)
+
+
 # ── running ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def qemu():
     """The path of a static qemu-riscv64, which runs inside the project image too, or raise Failed."""
     found = shutil.which("qemu-riscv64-static")
     if not found:
-        raise Failed("--checks runs the riscv64 binaries with qemu-riscv64-static, which is not installed "
-                     "(on Ubuntu, apt install qemu-user-static)")
+        raise Failed("--checks runs the riscv64 binaries with qemu-riscv64-static, which is not on PATH. Take it out of "
+                     "Ubuntu's package without installing it (installing registers it with the kernel): "
+                     "apt-get download qemu-user-static && dpkg-deb -x qemu-user-static_*.deb <directory>, then put "
+                     "<directory>/usr/bin on PATH")
     return pathlib.Path(found).resolve()
 
 
@@ -240,10 +198,24 @@ def write_seeds(directory, targets, inputs):
     return names
 
 
+def subset(inputs, names, wanted, directory):
+    """A directory of inputs with only the (target, seed name) pairs of `wanted`, linked from `inputs`. Return its
+    names, as write_seeds() does."""
+    shutil.rmtree(directory, ignore_errors=True)
+    chosen = {}
+    for target, seed in sorted(wanted):
+        if seed in names.get(target, []):
+            n = names[target].index(seed)
+            (directory / target).mkdir(parents=True, exist_ok=True)
+            os.link(inputs / target / str(n), directory / target / str(n))
+            chosen.setdefault(target, {})[n] = seed
+    return chosen
+
+
 def run_all(tag, binaries, inputs, names, build, results, *, labels):
-    """Run each fuzz target in the directory `binaries` on each of its seed inputs (write_seeds), in a container of the
-    project image with no network (tools/checks/run-seeds). Keep each run's status and profile in `results`. Return
-    [Run]."""
+    """Run each fuzz target in the directory `binaries` on each of its seed inputs, in a container of the project image
+    with no network (tools/checks/run-seeds). `names` maps a target to its seed names, as a list (input n is the n-th)
+    or a dict {n: name}. Keep each run's status and profile in `results`. Return [Run]."""
     check_build.empty_directory(results, tag, labels=labels)
     command = ["docker", "run", "--rm", "--init", "--network=none", *labels, "-e", f"OV_OWNER={os.getuid()}:{os.getgid()}",
                "-v", f"{qemu()}:/ovc-qemu:ro", "-v", f"{CHECKS_DIR}:/ovc:ro", "-v", f"{binaries}:/bins:ro",
@@ -255,9 +227,10 @@ def run_all(tag, binaries, inputs, names, build, results, *, labels):
     for target in sorted(names):
         if not (binaries / target).is_file():
             continue
-        for n, seed in enumerate(names[target]):
+        numbered = names[target] if isinstance(names[target], dict) else dict(enumerate(names[target]))
+        for n, seed in sorted(numbered.items()):
             status = results / target / f"{n}.status"
-            text = status.read_text().strip() if status.is_file() else ""
+            text = status.read_text()[:16].strip() if status.is_file() and not status.is_symlink() else ""
             runs.append(Run(target, seed, int(text) if text.isdigit() and text != str(KILLED) else None, build))
     return runs
 
@@ -270,7 +243,7 @@ def llvm_version(tag, labels):
                               "--version")
     found = re.search(r"clang version (\d+\.\d+\.\d+)", text)
     if not found:
-        raise Failed(f"cannot read the toolchain's clang version from: {text.strip()[:200]}")
+        raise Failed("cannot read the toolchain's clang version")
     return found.group(1)
 
 
@@ -284,8 +257,11 @@ def compiler_rt(version):
     if (source / "lib" / "profile").is_dir():
         return source
     step(f"download compiler-rt {version}'s source, for the coverage build")
-    with urllib.request.urlopen(url, timeout=120) as response:
-        data = response.read()
+    try:
+        with urllib.request.urlopen(url, timeout=120) as response:
+            data = response.read()
+    except OSError as error:
+        raise Failed(f"cannot download {url}: {error}") from error
     if hashlib.sha256(data).hexdigest() != sha256:
         raise Failed(f"{url} does not have the SHA-256 {sha256}")
     shutil.rmtree(home, ignore_errors=True)
@@ -295,18 +271,29 @@ def compiler_rt(version):
     return source
 
 
-def compile_check(tag, out, sanitizer, *, labels, patch=None, runtime=None):
+def compile_check(tag, out, sanitizer, targets, *, labels, patch=None, runtime=None, ubsan=None):
     """Build into `out` with tools/checks/compile-check: the build `sanitizer` names, with the coverage changes if
-    `runtime` (compiler-rt's source) is given, and with the breakage `patch` applied if given. Return whether it built."""
+    `runtime` (compiler-rt's source) is given, and with the breakage `patch` applied if given. `ubsan` is as for
+    check_build.compile_build. Return None if it built each of `targets`, else why not, with the end of its output."""
     check_build.empty_directory(out, tag, labels=labels)
     mounts = ["-v", f"{CHECKS_DIR}:/ovc:ro", "-v", f"{out}:/out"]
     if patch is not None:
         mounts += ["-v", f"{patch}:/ovc-mutant.patch:ro"]
     if runtime is not None:
         mounts += ["-v", f"{runtime}:/ovc-rt:ro", "-e", "OVC_COVERAGE=1"]
+    if ubsan and "undefined" in sanitizer:
+        mounts += ["-e", f"OV_UBSAN_CHECKS={','.join(ubsan[0])}", "-e", f"OV_UBSAN_EXCLUDE={','.join(ubsan[1])}"]
+        if len(ubsan) > 2 and ubsan[2]:
+            mounts += ["-e", f"OV_UBSAN_C_EXCLUDE={','.join(ubsan[2])}"]
     command = ["docker", "run", "--rm", "--init", "--network=none", *labels, "-e", f"SANITIZER={sanitizer}",
                "-e", f"OV_OWNER={os.getuid()}:{os.getgid()}", *mounts, "--entrypoint", "/ovc/compile-check", tag]
-    return check_build.run(*command, quiet=True) == 0
+    done = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True)
+    tail = "\n".join(done.stdout.decode("utf-8", "replace").splitlines()[-20:]
+                     + done.stderr.decode("utf-8", "replace").splitlines()[-10:])
+    if done.returncode != 0:
+        return f"the build exited {done.returncode}: {tail}"
+    missing = [target for target in targets if not (out / target).is_file() or (out / target).is_symlink()]
+    return f"the build made no {', '.join(missing)}" if missing else None
 
 
 def export_coverage(tag, binaries, profiles, *, labels):
@@ -321,25 +308,35 @@ def export_coverage(tag, binaries, profiles, *, labels):
                   'llvm-cov export -format=text -instr-profile=/tmp/merged.profdata /binary')
         text = check_build.output("docker", "run", "--rm", "--network=none", *labels, "-v", f"{mine}:/profiles:ro",
                                   "-v", f"{binary}:/binary:ro", "--entrypoint", "sh", tag, "-c", script)
-        exports[target] = json.loads(text)
+        try:
+            exports[target] = json.loads(text)
+        except ValueError as error:
+            raise Failed(f"llvm-cov export of {target} is not JSON: {error}") from error
     return exports
 
 
 def image_files(tag, paths, *, labels):
-    """The bytes of these files of the project image: {path: bytes}."""
+    """The bytes of these regular files of the project image: {path: bytes}. A path that is missing is left out."""
     if not paths:
         return {}
     done = subprocess.run(["docker", "run", "--rm", "--network=none", *labels, "--entrypoint", "tar", tag, "-cf", "-",
                            "--", *sorted(paths)], stdin=subprocess.DEVNULL, capture_output=True)
     files = {}
-    with tarfile.open(fileobj=io.BytesIO(done.stdout)) as archive:
-        for member in archive.getmembers():
-            if member.isfile():
-                files["/" + member.name.lstrip("/")] = archive.extractfile(member).read()
+    try:
+        with tarfile.open(fileobj=io.BytesIO(done.stdout)) as archive:
+            for member in archive.getmembers():
+                if member.isfile() and member.size <= 16 << 20:
+                    files["/" + member.name.lstrip("/")] = archive.extractfile(member).read()
+    except tarfile.TarError:
+        pass
     return files
 
 
-def mutant_patches(tag, directory, *, labels):
+def workdir_of(tag):
+    return check_build.output("docker", "image", "inspect", "--format", "{{.Config.WorkingDir}}", tag).strip() or "/"
+
+
+def mutant_patches(tag, directory, workdir, *, labels):
     """The breakage patches in `directory` of the project image (relative to its WORKDIR): {name: bytes}, each regular
     file named *.patch at its top level. Raise Failed if the directory is not there."""
     script = 'cd -- "$1" && for f in *.patch; do [ -f "$f" ] && [ ! -L "$f" ] && printf "%s\\0" "$f"; done; true'
@@ -348,10 +345,39 @@ def mutant_patches(tag, directory, *, labels):
     if done.returncode != 0:
         raise Failed(f"mutants: {directory} is not a directory of the project image")
     names = sorted(name.decode("utf-8", "replace") for name in done.stdout.split(b"\0") if name)[:MAX_PATCHES]
-    workdir = check_build.output("docker", "image", "inspect", "--format", "{{.Config.WorkingDir}}", tag).strip() or "/"
     base = pathlib.PurePosixPath(workdir) / directory
     files = image_files(tag, [str(base / name) for name in names], labels=labels)
     return {name: files[str(base / name)][:MAX_PATCH_BYTES] for name in names if str(base / name) in files}
+
+
+def record_breakages(checks, tag, workdir, *, labels):
+    """One Breakage for each distinct change that the `mutant:` records of `checks` ask for, as a patch made from the
+    image's file."""
+    by_change = {}
+    for check in checks:
+        for record in check.records:
+            by_change.setdefault(record.mutant(), []).append((check, record))
+    paths = {path for path, *_ in by_change if check_records.safe_path(path)}
+    files = image_files(tag, [str(pathlib.PurePosixPath(workdir) / path) for path in paths], labels=labels)
+    breakages = []
+    for (path, line, old, new), records in by_change.items():
+        label = f"{path}:{line} `{old}` -> `{new}`"
+        if not check_records.safe_path(path):
+            breakages.append(Breakage(label, None, records, problem=f"{path} is not a path inside the WORKDIR"))
+            continue
+        data = files.get(str(pathlib.PurePosixPath(workdir) / path))
+        if data is None:
+            breakages.append(Breakage(label, None, records, problem=f"{path} is not a file of the project image"))
+            continue
+        changed, why = check_records.mutate(data, records[0][1])
+        if changed is None:
+            breakages.append(Breakage(label, None, records, problem=why))
+            continue
+        before = data.decode("latin-1").splitlines(keepends=True)
+        after = changed.decode("latin-1").splitlines(keepends=True)
+        diff = "".join(difflib.unified_diff(before, after, f"a/{path}", f"b/{path}"))
+        breakages.append(Breakage(label, f"diff --git a/{path} b/{path}\n{diff}".encode("latin-1"), records))
+    return breakages
 
 
 # ── the report ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -370,9 +396,18 @@ def code(text, limit=120):
     return f"{fence}{pad}{text}{pad}{fence}"
 
 
+def cell(text, limit=60):
+    """`text` from the project as Markdown code in a table cell, where a | would end the cell."""
+    return code(text, limit).replace("|", "\\|")
+
+
 def shown(path):
     """A path of the project image as the report shows it: without the leading /src/."""
     return path.removeprefix("/src/")
+
+
+def where(check):
+    return f"{shown(check.path)}:{check.line}"
 
 
 def describe(run):
@@ -380,11 +415,6 @@ def describe(run):
     if run.status is None:
         return f"did not end within {RUN_TIMEOUT} seconds"
     return f"exit status {run.status}" + (f" ({STATUS_NAMES[run.status]})" if run.status in STATUS_NAMES else "")
-
-
-def cell(text, limit=60):
-    """`text` from the project as Markdown code in a table cell, where a | would end the cell."""
-    return code(text, limit).replace("|", "\\|")
 
 
 def lines_by_file(checks):
@@ -396,20 +426,98 @@ def lines_by_file(checks):
             for path, lines in sorted(files.items())]
 
 
+def listed(items, limit=MAX_LISTED):
+    """At most `limit` list items, and a line that counts the rest."""
+    return items[:limit] + ([f"  - and {len(items) - limit} more"] if len(items) > limit else [])
+
+
 # ── the step ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-def measure(tag, binaries, inputs, names, results, *, labels):
-    """Run the coverage build's binaries on the seed inputs. Return (runs, Coverage, exports)."""
-    runs = run_all(tag, binaries, inputs, names, "coverage", results, labels=labels)
-    exports = export_coverage(tag, {target: binaries / target for target in names if (binaries / target).is_file()},
-                              results, labels=labels)
+@dataclasses.dataclass
+class Context:
+    """What each breakage's evaluation needs."""
+    tag: str
+    labels: list
+    home: pathlib.Path
+    targets: list
+    inputs: pathlib.Path
+    seeds: dict
+    runtime: pathlib.Path
+    sanitizer: tuple | None
+    ubsan: tuple | None
+    workdir: str
+    checks: list
+    passing: set
+    deadline: float
+
+
+def measure(ctx, binaries, inputs, names, results):
+    """Run the coverage build's binaries on the inputs. Return (runs, Coverage, exports)."""
+    runs = run_all(ctx.tag, binaries, inputs, names, "coverage", results, labels=ctx.labels)
+    exports = export_coverage(ctx.tag, {target: binaries / target for target in names if (binaries / target).is_file()},
+                              results, labels=ctx.labels)
     coverage = Coverage()
     for export in exports.values():
         coverage.add(export)
     return runs, coverage, exports
 
 
-def checks(job, tag, targets, work, raw, *, labels):
+def evaluate(ctx, number, breakage, record_targets):
+    """Build and run one breakage, and fill in its outcome."""
+    if time.monotonic() > ctx.deadline:
+        breakage.outcome = "not checked"
+        return breakage
+    home = ctx.home / "breakages" / str(number)
+    try:
+        shutil.rmtree(home, ignore_errors=True)
+        home.mkdir(parents=True)
+        patch = home / "change.patch"
+        patch.write_bytes(breakage.patch)
+        if breakage.records:
+            wanted = {(target, record.input) for check, record in breakage.records
+                      for target in record_targets.get(check.path, ())}
+            inputs, names = home / "inputs", subset(ctx.inputs, ctx.seeds, wanted, home / "inputs")
+        else:
+            inputs, names = ctx.inputs, ctx.seeds
+        targets = [target for target in ctx.targets if target in names]
+        if not targets:
+            breakage.outcome, breakage.detail = "measured", "no seed input to run"
+            return breakage
+        why = compile_check(ctx.tag, home / "coverage", "none", ctx.targets, labels=ctx.labels, patch=patch,
+                            runtime=ctx.runtime)
+        if why:
+            breakage.outcome, breakage.detail = "does not build", why
+            return breakage
+        runs, coverage, _ = measure(ctx, home / "coverage", inputs, names, home / "results")
+        shifts = {} if breakage.records else hunk_shifts(breakage.patch, ctx.workdir)
+        breakage.fired = {(check.path, check.line, check.column) for check in ctx.checks
+                          if coverage.count(check.path, moved(check, shifts), check.column)}
+        breakage.builds = ("coverage",)
+        if ctx.sanitizer and not any(run.caught() for run in runs):
+            why = compile_check(ctx.tag, home / ctx.sanitizer[0], ctx.sanitizer[1], ctx.targets, labels=ctx.labels,
+                                patch=patch, ubsan=ctx.ubsan)
+            if why:
+                breakage.detail = f"the {ctx.sanitizer[0]} build: {why}"
+            else:
+                runs += run_all(ctx.tag, home / ctx.sanitizer[0], inputs, names, ctx.sanitizer[0], home / "results-san",
+                                labels=ctx.labels)
+                breakage.builds += (ctx.sanitizer[0],)
+        breakage.runs = runs
+        breakage.outcome = "measured"
+    except Failed as failure:
+        breakage.outcome, breakage.detail = "does not build", str(failure)
+    finally:
+        check_build.empty_directory(home, ctx.tag, labels=ctx.labels)
+    return breakage
+
+
+def catches(breakage, passing, target=None, seed=None):
+    """The runs of `breakage` that failed where the unchanged code passes: of one target and seed, if given."""
+    return [run for run in breakage.runs if run.caught() and (run.build, run.target, run.seed) in passing
+            and (target is None or run.target == target) and (seed is None or run.seed == seed)]
+
+
+def checks(job, tag, targets, work, raw, *, labels, ubsan=None, budget=BUDGET_MINUTES):
     """Run the step, and return its report as Markdown."""
     lines = ["### The checks of the fuzz targets", ""]
     if job.language not in LANGUAGES:
@@ -420,11 +528,14 @@ def checks(job, tag, targets, work, raw, *, labels):
     inputs = home / "inputs"
     seeds = write_seeds(job.directory, targets, inputs)
     runtime = compiler_rt(llvm_version(tag, labels))
+    workdir = workdir_of(tag)
 
     step("--checks: the coverage build, and each fuzz target on each seed input")
-    if not compile_check(tag, home / "coverage", "none", labels=labels, runtime=runtime):
-        raise Failed("the coverage build failed (tools/checks/compile-check)")
-    base_runs, base, exports = measure(tag, home / "coverage", inputs, seeds, home / "results", labels=labels)
+    why = compile_check(tag, home / "coverage", "none", targets, labels=labels, runtime=runtime)
+    if why:
+        raise Failed(f"the coverage build failed: {why}")
+    ctx = Context(tag, labels, home, targets, inputs, seeds, runtime, None, ubsan, workdir, [], set(), 0.0)
+    base_runs, base, exports = measure(ctx, home / "coverage", inputs, seeds, home / "results")
 
     # The checks: the abort() calls in each file that defines LLVMFuzzerTestOneInput, and in the other files of its
     # directory that the coverage build compiled.
@@ -432,17 +543,23 @@ def checks(job, tag, targets, work, raw, *, labels):
     directories = {str(pathlib.PurePosixPath(path).parent) for path in defining}
     harness = sorted(path for path in base.segments if str(pathlib.PurePosixPath(path).parent) in directories)
     sources = image_files(tag, harness, labels=labels)
-    found = [check for path in harness for check in find_checks(path, sources.get(path, b""))]
-    guarded = [check for check in found if check.guard is not None]
-    unguarded = [check for check in found if check.guard is None]
-    unreached = [check for check in guarded if base.count(check.path, *check.guard) == 0]
-    unmapped = [check for check in guarded if base.count(check.path, *check.guard) is None]
+    found = [check for path in harness
+             for check in check_records.find_checks(sources.get(path, b"").decode("latin-1"), path)]
+    notes = [check for check in found if check.note]
+    exempt = [check for check in found if not check.note and check.not_property is not None]
+    properties = [check for check in found if not check.note and check.not_property is None]
+    unreached = [check for check in properties if base.count(check.path, *check.guard_at) == 0]
+    unmapped = [check for check in properties if base.count(check.path, *check.guard_at) is None]
+    record_targets = {}
+    for target, export in exports.items():
+        for path in files_of(export):
+            record_targets.setdefault(path, set()).add(target)
 
     sanitizer = next(((build, value) for build, value in SANITIZER_BUILDS if build in job.builds), None)
     sanitizer_base = (run_all(tag, raw / sanitizer[0], inputs, seeds, sanitizer[0], home / "results-sanitizer",
                               labels=labels) if sanitizer else [])
-    failing = [run for run in base_runs + sanitizer_base if run.failed()]
-    passing = {(run.build, run.target, run.seed) for run in base_runs + sanitizer_base if not run.failed()}
+    failing = [run for run in base_runs + sanitizer_base if not run.passed()]
+    passing = {(run.build, run.target, run.seed) for run in base_runs + sanitizer_base if run.passed()}
 
     no_corpus = [target for target in targets if target not in seeds]
     lines.append(f"Each fuzz target ran on each input of its seed corpus ({sum(map(len, seeds.values()))} inputs), "
@@ -453,71 +570,101 @@ def checks(job, tag, targets, work, raw, *, labels):
         lines.append(f"- **No seed corpus:** {', '.join(code(t) for t in no_corpus)}. Step 3.3 of the add-project "
                      "skill asks for one for each fuzz target.")
     if failing:
-        lines.append(f"- **Seed inputs that fail on the unchanged library:** {len(failing)}.")
-        lines += [f"  - {code(run.target)} on {code(run.seed, 60)}, {run.build} build: {describe(run)}"
-                  for run in failing[:20]]
-    lines.append(f"- **Checks:** {len(guarded)} checks of the form `if (...) abort();` in "
-                 f"{', '.join(code(shown(path)) for path in harness) or 'no file'}.")
+        lines.append(f"- **Seed inputs that fail on the unchanged code:** {len(failing)}.")
+        lines += listed([f"  - {code(run.target)} on {code(run.seed, 60)}, {run.build} build: {describe(run)}"
+                         for run in failing], 20)
+    lines.append(f"- **Checks:** {len(properties)} property checks in "
+                 f"{', '.join(code(shown(path)) for path in harness) or 'no file'}"
+                 + (f", and {len(exempt)} stops marked `not a property`" if exempt else "") + ".")
     if unreached:
         lines.append(f"- **Checks that no seed input reaches:** {len(unreached)}. Step 3.3 asks for an input that "
                      "reaches each check. Add one to the seed corpus.")
-        lines += [f"  - {code(f'{shown(c.path)}:{c.line}')}, under {code(c.text, 90)}" for c in unreached]
+        lines += listed([f"  - {code(where(c))}, under {code(c.text, 90)}" for c in unreached])
     else:
         lines.append("- **Checks that no seed input reaches:** none.")
-    if unguarded:
-        lines.append(f"- **Not measured:** {len(unguarded)} `abort()` calls that no `if (...)` guards, for example in "
-                     "a `default:` of a switch or an `else` branch: " + "; ".join(lines_by_file(unguarded)) + ".")
     if unmapped:
         lines.append(f"- **Not measured:** {len(unmapped)} checks that the coverage build did not compile: "
                      + "; ".join(lines_by_file(unmapped)) + ".")
+    if notes:
+        lines.append(f"- **Not read as checks:** {len(notes)} `abort()` calls.")
+        lines += listed([f"  - {code(where(c))}: {c.note}" for c in notes], 20)
+    if exempt:
+        lines.append(f"- **Marked `not a property`:** {len(exempt)}, which need no input and no breakage. A reviewer "
+                     "reads each reason.")
+        lines += listed([f"  - {code(where(c))}: {code(c.not_property, 90)}" for c in exempt], 30)
 
-    if not job.mutants:
-        lines += ["- **Breakage patches:** none, because project.yaml has no `mutants` directory. Step 3.4 of the "
-                  "add-project skill asks for a one-line breakage patch for each check, in that directory.", ""]
+    # The breakages.
+    try:
+        breakages = record_breakages(properties, tag, workdir, labels=labels)
+        patches = mutant_patches(tag, job.mutants, workdir, labels=labels) if job.mutants else {}
+        breakages += [Breakage(name, body) for name, body in patches.items()]
+        ctx = Context(tag, labels, home, targets, inputs, seeds, runtime, sanitizer, ubsan, workdir, found, passing,
+                      time.monotonic() + budget * 60)
+        buildable = [b for b in breakages if b.patch is not None]
+        step(f"--checks: {len(buildable)} breakages, at most {budget} minutes")
+        jobs = max(1, int(os.environ.get("OVC_JOBS") or (os.cpu_count() or 2)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            list(pool.map(lambda pair: evaluate(ctx, pair[0], pair[1], record_targets), enumerate(buildable)))
+    except Failed as failure:
+        lines += [f"- **Breakages:** not measured: {code(str(failure), 1500)}", ""]
         return "\n".join(lines)
 
-    patches = mutant_patches(tag, job.mutants, labels=labels)
-    patch_dir = home / "patches"
-    shutil.rmtree(patch_dir, ignore_errors=True)
-    patch_dir.mkdir(parents=True)
-    rows, fired_any, uncaught = [], set(), []
-    for name, body in patches.items():
-        step(f"--checks: the breakage patch {name}")
-        patch = patch_dir / re.sub(r"[^A-Za-z0-9._-]", "_", name)
-        patch.write_bytes(body)
-        out = home / "mutant"
-        if not compile_check(tag, out / "coverage", "none", labels=labels, patch=patch, runtime=runtime):
-            rows.append((name, "does not apply or does not build", ""))
-            uncaught.append(name)
-            continue
-        runs, coverage, _ = measure(tag, out / "coverage", inputs, seeds, home / "mutant-results", labels=labels)
-        if sanitizer and compile_check(tag, out / sanitizer[0], sanitizer[1], labels=labels, patch=patch):
-            runs += run_all(tag, out / sanitizer[0], inputs, seeds, sanitizer[0], home / "mutant-results-sanitizer",
-                            labels=labels)
-            builds = ("coverage", sanitizer[0])
-        else:
-            builds = ("coverage",)
-        caught = [run for run in runs if run.failed() and (run.build, run.target, run.seed) in passing]
-        fired = [check for check in found if coverage.count(check.path, check.line, check.column)]
-        fired_any.update((check.path, check.line, check.column) for check in fired)
-        if caught:
-            first = caught[0]
-            result = f"caught: {cell(first.target)} on {cell(first.seed)}, {first.build} build, {describe(first)}"
-        else:
-            result = f"**not caught** by any seed input ({' and '.join(builds)} builds)"
-            uncaught.append(name)
-        rows.append((name, result, ", ".join(cell(f"{shown(c.path)}:{c.line}") for c in fired) or "none"))
+    # The records, check by check.
+    met, problems, made_fire = 0, [], set()
+    for breakage in breakages:
+        made_fire |= breakage.fired if breakage.outcome == "measured" else set()
+        for check, record in breakage.records:
+            label = f"{code(where(check))}: {code(str(record), 110)}"
+            if breakage.problem:
+                problems.append(f"  - {label}: **bad mutant record**: {code(breakage.problem, 200)}")
+            elif not any(record.input in seeds.get(t, []) for t in record_targets.get(check.path, ())):
+                problems.append(f"  - {label}: **no such input** in the seed corpus of the fuzz targets that "
+                                "compile this file")
+            elif breakage.outcome == "not checked":
+                problems.append(f"  - {label}: not checked: the time budget of {budget} minutes ran out")
+            elif breakage.outcome == "does not build":
+                problems.append(f"  - {label}: **the mutant does not build**: {code(breakage.detail, 300)}")
+            elif not any(catches(breakage, passing, t, record.input) for t in record_targets.get(check.path, ())):
+                statuses = ", ".join(f"{run.build} {run.status if run.status is not None else 'time limit'}"
+                                     for run in breakage.runs if run.seed == record.input) or "no run"
+                problems.append(f"  - {label}: **mutant not met**: the input passes ({statuses})")
+            else:
+                met += 1
+                if (check.path, check.line, check.column) not in breakage.fired:
+                    caught = catches(breakage, passing, None, record.input)[0]
+                    problems.append(f"  - {label}: met, but not by this check: {caught.build} build, "
+                                    f"{describe(caught)}")
+    records = sum(len(b.records) for b in breakages)
+    if records:
+        lines.append(f"- **Mutant records:** {records} in the comments of the checks, of which {met} are met. "
+                     "Step 3.4 asks that each record's input makes its check fire.")
+        lines += listed(problems)
 
-    lines.append(f"- **Breakage patches** in {code(job.mutants)}: {len(patches)}, of which {len(uncaught)} no seed "
-                 "input catches. Step 3.4 asks for an input that catches each one. Add it to the seed corpus.")
-    if rows:
-        lines += ["", "  | patch | result | checks that fired |", "  |---|---|---|"]
-        lines += [f"  | {cell(name)} | {result} | {fired} |" for name, result, fired in rows]
-        lines.append("")
-    never = [check for check in guarded if (check.path, check.line, check.column) not in fired_any]
+    # The patches of the `mutants` directory.
+    directory = [b for b in breakages if not b.records]
+    if job.mutants:
+        uncaught = [b for b in directory if b.outcome == "measured" and not catches(b, passing)]
+        lines.append(f"- **Breakage patches** in {code(job.mutants)}: {len(directory)}, of which {len(uncaught)} no "
+                     "seed input catches. Step 3.4 asks for an input that catches each one. Add it to the seed corpus.")
+        if directory:
+            lines += ["", "  | patch | result | checks that fired |", "  |---|---|---|"]
+            for b in directory:
+                if b.outcome != "measured":
+                    result = ("not checked: the time budget ran out" if b.outcome == "not checked"
+                              else f"does not apply or build: {cell(b.detail, 200)}")
+                elif caught := catches(b, passing):
+                    result = (f"caught: {cell(caught[0].target)} on {cell(caught[0].seed)}, {caught[0].build} "
+                              f"build, {describe(caught[0])}")
+                else:
+                    result = f"**not caught** by any seed input ({' and '.join(b.builds)} builds)"
+                fired = [check for check in found if (check.path, check.line, check.column) in b.fired]
+                lines.append(f"  | {cell(b.label)} | {result} | "
+                             f"{', '.join(cell(where(c)) for c in fired) or 'none'} |")
+            lines.append("")
+    never = [check for check in properties if (check.path, check.line, check.column) not in made_fire]
     if never:
-        lines.append(f"- **Checks that no breakage patch makes fire:** {len(never)} of {len(guarded)}. Step 3.4 asks "
-                     "for a one-line breakage patch for each check, and an input on which the check fires: "
+        lines.append(f"- **Checks that no breakage makes fire:** {len(never)} of {len(properties)}. Step 3.4 asks for "
+                     "a one-line breakage for each check, and a seed input on which it fires: "
                      + "; ".join(lines_by_file(never)) + ".")
     lines.append("")
     return "\n".join(lines)
