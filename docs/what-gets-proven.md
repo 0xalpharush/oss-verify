@@ -139,7 +139,7 @@ A seeded project has `primary_contact: n/a`, because no maintainer has adopted i
 * We send a finding for a seeded project to no one. Nothing goes automatically to the project, to its security contact or to another person.
 * There is no deadline.
 * The finding stays with us until a person gives it to the project by hand.
-* While the finding stands, we do not publish the project's statements and proofs.
+* Until the finding is public, we do not publish the project's statements and proofs.
 
 To report a vulnerability in this repository or its tools, follow [SECURITY.md](../SECURITY.md).
 
@@ -163,18 +163,18 @@ The `publish` field tells us when to publish the proofs, and the `proofs` field 
 We write the lock from the manifest of `tools/check` ([build-contract.md](build-contract.md#the-manifest)). Each value of `publish` obeys these rules:
 
 * We publish nothing that shows a finding that is not public yet. We hold back the statements that the finding affects until it is public. What we publish does not tell why.
-* We publish a seeded project only while it has no findings.
-* If a proof needed a patch to the project's code, we publish it only once the finding that the patch fixes is public. We list the patch with the proof: its text, a summary, and whether the project has it.
+* We publish a seeded project only while none of its findings is private.
+* If a proof needed a patch that fixes a bug, we publish it only once the finding of that bug is public. We publish the text of each such patch with the proof, as the list above tells. The `patches` list of the project's facts in the proofs repository gives the summary and the upstream state of each such patch. The state is one of three: the bug is reported to the project, the bug is fixed in the project, or it is not a bug. Where the facts publish it, `library.patch_count` gives the number of all the patches that the build applies ([facts.md](https://github.com/theorem-labs/oss-verify-proofs/blob/main/docs/facts.md)).
 
 ## Where the claims come from
 
-Each public claim rests on three pinned inputs, and on a fourth when a proof needed a patch:
+Each public claim rests on three pinned inputs, and on a fourth when a proof of an enrolled project needed a patch:
 
 * the commit of the project's source;
 * the commit of this repository that holds the build files;
 * the digest of the toolchain image;
-* for a proof that needed a patch to the project's code, the patch, which we publish with the proof ([above](#publishing)).
+* for a proof of an enrolled project that needed a patch to the project's code, the patch, which we publish with the proof ([above](#publishing)).
 
-We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released version of LPS, these build files, and the project's source as it is, or with the published patch. A patch that fixes a bug is never in the project directory: the build files there contain build patches only, which change how the project builds and fix no bug ([project-yaml.md](project-yaml.md#build-patches)).
+We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released version of LPS, these build files, and the project's source. For an enrolled project, it uses the source as it is, or with the published patch. For a seeded project whose proofs we publish, the build files can also apply patches that fix bugs ([build-contract.md](build-contract.md#build-patches)). A published proof of such a project can thus be about a build that has patches.
 
-To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. `tools/check` builds the project's source as it is, so it does not rebuild a binary that needed a patch to the project's code.
+To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. At the commit of this repository that the lock gives in `oss_verifier.commit`, the build files apply the patches that they hold. Thus `tools/check` can rebuild a binary of a seeded project whose proofs we publish. It does not apply a patch that is outside the project directory, so it does not rebuild a binary of an enrolled project that needed a patch to the project's code.
