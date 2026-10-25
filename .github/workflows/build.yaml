@@ -74,24 +74,27 @@ name: "Build"
 #   target   the service account oss-verify-ci (svac_01WdHTLcJPEfiPttcuLK1hGT), with the developer role
 #   scope    workspace:inference, in the workspace Default+CVP, with a token lifetime of 3600 seconds
 # The numbers are the immutable ids of theorem-labs and of this repository. The Review step takes the test rule when
-# the run's ref is a ci-test/ branch, and the main rule otherwise. Each rule's `workflow: "Build"` claim is this
-# workflow's `name:` at the ref the run reads: pull_request_target always reads main (GITHUB_REF=refs/heads/main),
-# and workflow_dispatch reads the ref it was started on. The test rule is reachable only through
-# `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>`, which needs write access on this repository, and only
-# as long as this file on that branch keeps `name: "Build"`. A ci-test run posts its comment on that pull request,
-# so point it at a test pull request (one opened by this repository, not a maintainer's open enrollment). Renaming
-# this file or this workflow on main needs the main rule changed. Only the review job asks for an identity token.
+# the run's ref is a ci-test/ branch, and the main rule otherwise. Neither rule checks which workflow file the run is:
+# `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So the main rule
+# gives a token to any workflow named "Build" that runs on main, from any event, and the test rule to any workflow
+# named "Build" on any ci-test/ branch, from any event: a person with write access can push a branch ci-test/<x>
+# with a workflow of that name triggered on push. GitHub's `workflow_ref` claim (the file and the ref) would tie each
+# rule to this file, and `event_name` to an event; the rules do not check them yet. Only the review job of this file
+# asks for an identity token. The way to start a review on a ci-test/ branch is
+# `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>`. A ci-test run posts its comment on that pull request,
+# so point it at a test pull request (one opened by this repository, not a maintainer's open enrollment).
 #
 # On the first run for a pull request, and on each run started by hand, the comment job also sends the build's facts
 # (the project, its language, the build's result, and the size and linkage of each binary) to the Slack channel
 # #proving-oss-fuzz, through the incoming webhook in the repository secret SLACK_WEBHOOK_URL, which can post to that
 # one channel only. Without the secret it sends nothing, and says so in a warning.
 #
-# The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector when the repository variable
+# The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, with the repository variable
 # OTEL_EXPORTER_OTLP_ENDPOINT (the collector's public URL) and the repository secret OTEL_COLLECTOR_TOKEN (its bearer
-# token) are both set, tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
-# theorem.credential=oss-verify-ci (.github/scripts/review-run sets them).
-# Without them it exports nothing, and the review runs as before.
+# token), tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
+# theorem.credential=oss-verify-ci (.github/scripts/review-run sets them). The review fails if either is not set, or if
+# the collector does not answer 200 to an empty export with the token before the review starts, rather than lose the
+# review's spend in silence.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -342,10 +345,17 @@ jobs:
           ANTHROPIC_ORGANIZATION_ID: 5fd73c3e-8a2c-4166-b80d-fb5ce0c1b4a6
           ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01WdHTLcJPEfiPttcuLK1hGT
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Qr1iUVcow4jdgQM7Amfks5
-          # Usage, to Theorem's cost collector, if its secrets are set (review-run exports only with an endpoint).
+          # Usage, to Theorem's cost collector. review-run checks that the collector takes the token.
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_COLLECTOR_TOKEN: ${{ secrets.OTEL_COLLECTOR_TOKEN }}
         run: |
+          # Without the two, review-run exports nothing, which is for a person's own run: here it would lose the
+          # review's spend in silence.
+          if [ -z "$OTEL_EXPORTER_OTLP_ENDPOINT" ] || [ -z "$OTEL_COLLECTOR_TOKEN" ]; then
+            rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
+            echo "::error::The repository variable OTEL_EXPORTER_OTLP_ENDPOINT or the repository secret OTEL_COLLECTOR_TOKEN is not set, so the review's usage would not reach Theorem's cost collector."
+            exit 1
+          fi
           # Until the token is printed again, the runner reads none of the review's output as a workflow command.
           resume="$(openssl rand -hex 16)"
           echo "::stop-commands::$resume"
@@ -364,8 +374,9 @@ jobs:
 
   comment:
     needs: [project-builds, review]
-    # Only when the review ran and wrote a comment: a failed review leaves the last comment in place.
-    if: ${{ !cancelled() && needs.project-builds.outputs.name != '' && needs.review.result == 'success' && needs.review.outputs.comment != '' }}
+    # After a review that wrote a comment, it posts it. After a review that failed, it marks the comment already there
+    # as not current, naming the commit it is of, or posts that the review did not run if there is none.
+    if: ${{ !cancelled() && needs.project-builds.outputs.name != '' && (needs.review.result != 'success' || needs.review.outputs.comment != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -394,16 +405,23 @@ jobs:
           PR: ${{ github.event.pull_request.number || inputs.pr }}
           REVIEW: ${{ needs.review.outputs.comment }}
           CHECKS: ${{ needs.project-builds.outputs.checks }}
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           printf '%s' "$REVIEW" > "$RUNNER_TEMP/review.md"
           printf '%s' "$CHECKS" > "$RUNNER_TEMP/checks.md"
-          python3 .github/scripts/review-comment --review "$RUNNER_TEMP/review.md" \
-            --checks "$RUNNER_TEMP/checks.md" > "$RUNNER_TEMP/comment.md"
           # Ours is the oss-verify App's comment that starts with the marker.
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '.[] | select(.user.login == "oss-verify[bot]" and (.body | startswith("<!-- oss-verify-review -->"))) | .id')
           existing=${existing%%$'\n'*}
+          previous=()
+          if [ -z "$REVIEW" ] && [ -n "$existing" ]; then
+            gh api "repos/$REPO/issues/comments/$existing" --jq .body > "$RUNNER_TEMP/previous.md"
+            previous=(--previous "$RUNNER_TEMP/previous.md")
+          fi
+          python3 .github/scripts/review-comment --review "$RUNNER_TEMP/review.md" --checks "$RUNNER_TEMP/checks.md" \
+            --head "$HEAD_SHA" --run "$RUN_URL" "${previous[@]}" > "$RUNNER_TEMP/comment.md"
           if [ -n "$existing" ]; then
             jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \
               | gh api --method PATCH "repos/$REPO/issues/comments/$existing" --input - > /dev/null

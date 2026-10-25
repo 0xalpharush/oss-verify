@@ -15,9 +15,13 @@
 # project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the
 # ANTHROPIC_* variables of its credential (in CI, those of workload identity federation), and, when
 # both OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN are set, the OpenTelemetry settings that send its usage to
-# Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci
-# and theorem.credential=oss-verify-ci (the service account that federation gives a token for). Without them it exports
-# nothing.
+# Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name> and
+# theorem.lane=enroll-review-ci, and theorem.credential=oss-verify-ci when the run trades an identity token for that
+# service account (build.yaml's review job does; a person's own login does not). Before the review it sends the
+# collector an export of no records with the token, and stops if the collector does not answer 200: a wrong or revoked
+# token would otherwise lose the usage in silence. Without the two variables it exports nothing.
+# No value of that environment is ever an argument of a process: another user on the machine can read a process's
+# arguments, but not its environment.
 set -euo pipefail
 
 in=${1:?usage: review-run <directory>}
@@ -32,24 +36,52 @@ describes, as its section \"In CI\" says. The workflow gathered the inputs into 
 projects/$NAME/ is in this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing \
 else: it starts with the sentence of thanks, with no line before it about you or your review."
 
-pass=()
-for variable in $(compgen -e); do
-  case $variable in ANTHROPIC_*|CLAUDE_CODE_*) pass+=("$variable=${!variable}") ;; esac
-done
+telemetry=()
 if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
+  # The header reaches curl through a pipe that the builtin printf writes, not an argument. Neither the header nor the
+  # collector's answer is printed: only its HTTP status (000 when it did not answer in time).
+  answer=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -H 'Content-Type: application/json' \
+    -H @<(builtin printf 'Authorization: Bearer %s\n' "$OTEL_COLLECTOR_TOKEN") --data-binary '{}' \
+    "${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/logs") || true
+  if [ "$answer" != 200 ]; then
+    echo "review-run: the collector at $OTEL_EXPORTER_OTLP_ENDPOINT answered ${answer:-nothing} to an empty export" \
+      "with OTEL_COLLECTOR_TOKEN, not 200: the review's usage would be lost. Check the token and the endpoint." >&2
+    exit 1
+  fi
+  # The CI service account's label only on the identity that build.yaml's review job gets for it.
+  credential=""
+  if [ "${ANTHROPIC_SERVICE_ACCOUNT_ID:-}" = svac_01WdHTLcJPEfiPttcuLK1hGT ] \
+    && [ -n "${ANTHROPIC_IDENTITY_TOKEN_FILE:-}" ]; then
+    credential=,theorem.credential=oss-verify-ci
+  fi
   # Claude Code sends the header value as it is (measured with 2.1.309): a literal space after Bearer.
-  pass+=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=none
-         OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
-         "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $OTEL_COLLECTOR_TOKEN"
-         "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci,theorem.credential=oss-verify-ci")
-  echo "review-run: exporting usage to $OTEL_EXPORTER_OTLP_ENDPOINT"
+  telemetry=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=none
+             OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
+             "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $OTEL_COLLECTOR_TOKEN"
+             "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci$credential")
+  echo "review-run: the collector took the token; exporting usage to $OTEL_EXPORTER_OTLP_ENDPOINT"
 else
   echo "review-run: no OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN: usage is not exported"
 fi
 status=0
-env -i PATH="$PATH" HOME="$HOME" LANG=C.UTF-8 "${pass[@]}" \
+# Claude Code's whole environment, one NUL-ended entry each, goes through a pipe to a launcher that execs it with that
+# environment only, as env -i would, and stdin from /dev/null. env -i took the entries as arguments. A shell cannot do
+# it: bash passes on environment entries whose names are not variable names, and exported functions, which it cannot
+# unset.
+{
+  builtin printf '%s\0' "PATH=$PATH" "HOME=$HOME" LANG=C.UTF-8
+  for variable in $(compgen -e); do
+    case $variable in ANTHROPIC_*|CLAUDE_CODE_*) builtin printf '%s\0' "$variable=${!variable}" ;; esac
+  done
+  [ ${#telemetry[@]} = 0 ] || builtin printf '%s\0' "${telemetry[@]}"
+} | python3 -c '
+import os, sys
+environment = dict(entry.split(b"=", 1) for entry in sys.stdin.buffer.read().split(b"\0") if entry)
+with open(os.devnull, "rb") as empty:
+    os.dup2(empty.fileno(), 0)
+os.execvpe(sys.argv[1], sys.argv[1:], environment)' \
   claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \
-    --model "$model" --effort xhigh --max-turns 300 --output-format json < /dev/null > "$in/claude.json" 2> "$in/claude.err" \
+    --model "$model" --effort xhigh --max-turns 300 --output-format json > "$in/claude.json" 2> "$in/claude.err" \
   || status=$?
 if [ "$status" != 0 ] || jq -e .is_error "$in/claude.json" > /dev/null 2>&1; then
   # Claude Code's own error (for example "Authentication failed" from the token exchange), not the review's text.

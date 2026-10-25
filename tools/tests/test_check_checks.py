@@ -1,11 +1,14 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for tools/check_checks.py, .github/scripts/review-comment and .github/scripts/slack-notice that need no Docker:
+"""Tests for tools/check_checks.py and .github/scripts/review-comment, slack-notice and review-run that need no Docker:
 python3 -m pytest tools/tests"""
 import json
+import os
 import importlib.machinery
 import importlib.util
 import pathlib
+import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -141,14 +144,20 @@ class Mutants(unittest.TestCase):
 
 
 class ReviewComment(unittest.TestCase):
-    def comment(self, review, checks="### report\n"):
+    def comment(self, review, checks="### report\n", *extra):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / "review.md").write_text(review)
             (directory / "checks.md").write_text(checks)
             return subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
-                                   "--checks", str(directory / "checks.md")],
+                                   "--checks", str(directory / "checks.md"), *extra],
                                   capture_output=True, text=True, check=True).stdout
+
+    def kept(self, previous, head, run="https://github.com/theorem-labs/oss-verify/actions/runs/7"):
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "previous.md").write_text(previous)
+            return self.comment("", "### new report\n", "--head", head, "--run", run,
+                                "--previous", str(pathlib.Path(directory) / "previous.md"))
 
     def test_the_marker_comes_first_once(self):
         text = self.comment("Thanks.\n<!-- oss-verify-review -->\n")
@@ -173,6 +182,147 @@ class ReviewComment(unittest.TestCase):
             text = self.comment(f"Here: {leak}")
             self.assertNotIn(leak, text)
             self.assertIn("looks like a credential", text)
+
+    def test_the_footer_names_the_commit(self):
+        text = self.comment("Thanks.\n", "### report\n", "--head", "abc1234" + "0" * 33)
+        self.assertIn("It is the review of `abc1234`.", text)
+
+    def test_a_review_that_did_not_finish_keeps_the_last_one_as_not_current(self):
+        first = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
+        second = self.kept(first, "b" * 40)
+        self.assertTrue(second.startswith(review_comment.MARKER + "\n## Enrollment review\n\n**Not current:**"))
+        self.assertIn(f"this is the review of `{'a' * 7}`. The review of `{'b' * 7}` did not finish", second)
+        self.assertIn("actions/runs/7", second)
+        self.assertIn("1. Fix X.", second)
+        self.assertIn("### report", second)
+        self.assertNotIn("### new report", second)
+        # A second failure names the newest head, and the review is still of the first commit.
+        third = self.kept(second, "c" * 40)
+        self.assertEqual(third.count("**Not current:**"), 1)
+        self.assertIn(f"this is the review of `{'a' * 7}`. The review of `{'c' * 7}` did not finish", third)
+        self.assertEqual(third.split("**Not current:**", 1)[1].split("\n\n", 1)[1],
+                         second.split("**Not current:**", 1)[1].split("\n\n", 1)[1])
+
+    def test_a_comment_from_before_the_footer_named_its_commit(self):
+        old = (f"{review_comment.MARKER}\n## Enrollment review\n\nThanks.\n\n<sub>Claude wrote this review. It is "
+               "replaced on each push.</sub>\n")
+        self.assertIn("this is the review of an earlier commit.", self.kept(old, "b" * 40))
+
+    def test_a_comment_without_a_review_is_replaced(self):
+        none = self.comment("", "### report\n", "--head", "a" * 40)
+        text = self.kept(none, "b" * 40)
+        self.assertNotIn("Not current", text)
+        self.assertIn(f"did not run on this push (`{'b' * 7}`)", text)
+        self.assertIn("### new report", text)
+
+
+class ReviewRun(unittest.TestCase):
+    """review-run with a fake claude, and a collector on 127.0.0.1 that takes one token."""
+    TOKEN = "collector-token-not-a-secret"
+    SECRETS = (TOKEN, "sk-ant-oat01-notasecret", "ghs_notasecretnotasecret", "dotted-not-a-secret")
+
+    def setUp(self):
+        import http.server
+        import threading
+        self.headers = []
+        test = self
+
+        class Collector(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                test.headers.append((self.path, self.headers.get("Authorization")))
+                self.send_response(200 if self.headers.get("Authorization") == f"Bearer {test.TOKEN}" else 401)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Collector)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.directory = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.directory)
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        bin = self.directory / "bin"
+        bin.mkdir()
+        # Each command review-run runs records its arguments; claude records its arguments and environment too.
+        for command in ("python3", "curl", "jq", "awk", "realpath", "tail", "wc", "env"):
+            real = shutil.which(command)
+            (bin / command).write_text(f"#!/bin/bash\nprintf '%s\\0' {command} \"$@\" >> {self.directory}/argv\n"
+                                       f"exec {real} \"$@\"\n")
+        (bin / "claude").write_text(
+            f"#!/bin/bash\nprintf '%s\\0' claude \"$@\" >> {self.directory}/argv\n"
+            f"cat /proc/$$/environ > {self.directory}/environ\n"
+            'echo \'{"is_error": false, "result": "Thanks."}\'\n')
+        for script in bin.iterdir():
+            script.chmod(0o755)
+        (self.directory / "review").mkdir()
+
+    def run_review(self, **environment):
+        base = {"PATH": f"{self.directory / 'bin'}:{os.environ['PATH']}", "HOME": os.environ["HOME"], "PR": "8",
+                "NAME": "libreac", "GH_TOKEN": "ghs_notasecretnotasecret",
+                "ANTHROPIC_API_KEY": "sk-ant-oat01-notasecret", "CLAUDE_CODE_EFFORT": "x",
+                "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://elsewhere", "A.B": "dotted-not-a-secret",
+                "BASH_FUNC_f%%": "() { echo dotted-not-a-secret; }"}
+        return subprocess.run([str(ROOT / ".github" / "scripts" / "review-run"), "review"], cwd=self.directory,
+                              env={**base, **environment}, capture_output=True, text=True)
+
+    def collector(self, **environment):
+        return {"OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{self.server.server_port}/",
+                "OTEL_COLLECTOR_TOKEN": self.TOKEN, **environment}
+
+    def child(self):
+        entries = (self.directory / "environ").read_bytes().split(b"\0")
+        return dict(entry.decode().split("=", 1) for entry in entries if entry)
+
+    def test_no_value_is_an_argument_and_the_environment_is_the_allow_list(self):
+        out = self.run_review(**self.collector())
+        self.assertEqual(out.returncode, 0, out.stderr)
+        argv = (self.directory / "argv").read_text()
+        self.assertIn("claude", argv)
+        for secret in self.SECRETS:
+            self.assertNotIn(secret, argv)
+            self.assertNotIn(secret, out.stdout + out.stderr)
+        child = self.child()
+        self.assertEqual(set(child), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_EFFORT",
+                                      "CLAUDE_CODE_ENABLE_TELEMETRY", "OTEL_LOGS_EXPORTER", "OTEL_METRICS_EXPORTER",
+                                      "OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_EXPORTER_OTLP_ENDPOINT",
+                                      "OTEL_EXPORTER_OTLP_HEADERS", "OTEL_RESOURCE_ATTRIBUTES"})
+        self.assertEqual(child["OTEL_EXPORTER_OTLP_HEADERS"], f"Authorization=Bearer {self.TOKEN}")
+        self.assertEqual(child["CLAUDE_CODE_ENABLE_TELEMETRY"], "1")
+        self.assertNotIn("theorem.credential", child["OTEL_RESOURCE_ATTRIBUTES"])
+        self.assertEqual(self.headers, [("/v1/logs", f"Bearer {self.TOKEN}")])
+        self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+
+    def test_the_ci_label_only_with_the_ci_service_account(self):
+        self.run_review(**self.collector(ANTHROPIC_SERVICE_ACCOUNT_ID="svac_01WdHTLcJPEfiPttcuLK1hGT",
+                                         ANTHROPIC_IDENTITY_TOKEN_FILE="/x/jwt"))
+        self.assertTrue(self.child()["OTEL_RESOURCE_ATTRIBUTES"].endswith(",theorem.credential=oss-verify-ci"))
+        self.run_review(**self.collector(ANTHROPIC_SERVICE_ACCOUNT_ID="svac_other",
+                                         ANTHROPIC_IDENTITY_TOKEN_FILE="/x/jwt"))
+        self.assertNotIn("theorem.credential", self.child()["OTEL_RESOURCE_ATTRIBUTES"])
+
+    def test_a_token_the_collector_refuses_stops_the_review(self):
+        out = self.run_review(**self.collector(OTEL_COLLECTOR_TOKEN="wrong-token-not-a-secret"))
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("answered 401", out.stderr)
+        self.assertNotIn("wrong-token-not-a-secret", out.stdout + out.stderr)
+        self.assertFalse((self.directory / "environ").exists())
+
+    def test_a_collector_that_does_not_answer_stops_the_review(self):
+        with socket.socket() as closed:
+            closed.bind(("127.0.0.1", 0))
+            port = closed.getsockname()[1]
+        out = self.run_review(**self.collector(OTEL_EXPORTER_OTLP_ENDPOINT=f"http://127.0.0.1:{port}"))
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("answered 000", out.stderr)
+        self.assertFalse((self.directory / "environ").exists())
+
+    def test_without_the_collector_nothing_is_exported(self):
+        out = self.run_review()
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(set(self.child()), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_EFFORT"})
+        self.assertEqual(self.headers, [])
 
 
 class SlackNotice(unittest.TestCase):
