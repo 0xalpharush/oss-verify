@@ -231,7 +231,7 @@ A seed corpus is a zip file of example inputs of one fuzz target. Together, its 
 * It holds at most 1,024 inputs.
 * Its size is at most 1 MiB, and at most 16 MiB when uncompressed.
 
-`tools/check` does not use a seed corpus.
+`tools/check` runs each input of a seed corpus through the fuzz target, and names each property check that no input reaches. The `input:` line of a mutant record names an input of the seed corpus by its file name in the zip file ([build-contract.md](build-contract.md#property-checks)).
 
 ### Build patches
 

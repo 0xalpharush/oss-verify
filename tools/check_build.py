@@ -320,11 +320,14 @@ def empty_directory(path, tag, *, labels):
 DOCKER_FAILED = 125
 
 
-def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels):
+def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels, before=None, quiet=False):
     """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`. `ubsan`, if given,
     is (checks, left out[, left out of C compiles]): the UBSan checks of the build, those that trap mode leaves out,
-    and those that its C compiles leave out. `labels`: docker run arguments for the container, work_label()."""
-    step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
+    and those that its C compiles leave out. `labels`: docker run arguments for the container, work_label().
+    `before`, if given, is (docker run arguments, shell script, its arguments): the container runs the script with
+    sh before it compiles, as the builds of tools/properties.py do. `quiet` hides the build's output."""
+    if not quiet:
+        step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
     empty_directory(out, tag, labels=labels)
     owner = f"{os.getuid()}:{os.getgid()}"
     # The number of parallel jobs, if set here, for recipes that read it; it does not change the bytes.
@@ -335,13 +338,19 @@ def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels):
         if len(ubsan) > 2 and ubsan[2]:
             checks += ["-e", f"OV_UBSAN_C_EXCLUDE={','.join(ubsan[2])}"]
     command = ["docker", "run", "--rm", "--init", "--network=none", *labels, "-e", f"SANITIZER={sanitizer}",
-               "-e", f"OV_OWNER={owner}", *jobs, *checks, "-v", f"{out}:/out", tag, "compile"]
-    code = run(*command)
+               "-e", f"OV_OWNER={owner}", *jobs, *checks, "-v", f"{out}:/out"]
+    if before:
+        volumes, script, args = before
+        command += [*volumes, tag, "sh", "-c", f"set -e\n{script}\nexec compile", "sh", *args]
+    else:
+        command += [tag, "compile"]
+    code = run(*command, quiet=quiet)
     if code == DOCKER_FAILED:
         # docker run itself failed (the daemon could not start the container), not the build: once more, afresh.
-        say(f"docker run exited {DOCKER_FAILED}: starting the {build} build again")
+        if not quiet:
+            say(f"docker run exited {DOCKER_FAILED}: starting the {build} build again")
         empty_directory(out, tag, labels=labels)
-        code = run(*command)
+        code = run(*command, quiet=quiet)
     if code != 0:
         raise Failed(f"compile exited {code} in the {build} build")
 

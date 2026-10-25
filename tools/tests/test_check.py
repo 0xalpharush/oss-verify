@@ -16,6 +16,7 @@ import yaml
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import check_build  # noqa: E402
 import manifest  # noqa: E402
+import properties  # noqa: E402
 import validate  # noqa: E402
 from test_manifest import PT_DYNAMIC, PT_INTERP, PT_LOAD, elf  # noqa: E402
 
@@ -101,10 +102,19 @@ class Project(unittest.TestCase):
         (self.project / "build.sh").write_text("#!/bin/bash\n")
         self.work = root / "work"
 
-    def main(self, options, build_all):
-        """Run tools/check with these options and build_all in place of the builds: (exit code, output, errors)."""
+    def main(self, options, build_all, report=None):
+        """Run tools/check with these options and build_all in place of the builds, and `report` (default: no finding)
+        in place of the property checks: (exit code, output, errors)."""
         argv = ["tools/check", "--no-shell", "--toolchain", TOOLCHAIN, "--dir", str(self.work), *options,
                 str(self.project)]
+        self.property_calls = []
+
+        def check(*args):
+            self.property_calls.append(args)
+            if isinstance(report, Exception):
+                raise report
+            return report or properties.Report(targets=1)
+
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(sys, "argv", argv))
             stack.enter_context(mock.patch.object(check_tool, "build_all", build_all))
@@ -112,6 +122,7 @@ class Project(unittest.TestCase):
             stack.enter_context(mock.patch.object(check_build, "image_id", lambda tag: f"sha256:{tag}"))
             stack.enter_context(mock.patch.object(check_build, "sources", lambda tag, *, labels: {}))
             stack.enter_context(mock.patch.object(check_build, "oss_verify_state", lambda job: None))
+            stack.enter_context(mock.patch.object(properties, "check", check))
             output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             errors = stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
             code = check_tool.main()
@@ -186,7 +197,8 @@ class Binaries(Project):
             return "builder", "project", ["demo_fuzzer"], FIRST
 
         code, output, errors = self.main(["--summary", str(summary)], build_all)
-        rows = [line.split("|")[1:-1] for line in summary.read_text().splitlines()[2:]]
+        table = summary.read_text().split("\n\n")[0]
+        rows = [line.split("|")[1:-1] for line in table.splitlines()[2:]]
         data = yaml.safe_load((self.work / "manifest.yaml").read_text())
         return code, output, errors, [[cell.strip() for cell in row] for row in rows], data
 
@@ -226,6 +238,62 @@ class Binaries(Project):
         self.assertEqual(lines[-1].count("|"), 6)
         self.assertEqual(lines[-1].count("`"), 2)
         self.assertFalse(any(character in lines[-1] for character in "<>@"))
+
+
+class PropertyChecks(Project):
+    """Step 8: tools/check lists the findings of the property checks, one a line, adds them to the summary, and fails
+    for them only with --strict-properties."""
+
+    def report(self):
+        report = properties.Report(targets=1, checks=2)
+        report.findings.append(properties.Finding("demo_fuzzer", "fuzz/demo.c:12", properties.UNREACHED,
+                                                  "no seed runs its guard (line 11)"))
+        report.findings.append(properties.Finding("demo_fuzzer", "fuzz/demo.c:12", properties.NO_RECORD))
+        report.information.append(properties.Finding("demo_fuzzer", "fuzz/demo.c:7", properties.NOT_A_PROPERTY,
+                                                     "malloc failed"))
+        return report
+
+    def check(self, options, report=None):
+        summary = self.work.parent / "summary.md"
+
+        def build_all(*args, **kwargs):
+            binaries(self.work / "out", FIRST)
+            return "builder", "project", ["demo_fuzzer"], FIRST
+
+        code, output, _ = self.main(["--summary", str(summary), *options], build_all, report)
+        return code, output, summary.read_text()
+
+    def test_findings_are_warnings(self):
+        code, output, summary = self.check([], self.report())
+        self.assertEqual(code, 0)
+        self.assertIn("  warning: demo_fuzzer fuzz/demo.c:12 unreached: no seed runs its guard (line 11)\n", output)
+        self.assertIn("  warning: demo_fuzzer fuzz/demo.c:12 no mutant record\n", output)
+        self.assertIn("  information: demo_fuzzer fuzz/demo.c:7 not a property: malloc failed\n", output)
+        self.assertIn("### Property checks", summary)
+        self.assertIn("| `demo_fuzzer` | `fuzz/demo.c:12` | unreached: `no seed runs its guard (line 11)` |", summary)
+        self.assertEqual(len(self.property_calls), 1)
+
+    def test_strict_findings_fail(self):
+        code, output, _ = self.check(["--strict-properties"], self.report())
+        self.assertEqual(code, check_tool.PROPERTY_FINDINGS)
+        self.assertIn("  error: demo_fuzzer fuzz/demo.c:12 no mutant record\n", output)
+
+    def test_strict_with_no_finding_passes(self):
+        code, _, summary = self.check(["--strict-properties"])
+        self.assertEqual(code, 0)
+        self.assertIn("0 unreached", summary)
+
+    def test_no_properties(self):
+        code, _, summary = self.check(["--no-properties", "--strict-properties"], self.report())
+        self.assertEqual(code, 0)
+        self.assertEqual(self.property_calls, [])
+        self.assertNotIn("Property checks", summary)
+
+    def test_a_failure_of_the_step_is_a_finding(self):
+        code, output, summary = self.check(["--strict-properties"], ValueError("bad output"))
+        self.assertEqual(code, check_tool.PROPERTY_FINDINGS)
+        self.assertIn("  error: not checked: ValueError: bad output\n", output)
+        self.assertIn("|  |  | not checked: `ValueError: bad output` |", summary)
 
 
 class UbsanSettings(unittest.TestCase):

@@ -14,6 +14,7 @@ An OSS-Fuzz `Dockerfile` and `build.sh` do not run here without changes. They ex
 2. Build the project image from the project's `Dockerfile`, on the builder. `tools/check` gives the build arguments `COMMIT` (the full commit that `repo#ref` names), `REPO` and `BASE_BUILDER`. Only this step has network access.
 3. Run `compile` in a new container of the project image, with no network (`docker run --network=none`). Do this once for each build that `project.yaml` asks for: `plain`, `ubsan`, `asan` and `asan-ubsan`. `compile` sets the compilers and flags of the build and runs `$SRC/build.sh`.
 4. Find the fuzz targets in the `$OUT` of each build. Copy each binary to `out/<target>/<target>.<build>`. Write the manifest, with the SHA-256 of each binary. `tools/check` lists each binary with its size, the size of its `.text` section, `static` or `dynamic`, and its SHA-256. With `--summary <file>`, it also writes this list as a Markdown table; the Build check of a pull request shows that table. A binary with a `PT_INTERP` or `PT_DYNAMIC` program header is dynamically linked. `tools/check` refuses a dynamically linked binary, and one whose program headers it cannot read, with exit status 2, the status for a project that breaks the enrollment rules.
+5. Only `tools/check` does this step. It looks at the property checks of each fuzz target ([below](#property-checks)): which ones no seed reaches, and which ones no recorded mutant makes fail. It lists each finding, one a line. With `--summary`, it also writes the findings as a Markdown table under the table of binaries. The findings are warnings. With `--strict-properties`, they make `tools/check` exit with status 4. `--no-properties` leaves out this step. The step does not change the binaries of the four builds.
 
 ## The builder
 
@@ -295,6 +296,46 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
 * `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+
+## Property checks
+
+`tools/check` looks at the property checks of each fuzz target of a C or C++ project ([tools/properties.py](../tools/properties.py)). It names each check that breaks steps 3.3 and 3.4 of [the add-project skill](../.claude/skills/add-project/SKILL.md). Thus the maintainer sees each one before a person reviews the pull request.
+
+**The checks.** A property check is a call of `abort()` (also `std::abort()` and `__builtin_abort()`) in the source file that defines `LLVMFuzzerTestOneInput`. The debug information of the build names that file. `tools/check` reads it in the project image, and reads no other file. It does not find a check that a macro writes, or a check in another language: for a project in another language, it reports `not checked`.
+
+**The guard.** The guard of a check is the code that decides whether `abort()` runs: the condition of the `if`, `while` or `for` whose body is the `abort()` (also through `else`), or the `switch (...)` line of a `case` or `default` label. An `abort()` that no condition guards is its own guard.
+
+**Reached.** `tools/check` compiles one more plain build, in which each compile gets `-O0` as its last argument. With optimization, the compiler merges the `abort()` calls of a function, and the debug information then often gives line 0 to the branch of a check. It runs each input of `<target>_seed_corpus.zip`, with the six-byte header of the driver, through this build. It runs `qemu-riscv64 -d in_asm` in the project image with no network, and takes the source lines of the code that qemu translates, with the lines of inlined callers. A check is reached when a seed runs a line of its guard. A seed run that takes more than 120 seconds is stopped.
+
+**The records.** The comment of a check records its mutants. The comment is the comment lines directly above the guard (with no code line and no empty line between), the comments on the lines of the guard, the comment lines directly above the `abort()`, and the comment on the line of the `abort()`. In a comment line, the leading spaces, `//`, `/*` and `*`, and a trailing `*/`, are not part of the text. A record is two lines:
+
+    mutant: <path>:<line> `<old>` -> `<new>`
+    input: <name of a file in <target>_seed_corpus.zip>
+
+* `<path>` is relative to the `WORKDIR` of the project image (for most projects, the checkout of the repository). `<line>` is the line number in that file, in the image.
+* `<old>` occurs exactly once on that line. The mutant replaces it with `<new>`. `<new>` can be empty (` `` `). `<old>` and `<new>` cannot contain a backtick.
+* A check can have more than one record. Each one must be met.
+
+A record is met when the mutant exits with a status other than 0 and 2 in at least one build, and the unchanged fuzz target exits with 0 or 2 in all builds, on that input. For each mutant, `tools/check` copies the changed file over the file in a new container of the project image, and runs `compile` there. It compiles the builds one at a time, the plain build first, and stops when each record that uses the mutant is met. A run that takes more than 300 seconds is stopped, with status 137.
+
+**Not a property.** A stop that is not a property, for example `if (!buf) abort();` after a failed `malloc`, has the line `not a property: <reason>` in its comment, in place of the records. `tools/check` does not ask for a seed or a mutant for it. It lists it as information, with the reason, for the reviewer.
+
+**The findings.** `tools/check` writes one line for each finding: the target, the file and the line of the `abort()`, and one of these:
+
+| finding | meaning |
+|---|---|
+| `unreached` | no seed runs the guard of the check |
+| `no mutant record` | the comment of the check records no mutant |
+| `mutant not met` | a record is not met. The line gives the record and the status in each build, of the unchanged target and of the mutant (`-` for a build that was not compiled), or why the record cannot be run |
+| `bad mutant record` | a `mutant:` or `input:` line does not have the form above |
+| `no seed corpus` | the target has no `<target>_seed_corpus.zip` |
+| `not checked` | `tools/check` could not look, and says why |
+
+The findings are warnings, because the seeded projects in `projects/` have no records and no seed corpora. Thus the Build check of a pull request passes with them. Its summary shows them in a table. Before we merge an enrollment, the maintainer fixes each finding, or a reviewer accepts it. `tools/check --strict-properties` fails with exit status 4 when there is a finding.
+
+**What it needs.** The step runs the binaries with a static `qemu-riscv64`: `qemu-riscv64-static` or `qemu-riscv64` on `PATH`, or the one that `--qemu-riscv64 <path>` gives. On Ubuntu, take `qemu-riscv64-static` from the `qemu-user-static` package with `apt-get download qemu-user-static` and `dpkg-deb -x`. If you install the package, it registers qemu with the kernel for riscv64 programs (`binfmt_misc`). Then a project's build can run a riscv64 program that it made, and a `configure` script can see a different machine.
+
+**What it costs.** The step adds one plain build at `-O0`, one run of each seed, and the builds of the mutants. For libreac (nine fuzz targets, 155 seeds, no records), it took 23 seconds on 16 CPUs.
 
 ## Go fuzz targets
 
