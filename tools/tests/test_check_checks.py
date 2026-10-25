@@ -413,8 +413,11 @@ class PostingStep(unittest.TestCase):
 
     def post(self, review, existing=True):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
-        step = next(s for s in workflow["jobs"]["comment"]["steps"]
-                    if s.get("name") == "Post the comment, or update the one already there")
+        name = "Post the comment, or update the one already there"
+        matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
+        # Exactly one, so this cannot run a same-name copy instead of the step the job really uses.
+        self.assertEqual(len(matches), 1, f"{len(matches)} steps named {name!r}")
+        step = matches[0]
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             bin = directory / "bin"
@@ -495,6 +498,15 @@ class Screening(unittest.TestCase):
             self.assertFalse(review_comment.credential(hostile))
             self.assertLess(time.monotonic() - started, 1.0, hostile[:20])
 
+    def comment(self, review, checks="### report\n"):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            (directory / "review.md").write_text(review)
+            (directory / "checks.md").write_text(checks)
+            return subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
+                                   "--checks", str(directory / "checks.md"), "--head", "a" * 40],
+                                  capture_output=True, text=True, check=True).stdout
+
     def visible(self, text):
         """Whether GitHub's renderer hides nothing at the end: no opener is left open. Python's own HTML parser
         decides, so this test cannot be wrong about a shape the way a hand-written rule was about <!---> ."""
@@ -534,33 +546,49 @@ class Screening(unittest.TestCase):
 
     def test_close_comments(self):
         close = review_comment.close_comments
-        self.assertEqual(close("a <!-- b"), "a &lt;!-- b")
-        self.assertEqual(close("a <!-- b --> c"), "a <!-- b --> c")
-        self.assertEqual(close("<!-- a --> <!-- b <!-- c"), "<!-- a --> &lt;!-- b &lt;!-- c")
-        self.assertEqual(close("<!-- a <!-- b -->"), "<!-- a <!-- b -->")
-        self.assertEqual(close("<!--> after"), "<!--> after")
-        # A bogus opener and an unfinished tag close at the first > after them, so they hide text too.
-        self.assertEqual(close("a <!- b"), "a &lt;!- b")
-        self.assertEqual(close("a <b"), "a &lt;b")
-        self.assertEqual(close("a <!- b > c"), "a <!- b > c")
-        # Markup a review may hold is untouched.
-        for ok in ("<details><summary>x</summary>y</details>", "<sub>a</sub>", "<!-- c -->", "a < b and 1 > 0"):
+        note = review_comment.UNFINISHED
+        # An unfinished comment or tag, and everything after it, goes; the text before it is untouched.
+        self.assertEqual(close("a <!-- b"), "a" + note)
+        self.assertEqual(close("a <!- b"), "a" + note)
+        self.assertEqual(close("a <b"), "a" + note)
+        # Quoting counts: this > is inside the attribute, so the tag is still unfinished.
+        self.assertEqual(close('a <div title="x >'), "a" + note)
+        # What is finished, and what HTML closes with a plain >, stays.
+        for ok in ("a <!-- b --> c", "<!-- a <!-- b -->", "<!--> after", "a <!- b > c",
+                   "<details><summary>x</summary>y</details>", "<sub>a</sub>", "a < b and 1 > 0"):
             self.assertEqual(close(ok), ok)
 
+    def test_no_text_of_the_review_is_rewritten(self):
+        # Markdown code holds characters that look like markup. The renderer must show them as the model wrote them,
+        # so this script never rewrites any character of the body: it only drops an unfinished tail.
+        for review in ("Use `a < b` here.", "```c\nif (a < b) return a;\n```", "`<!-- not a comment -->`",
+                       "a <b> b </b> c", "1 < 2 and 3 > 2"):
+            text = self.comment(review)
+            self.assertIn(review, text, review)
+            self.assertNotIn("&lt;", text.split("<details>")[0], review)
+        # The same when the review is long enough to be cut, with the checks after it.
+        long = "Use `a < b` here.\n\n" + "x" * review_comment.MAX_REVIEW
+        text = self.comment(long)
+        self.assertIn("Use `a < b` here.", text)
+        self.assertNotIn("&lt;", text.split("<details>")[0])
+        self.assertIn("### report", text)
+        self.assertTrue(text.rstrip().endswith("</sub>"))
+
     def test_close_comments_leaves_nothing_open_for_any_shape(self):
-        # Every string of up to three of these pieces: Python's HTML parser finds no opener left open afterwards.
-        pieces = ("<!--", "-->", "<!-", "<!--->", "<!-->", "-", ">", "x", " ", "</s", "<b", "<details>")
+        # Every string of up to three of these pieces, quotes included: Python's HTML parser finds nothing left open.
+        pieces = ("<!--", "-->", "<!-", "<!--->", "<!-->", "-", ">", "x", " ", "</s", "<b", "<details>",
+                  '<div title="', '"', "<![CDATA[")
         for length in (1, 2, 3):
             for combination in itertools.product(pieces, repeat=length):
                 text = "".join(combination)
                 self.assertTrue(self.visible(review_comment.close_comments(text)), text)
 
-    def test_a_cut_at_every_point_inside_a_comment_leaves_nothing_open(self):
-        # Each limit that splits <!-- or --> (or falls between them), after an earlier complete comment.
-        text = "<!-- first --> words <!-- c -->"
-        for limit in range(1, len(text)):
-            out = review_comment.cut(text, limit, "w")
-            self.assertTrue(self.visible(out), (limit, out))
+    def test_a_cut_at_every_point_inside_a_comment_or_a_tag_leaves_nothing_open(self):
+        # Each limit that splits <!--, -->, or a tag with a quoted > in its attribute.
+        for text in ("<!-- first --> words <!-- c -->", 'ok <div title="x > y">text</div> tail'):
+            for limit in range(1, len(text)):
+                out = review_comment.cut(text, limit, "w")
+                self.assertTrue(self.visible(out), (text, limit, out))
 
     def test_a_kept_comment_with_an_opener_left_open_is_closed_without_a_cut(self):
         # A comment an older renderer posted, with an unclosed <!-- in its review, short enough not to be cut.
@@ -568,17 +596,19 @@ class Screening(unittest.TestCase):
                "Thanks.\n\n<!-- left open by an old renderer\n\n1. Fix X.\n")
         kept = review_comment.not_current(old, "b" * 40, "")
         self.assertNotIn("Cut at", kept)
-        self.assertIn("&lt;!-- left open", kept)
-        self.assertIn("1. Fix X.", kept)
+        self.assertIn("Thanks.", kept)
+        self.assertIn(review_comment.UNFINISHED.strip(), kept)
+        # What followed the unfinished comment was hidden in the posted comment too, so it is not kept.
+        self.assertNotIn("1. Fix X.", kept)
         self.assertTrue(self.visible(kept))
 
     def test_closing_a_cut_never_takes_it_over_its_limit(self):
-        # Escaping each open <!-- adds three characters; a cut must stay within its limit afterwards. A body that
-        # assemble() gets (close_comments, then cut) leaves nothing open, whether or not it is cut.
+        # Dropping an unfinished tail only shortens, and the note it leaves is bounded, so a cut stays within its
+        # limit; and the body is left with nothing open, whether or not it was cut.
         import random
         rng = random.Random(37)
-        pieces = ["<!--", "-->", "<!-", "<!--->", "<!-->", "x", " ", "\n"]
-        note = len("\n\n(Cut at 0,000,000 characters: w.)")
+        pieces = ["<!--", "-->", "<!-", "<!--->", "<!-->", "x", " ", "\n", '<div title="', '"', "<b"]
+        note = len("\n\n(Cut at 0,000,000 characters: w.)") + len(review_comment.UNFINISHED)
         for _ in range(5_000):
             text = "x" + "".join(rng.choice(pieces) for _ in range(rng.randrange(1, 300)))
             limit = rng.randrange(1, len(text) + 1)

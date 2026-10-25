@@ -18,6 +18,7 @@ posted, unchanged but for a metadata line and a first paragraph that say it is n
 and the commit that had no review.
 """
 import argparse
+import html.parser
 import pathlib
 import re
 import sys
@@ -28,6 +29,9 @@ HEADING = "## Enrollment review"
 MAX_COMMENT = 65_000
 MAX_REVIEW = 40_000
 MAX_CHECKS = 20_000
+# What close_comments leaves where it drops an unfinished HTML construct, so that the loss is not silent.
+UNFINISHED = ("\n\n(The rest is not shown: it left an HTML comment or tag unfinished, which would hide the report "
+              "below.)")
 # What a credential looks like: a GitHub identity token (a JWT), an Anthropic token or key, a GitHub token. The scan
 # below reads each run of token characters once, rather than a regular expression of these four alternatives, whose
 # JWT branch reads the rest of the text again at every "eyJ" that no dot follows.
@@ -98,27 +102,26 @@ def credential(text):
 
 
 def close_comments(text):
-    """text with each opener that nothing closes escaped. A cut can leave one, and GitHub's renderer would then hide
-    what follows it: an <!-- hides the rest of the comment, and any other < the rest of the tag, which can take in the
-    checks and the footer. An <!-- is closed only by a later -->, and any other < by a later >. The last position of
-    each closer is found once, so this is one pass over the text."""
-    arrow, gt = text.rfind("-->"), text.rfind(">")
-    out, at = [], 0
-    while (start := text.find("<", at)) != -1:
-        closed = arrow > start if text.startswith("<!--", start) else gt > start
-        out += [text[at:start], "<" if closed else "&lt;"]
-        at = start + 1
-    return "".join(out) + text[at:]
+    """text without a construct at its end that nothing closes: an HTML comment, or a tag whose > never comes. GitHub's
+    renderer hides what follows such a construct, which would be the checks and the footer. A cut can leave one, and a
+    comment that an older renderer posted can hold one. Python's HTML parser finds where it starts, so quoting counts:
+    in <div title="x >, the > is inside the attribute and does not end the tag. Nothing before that point is touched,
+    so a < inside Markdown code, and any text the model or the project wrote, is left exactly as it is. What this drops
+    is the unfinished construct itself and what follows it, which the renderer would have hidden anyway."""
+    parser = html.parser.HTMLParser(convert_charrefs=False)
+    parser.feed(text)
+    left = parser.rawdata
+    parser.close()
+    if not left.startswith("<"):
+        return text
+    return text[:len(text) - len(left)].rstrip() + UNFINISHED
 
 
 def cut(text, limit, where):
     text = text.strip()
     if len(text) <= limit:
-        return text
-    # Escaping makes each open <!-- three characters longer, so cut again to the limit. That cannot open a comment:
-    # escaping changes only text after the last -->, which it leaves holding no <!--, and a cut makes no new one.
-    kept = close_comments(text[:limit].rstrip())[:limit].rstrip()
-    return kept + f"\n\n(Cut at {limit:,} characters: {where}.)"
+        return close_comments(text)
+    return close_comments(text[:limit].rstrip()) + f"\n\n(Cut at {limit:,} characters: {where}.)"
 
 
 def meta_line(head, status):
@@ -148,10 +151,10 @@ def assemble(head, status, body, footer=True):
                 f"`tools/check --checks` measured the checks. It can be wrong. {of}Each push replaces it, or marks it "
                 "not current if the push's review does not finish. It decides nothing: a person at Theorem reviews "
                 "the enrollment.</sub>"]
-    room = MAX_COMMENT - len("\n".join(parts + ["", *tail])) - 1
-    # Every body, cut or not: a kept comment that an older renderer wrote can hold an opener that nothing closes, and
-    # cut() closes again any opener that its own clip leaves open.
-    body = cut(close_comments(body), room, "the rest is in the review job's log")
+    # Leave room for the note that cut() adds where it drops an unfinished construct; cut() closes every body, whether
+    # it clips it or not, so a kept comment that an older renderer wrote cannot hide the footer either.
+    room = MAX_COMMENT - len("\n".join(parts + ["", *tail])) - len(UNFINISHED) - 1
+    body = cut(body, room, "the rest is in the review job's log")
     return "\n".join(parts + [body, *tail]) + "\n"
 
 
