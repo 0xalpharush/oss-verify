@@ -63,10 +63,10 @@ name: "Build"
 # its private key, which it reads at run time from Secret Manager (oss-verify-github-app-key), and runs no code of the
 # pull request or the project.
 #
-# This repository stores no long-lived credential for any of that. Google's provider admits this file alone, on
-# refs/heads/main, from pull_request_target or workflow_dispatch: a token carries no job name, so what keeps the
-# Google account to these two jobs is this file. project-builds, the job that builds the pull request's code, must
-# never be given id-token: write.
+# This repository stores no long-lived credential for any of that. Google's provider admits this file and
+# triage.yaml, each on refs/heads/main, from pull_request_target or workflow_dispatch: a token carries no job name,
+# so what keeps the Google account to the review and comment jobs is this file. project-builds, the job that builds
+# the pull request's code, must never be given id-token: write.
 # Runs do not wait for a maintainer's approval. To build only on request, remove pull_request_target below.
 #
 # The review reaches Claude by workload identity federation, with no stored key: the review job's GitHub identity token
@@ -87,10 +87,12 @@ name: "Build"
 # gives a token to any workflow named "Build" that runs on main, from any event, and the test rule to any workflow
 # named "Build" on any ci-test/ branch, from any event: a person with write access can push a branch ci-test/<x>
 # with a workflow of that name triggered on push. GitHub's `workflow_ref` claim (the file and the ref) would tie each
-# rule to this file, and `event_name` to an event; the rules do not check them yet. Only the review job of this file
-# asks for an identity token. The way to start a review on a ci-test/ branch is
-# `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>`. A ci-test run posts its comment on that pull request,
-# so point it at a test pull request (one opened by this repository, not a maintainer's open enrollment).
+# rule to this file, and `event_name` to an event; the rules do not check them yet. The review and comment jobs of
+# this file ask for an identity token; no other job of it does. A ci-test/ branch cannot run a review any more: the
+# review job now signs in to Google for the collector's token, and Google's provider admits refs/heads/main alone, so
+# `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>` fails at that step. A change to the review is tested by
+# running this file on main against a test pull request (`gh workflow run build.yaml -f pr=<n>`), which is also what
+# the Anthropic test rule's ci-test/ branch was for.
 #
 # On the first run for a pull request, and on each run started by hand, the comment job also sends the build's facts
 # (the project, its language, the build's result, and the size and linkage of each binary) to the Slack channel
@@ -339,18 +341,10 @@ jobs:
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code@2.1.310
 
-      - name: Get the GitHub identity token for Anthropic
-        run: |
-          set -euo pipefail
-          mkdir -m 700 "$RUNNER_TEMP/oidc"
-          # The request token reaches curl through a pipe, not an argument, which other processes can read.
-          curl -q -sSf -H @<(printf 'Authorization: Bearer %s\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN") \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value > "$RUNNER_TEMP/oidc/jwt"
-          echo "::add-mask::$(cat "$RUNNER_TEMP/oidc/jwt")"
-
       # Theorem's Google project trusts this workflow's identity token (agent-infra bootstrap/, declareOssvCI), so the
       # collector's token is read at run time instead of being stored here. Nothing is written to the workspace and
-      # nothing is exported: the Google access token is this step's output alone, and it lives five minutes.
+      # nothing is exported: the Google access token is this step's output alone, and it lives five minutes. This
+      # step comes before the Anthropic identity token is written, so a failure here leaves no token file behind.
       - name: Sign in to Google Cloud
         id: gcp
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (sha-pinned)
@@ -361,6 +355,15 @@ jobs:
           access_token_lifetime: 300s
           create_credentials_file: false
           export_environment_variables: false
+
+      - name: Get the GitHub identity token for Anthropic
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/oidc"
+          # The request token reaches curl through a pipe, not an argument, which other processes can read.
+          curl -q -sSf -H @<(printf 'Authorization: Bearer %s\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN") \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value > "$RUNNER_TEMP/oidc/jwt"
+          echo "::add-mask::$(cat "$RUNNER_TEMP/oidc/jwt")"
 
       - name: Review
         id: review
@@ -381,18 +384,26 @@ jobs:
           OTEL_EXPORTER_OTLP_ENDPOINT: https://agent-otel-public-6acxmql5za-uw.a.run.app
           GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
         run: |
+          # pipefail: the default shell of a step is `bash -e`, whose pipeline status is the last command's, so
+          # without it a curl or jq failure would be hidden by a base64 that succeeded on what it got.
+          set -o pipefail
           # The collector's bearer token: Secret Manager agent-spend-otel-token, which agent-infra spend/ declares and
           # grants this job's account. It stays a variable of this shell, masked in the log and no process's argument;
           # without it review-run exports nothing, which is for a person's own run: here it would lose the review's
-          # spend in silence.
+          # spend in silence. `jq -e` with the type check refuses a response with no payload, which would otherwise
+          # decode "null" into bytes that look like a token.
           if ! OTEL_COLLECTOR_TOKEN=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
             'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/agent-spend-otel-token/versions/latest:access' \
-            | jq -r '.payload.data' | base64 -d); then
+            | jq -er '.payload.data | select(type == "string" and length > 0)' | base64 -d); then
             rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
             echo "::error::Could not read the cost collector's token (Secret Manager agent-spend-otel-token in theorem-agent-infra), so the review's usage would not reach Theorem's cost collector."
             exit 1
           fi
-          builtin printf '::add-mask::%s\n' "$OTEL_COLLECTOR_TOKEN"
+          # One mask command covers one line, so each line of the value is masked: the declared token is one line of
+          # 48 characters, and a replacement that is not stays out of the log this way too.
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then builtin printf '::add-mask::%s\n' "$line"; fi
+          done <<< "$OTEL_COLLECTOR_TOKEN"
           export OTEL_COLLECTOR_TOKEN
           if [ -z "$OTEL_EXPORTER_OTLP_ENDPOINT" ] || [ -z "$OTEL_COLLECTOR_TOKEN" ]; then
             rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
@@ -429,6 +440,12 @@ jobs:
         run: |
           echo "::error::The collector at $OTEL_EXPORTER_OTLP_ENDPOINT refused its token after the review, so the review's usage is likely lost. The comment is posted; check Secret Manager agent-spend-otel-token."
           exit 1
+
+      # Whatever happened above, the Anthropic identity token does not outlive this job: a step that exits before its
+      # own `rm` (a failed `openssl rand`, for one) leaves the file, and this removes it.
+      - name: Remove the Anthropic identity token
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/oidc/jwt"
 
   comment:
     needs: [project-builds, review]
@@ -467,9 +484,9 @@ jobs:
           export_environment_variables: false
 
       # The App's private key: Secret Manager oss-verify-github-app-key in theorem-agent-infra, which agent-infra
-      # bootstrap/ declares and versions from its encrypted stack config. This repository stores no copy of it. The
-      # key is masked line by line, because ::add-mask:: masks one line at a time, and the whole PEM is masked as its
-      # base64 too, so neither form can be printed.
+      # bootstrap/ declares and versions from its encrypted stack config. This repository stores no copy of it. Each
+      # line of the key is masked, and so is its base64 form, because one mask command registers one line: that keeps
+      # these two representations out of the log, not every possible re-encoding of the key.
       - name: Read the oss-verify App's key
         id: key
         env:
@@ -478,7 +495,7 @@ jobs:
           set -euo pipefail
           payload=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
             'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/oss-verify-github-app-key/versions/latest:access' \
-            | jq -r '.payload.data')
+            | jq -er '.payload.data | select(type == "string" and length > 0)')
           builtin printf '::add-mask::%s\n' "$payload"
           key=$(builtin printf '%s' "$payload" | base64 -d)
           while IFS= read -r line; do

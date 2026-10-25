@@ -105,8 +105,8 @@ jobs:
           create_credentials_file: false
           export_environment_variables: false
 
-      # The key is masked line by line, because ::add-mask:: masks one line at a time, and as its base64 too, so
-      # neither form can be printed.
+      # Each line of the key is masked, and so is its base64 form, because one mask command registers one line: that
+      # keeps these two representations out of the log, not every possible re-encoding of the key.
       - name: Read the oss-verify App's key
         id: key
         env:
@@ -115,7 +115,7 @@ jobs:
           set -euo pipefail
           payload=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
             'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/oss-verify-github-app-key/versions/latest:access' \
-            | jq -r '.payload.data')
+            | jq -er '.payload.data | select(type == "string" and length > 0)')
           builtin printf '::add-mask::%s\n' "$payload"
           key=$(builtin printf '%s' "$payload" | base64 -d)
           while IFS= read -r line; do

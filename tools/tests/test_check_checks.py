@@ -281,38 +281,54 @@ class ReviewComment(unittest.TestCase):
 
 
 class WorkflowArguments(unittest.TestCase):
-    """build.yaml and triage.yaml give their credentials to commands through pipes and builtins, never as a process's
-    argument. A credential read at run time (the cost collector's token, the App's key) is checked the same way."""
+    """What build.yaml and triage.yaml do with the credentials they hold, as far as their text shows it: each named
+    credential reaches a command through a pipe or a shell builtin and never as a process's argument, and only the
+    jobs that run no code of the pull request can ask for a GitHub identity token. This reads the files; it does not
+    run them, so it proves nothing about what a called script does with what it is given."""
+
+    def workflow(self, name):
+        return yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text())
 
     def steps(self, workflow):
-        jobs = yaml.safe_load((ROOT / ".github" / "workflows" / workflow).read_text())["jobs"]
-        return [step for job in jobs.values() for step in job["steps"] if "run" in step]
+        return [step for job in self.workflow(workflow)["jobs"].values() for step in job["steps"] if "run" in step]
 
     def test_no_credential_is_an_argument(self):
+        # The App's key and the base64 it is decoded from are shell variables of their step, so they are named here
+        # by those names, beside the environment variables.
         for workflow, names in (("build.yaml", ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "OTEL_COLLECTOR_TOKEN",
-                                                "SLACK_WEBHOOK_URL", "GCP_ACCESS_TOKEN")),
-                                ("triage.yaml", ("GCP_ACCESS_TOKEN",))):
+                                                "SLACK_WEBHOOK_URL", "GCP_ACCESS_TOKEN", "key", "payload")),
+                                ("triage.yaml", ("GCP_ACCESS_TOKEN", "key", "payload"))):
             steps = self.steps(workflow)
             for name in names:
                 used = 0
                 for step in steps:
                     variable = re.escape(f'"${name}"')
                     # The forms a builtin reads: printf into a process substitution, printf itself (the shell's
-                    # builtin, so no process holds the value), a test, a [[ ]] pattern.
+                    # builtin, so no process holds the value), a test, a [[ ]] pattern, a here-string into `read`.
                     rest = re.sub(rf"<\((?:builtin )?printf '[^']*' {variable}\)|builtin printf '[^']*' {variable}"
-                                  rf"|\[ -[zn] {variable} \]|\*{variable}\*", "", step["run"])
+                                  rf"|\[ -[zn] {variable} \]|\*{variable}\*|<<< {variable}", "", step["run"])
                     used += step["run"].count(f"${name}")
                     self.assertNotIn(f"${name}", rest, f"{workflow} {step.get('name')}: ${name} is an argument")
+                    # ${NAME} is the same value in a spelling none of the forms above use, so it is refused outright
+                    # rather than matched: a step that starts using it must be read again.
+                    self.assertNotIn("${" + name + "}", step["run"],
+                                     f"{workflow} {step.get('name')}: " + "${" + name + "} is not one of the forms this test reads")
                 self.assertGreater(used, 0, f"{workflow} {name}")
 
     def test_only_the_jobs_that_run_no_pull_request_code_hold_an_identity_token(self):
         # A GitHub identity token names no job, so Google's provider cannot keep ossv-ci to these jobs: these files
         # are what does. project-builds builds the pull request's code and triage's gather reads its text, so neither
-        # may ever ask for one.
+        # may ever ask for one. A job with no permissions of its own inherits the workflow's, so the effective
+        # permission is what is read here: a workflow-level id-token: write would reach every job.
         for workflow, want in (("build.yaml", {"review", "comment"}), ("triage.yaml", {"comment"})):
-            jobs = yaml.safe_load((ROOT / ".github" / "workflows" / workflow).read_text())["jobs"]
-            got = {name for name, job in jobs.items() if (job.get("permissions") or {}).get("id-token") == "write"}
-            self.assertEqual(got, want, f"{workflow}: the jobs with id-token: write")
+            parsed = self.workflow(workflow)
+            default = parsed.get("permissions") or {}
+            got = set()
+            for name, job in parsed["jobs"].items():
+                permissions = job["permissions"] if "permissions" in job else default
+                if (permissions or {}).get("id-token") == "write":
+                    got.add(name)
+            self.assertEqual(got, want, f"{workflow}: the jobs whose effective permissions hold id-token: write")
 
     def test_the_helpers_use_no_argv_form_for_the_github_token(self):
         gather = (ROOT / ".github" / "scripts" / "review-gather").read_text()
