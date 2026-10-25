@@ -1,8 +1,10 @@
 #!/bin/bash -eu
 # Copyright 2026 Pau Aliagas <linuxnow@gmail.com>
 # SPDX-License-Identifier: Apache-2.0
+# Modified by Theorem Labs, 2026-10-25: says where the fuzz targets come from.
 #
-# Builds libreac's nine fuzz targets (fuzz/fuzz_*.c in the libreac repository) into $OUT.
+# Builds libreac's nine fuzz targets (fuzz/fuzz_*.c) into $OUT. The Dockerfile copies the modified copies in
+# this directory over libreac's fuzz/fuzz_*.c.
 # libreac's own Makefile builds them with a native clang and libFuzzer; this script makes the same
 # harnesses into static riscv64 programs, each linked against a static libreac.a of this build.
 
