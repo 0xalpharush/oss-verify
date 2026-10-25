@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for tools/check_checks.py and .github/scripts/review-comment, slack-notice and review-run that need no Docker:
 python3 -m pytest tools/tests"""
+import base64
 import json
 import os
 import importlib.machinery
@@ -14,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import time
 import zipfile
 
 import yaml
@@ -279,6 +281,57 @@ class ReviewComment(unittest.TestCase):
         self.assertIn(f"did not run on this push (`{'b' * 7}`)", text)
         self.assertIn("### new report", text)
 
+    def unusable(self, review, previous, head):
+        with tempfile.TemporaryDirectory() as directory:
+            (pathlib.Path(directory) / "previous.md").write_text(previous)
+            return self.comment(review, "### new report\n", "--head", head,
+                                "--previous", str(pathlib.Path(directory) / "previous.md"))
+
+    def test_an_unusable_review_keeps_the_last_one(self):
+        # Blank, credential-shaped or marker-only: the review job "succeeded", but there is nothing to post.
+        first = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
+        for review in (" \n\t\n", "Here: ghs_" + "b" * 36, "<!-- oss-verify-review -->\n"):
+            text = self.unusable(review, first, "b" * 40)
+            self.assertEqual(self.meta(text).group("status"), "stale", review)
+            self.assertIn("1. Fix X.", text)
+            self.assertNotIn("ghs_" + "b" * 36, text)
+
+    def test_a_credential_in_the_checks_is_refused_and_the_review_kept(self):
+        # A contributor's source line, rendered into a checks row by tools/check_checks.py.
+        leak = "ghs_" + "A" * 36
+        first = self.comment("Thanks.\n\n1. Fix X.\n", f"  - `fuzz.c:3`: `{leak}`\n", "--head", "a" * 40)
+        self.assertNotIn(leak, first)
+        self.assertEqual(self.meta(first).group("status"), "review")
+        self.assertIn("1. Fix X.", first)
+        self.assertIn("The report held what looks like a credential", first)
+        # So a later failed review still keeps it.
+        second = self.kept(first, "b" * 40)
+        self.assertEqual(self.meta(second).group("status"), "stale")
+        self.assertIn("1. Fix X.", second)
+
+    def test_only_the_whole_legacy_no_review_sentence_means_no_review(self):
+        legacy = f"{review_comment.MARKER}\n## Enrollment review\n\n"
+        similar = self.kept(legacy + "The review agent did not run on this push's test machine; it read the diff.\n\n"
+                            "1. Fix X.\n", "b" * 40)
+        self.assertIn("1. Fix X.", similar)
+        self.assertEqual(self.meta(similar).group("status"), "stale")
+        for why in ("it wrote no comment", "the review job ended with the result failure"):
+            none = self.kept(legacy + f"The review agent did not run on this push: {why}. A person at Theorem reviews "
+                             "the enrollment.\n\n<sub>Claude wrote this review.</sub>\n", "b" * 40)
+            self.assertEqual(self.meta(none).group("status"), "none", why)
+
+    def test_neutralize_is_linear_and_a_fixed_point(self):
+        hostile = "<!--oss-verify" * 5_000  # 70,000 characters, no -->
+        started = time.monotonic()
+        text = review_comment.neutralize(hostile)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertNotIn("<!--", text)
+        for sample in (hostile, "<!-- oss-<!-- oss-verify-junk -->verify-meta v=1 status=none -->",
+                       "a <!-- keep --> b <!-- oss-verify-x --> c <!-- tail", "<!-<!--oss-verify-->- oss-verify-x -->"):
+            once = review_comment.neutralize(sample)
+            self.assertEqual(review_comment.neutralize(once), once, sample)
+            self.assertNotRegex(once, r"<!--[^>]*oss-verify")
+
 
 class CredentialArguments(unittest.TestCase):
     """The workflow and its helpers give credentials to commands through env/pipes, never as a process's argument."""
@@ -306,30 +359,44 @@ class CredentialArguments(unittest.TestCase):
         self.assertNotIn("-c http.extraheader=", take)
         self.assertIn("--config-env=http.extraheader=", take)
 
-    def test_the_forms_the_helpers_use_keep_the_value_out_of_argv(self):
-        # The two mechanisms, run for real with a fake python3 and git that record their arguments and environment.
+    def test_the_helpers_production_definitions_keep_the_token_out_of_argv(self):
+        # The production keep, the triage call and fetch_head, taken from the scripts and run under strace with a fake
+        # python3 and git that record their arguments and environment: the token reaches the environment only.
+        if not shutil.which("strace"):
+            self.skipTest("strace is not installed (the tests workflow installs it)")
+        gather = (ROOT / ".github" / "scripts" / "review-gather").read_text()
+        take = (ROOT / ".github" / "scripts" / "take-project").read_text()
+        keep = re.search(r"^keep\(\) \{.*\}$", gather, re.M).group(0)
+        call = re.search(r"^.*\bkeep triage-today\.md .*$", gather, re.M).group(0)
+        fetch = re.search(r"^fetch_head\(\) \{\n.*?^\}$", take, re.M | re.S).group(0)
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
-            (directory / "git").write_text(
-                '#!/bin/bash\nprintf "%s\\n" "$@" > ' f"{directory}/git-argv\n"
-                f'env > {directory}/git-env\nexit 0\n')
-            (directory / "fakepy").write_text(
-                '#!/bin/bash\nprintf "%s\\n" "$@" > ' f"{directory}/py-argv\n"
-                f'env > {directory}/py-env\n')
-            for f in ("git", "fakepy"):
-                (directory / f).chmod(0o755)
-            secret = "ghs_tokennotarealsecret"
-            auth = __import__("base64").b64encode(f"x-access-token:{secret}".encode()).decode()
-            script = (f'keep() {{ "$@"; }}\n'
-                      f'GITHUB_TOKEN="{secret}" keep {directory}/fakepy consume --repo r --pr 1\n'
-                      f'GIT_HTTP_EXTRAHEADER="Authorization: Basic {auth}" '
-                      f'{directory}/git --config-env=http.extraheader=GIT_HTTP_EXTRAHEADER fetch\n')
-            subprocess.run(["bash", "-c", script], check=True)
-            self.assertNotIn(secret, (directory / "py-argv").read_text())
-            self.assertIn(secret, (directory / "py-env").read_text())
-            self.assertNotIn(auth, (directory / "git-argv").read_text())
-            self.assertNotIn(secret, (directory / "git-argv").read_text())
-            self.assertIn(auth, (directory / "git-env").read_text())
+            bin = directory / "bin"
+            bin.mkdir()
+            (directory / "out").mkdir()
+            for name in ("git", "python3"):
+                (bin / name).write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" >> {directory}/{name}-argv\n'
+                                        f"env >> {directory}/{name}-env\n")
+                (bin / name).chmod(0o755)
+            secret = "ghs_" + "Q" * 36
+            auth = base64.b64encode(f"x-access-token:{secret}".encode()).decode()
+            script = "\n".join(["set -euo pipefail", f"out={directory}/out REPO=o/r PR=1 sha={'a' * 40} fetched=false",
+                                keep, call, fetch, "fetch_head", "fetch_head"])
+            run = subprocess.run(["strace", "-f", "-qq", "-s", "8192", "-e", "trace=execve", "-o",
+                                  str(directory / "trace"), "bash", "-c", script], cwd=directory,
+                                 env={**os.environ, "PATH": f"{bin}:{os.environ['PATH']}", "GH_TOKEN": secret},
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            trace = (directory / "trace").read_text()
+            self.assertIn("python3", trace)
+            self.assertIn("--config-env=http.extraheader=", trace)
+            for value in (secret, auth):
+                self.assertNotIn(value, trace)
+                self.assertNotIn(value, run.stdout + run.stderr)
+            self.assertIn(f"GITHUB_TOKEN={secret}", (directory / "python3-env").read_text())
+            self.assertIn(f"Authorization: Basic {auth}", (directory / "git-env").read_text())
+            # fetch_head fetches once, however often it is called.
+            self.assertEqual((directory / "git-argv").read_text().split("\n").count("fetch"), 1)
 
 
 class ReviewRun(unittest.TestCase):

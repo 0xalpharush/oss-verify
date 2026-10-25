@@ -432,8 +432,10 @@ jobs:
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '.[] | select(.user.login == "oss-verify[bot]" and (.body | startswith("<!-- oss-verify-review -->"))) | .id')
           existing=${existing%%$'\n'*}
+          # The comment already posted, whenever there is one: review-comment keeps it, marked not current, if this
+          # push's review is empty, blank or refused once it has screened it.
           previous=()
-          if [ -z "$REVIEW" ] && [ -n "$existing" ]; then
+          if [ -n "$existing" ]; then
             gh api "repos/$REPO/issues/comments/$existing" --jq .body > "$RUNNER_TEMP/previous.md"
             previous=(--previous "$RUNNER_TEMP/previous.md")
           fi
