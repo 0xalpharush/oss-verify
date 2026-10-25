@@ -164,7 +164,7 @@ We write the lock from the manifest of `tools/check` ([build-contract.md](build-
 
 * We publish nothing that shows a finding that is not public yet. We hold back the statements that the finding affects until it is public. What we publish does not tell why.
 * We publish a seeded project only while none of its findings is private.
-* If a proof needed a patch to the project's code, we publish it only once the finding that the patch fixes is public. We list the patch with the proof: its text, a summary, and whether the project has it.
+* If a proof needed a patch that fixes a bug, we publish it only once the finding of that bug is public. Only a seeded project whose proofs we publish can have such a patch ([build-contract.md](build-contract.md#build-patches)). The project's facts in the proofs repository list each such patch in `patches`: its text, a summary, and its upstream state. The state is one of three: the bug is reported to the project, the bug is fixed in the project, or it is not a bug. Where the facts publish it, `library.patch_count` gives the number of all the patches that the build applies ([facts.md](https://github.com/theorem-labs/oss-verify-proofs/blob/main/docs/facts.md)).
 
 ## Where the claims come from
 
@@ -174,8 +174,6 @@ Each public claim rests on three pinned inputs:
 * the commit of this repository that holds the build files;
 * the digest of the toolchain image.
 
-We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released version of LPS, these build files, and the project's source. The build files can apply patches to the source, in the order that `series` gives. A published proof can thus be about a build that has patches.
+We pin only binaries that two clean builds reproduce ([build-contract.md](build-contract.md#reproducibility)). A published proof uses the released version of LPS, these build files, and the project's source. The build files can apply patches to the source. A published proof can thus be about a build that has patches. The facts list each patch that fixes a bug ([above](#publishing)).
 
-A patch that fixes a bug can be in the build files of a port that we publish, and only once its finding is public ([above](#publishing), [build-contract.md](build-contract.md#build-patches)). The project's facts in the proofs repository list each such patch, with its text, a summary, and whether the bug is reported to the project, fixed in the project, or not a bug. They also give the number of all the patches that the build applies ([facts.md](https://github.com/theorem-labs/oss-verify-proofs/blob/main/docs/facts.md)).
-
-To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. Check out this repository at the commit that built the binary. `tools/check` then applies the patches that `series` lists at that commit. Thus it rebuilds a published port that has patches.
+To check a binary yourself, follow [build-contract.md](build-contract.md#check-a-binary-against-a-lock). It tells how to rebuild the binary and compare it with the lock. At the commit that the lock names, the build files apply the same patches. Thus `tools/check` can rebuild a binary that has patches.
