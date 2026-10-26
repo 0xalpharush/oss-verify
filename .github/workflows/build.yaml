@@ -122,11 +122,10 @@ name: "Build"
 # cache because every pull request's own run, a fork's too, can read main's caches (the header of
 # .github/scripts/review-session has the measurement).
 # Only the review job holds the key, and only the review job can act as ossv-ci: both come with the environment
-# enroll-review. Its deployment branch rule, declared in Theorem's infrastructure code, is to allow main alone; GitHub
+# enroll-review. Its deployment branch rule, declared in Theorem's infrastructure code, allows main alone; GitHub
 # checks it against the run's ref, which is main for pull_request_target and refs/pull/<n>/merge for a pull request's
 # own run (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
-# That rule is the second lock beside Google's provider, which admits refs/heads/main alone; until it is applied, a job
-# that names the environment from another branch gets the environment's secrets, though not ossv-ci.
+# That rule is the second lock beside Google's provider, which admits refs/heads/main alone.
 # Without the key the review runs fresh on each push, with a warning. An artifact lasts as
 # long as the repository's artifact retention (90 days by default). The environment, its deployment branch rule and
 # the key are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand, which
