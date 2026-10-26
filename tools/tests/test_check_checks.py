@@ -628,7 +628,8 @@ class WorkflowArguments(unittest.TestCase):
             problems.append(f"${name} is an argument")
         # ${NAME…} (with or without a modifier) is the same value in a spelling none of the forms above use, so it is
         # refused outright rather than matched: a step that starts using it must be read again.
-        if "${" + name in run:
+        # The one spelling allowed is the blank test `[ -z "${NAME//[[:space:]]/}" ]`, which the builtin `[` reads.
+        if "${" + name in run.replace(f'[ -z "${{{name}//[[:space:]]/}}" ]', ""):
             problems.append("${" + name + "…} is not one of the forms this test reads")
         return problems
 
@@ -1983,7 +1984,8 @@ class ReviewStep(unittest.TestCase):
 
     TOKEN = "collector-token-not-a-secret"
 
-    def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None, secret_manager=True):
+    def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None, secret_manager=True,
+                 secret=None, signed_in=True):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / ".github" / "scripts").mkdir(parents=True)
@@ -2007,26 +2009,47 @@ class ReviewStep(unittest.TestCase):
             # gives for an error status.
             bin = directory / "bin"
             bin.mkdir()
-            payload = json.dumps({"payload": {"data": base64.b64encode(self.TOKEN.encode()).decode()}})
-            (bin / "curl").write_text(f"#!/bin/bash\nprintf '%s' {shlex.quote(payload)}\n" if secret_manager
-                                      else "#!/bin/bash\nexit 22\n")
+            value = self.TOKEN if secret is None else secret
+            payload = json.dumps({"payload": {"data": base64.b64encode(value.encode()).decode()}})
+            # A curl that is called when it must not be leaves a mark the tests read.
+            (bin / "curl").write_text(f"#!/bin/bash\ntouch {shlex.quote(str(directory / 'curl-called'))}\n"
+                                      + (f"printf '%s' {shlex.quote(payload)}\n" if secret_manager else "exit 22\n"))
             (bin / "curl").chmod(0o755)
             environment = {**os.environ, "PATH": f"{bin}:{os.environ['PATH']}",
-                           "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:9", "GCP_ACCESS_TOKEN": "gcp-not-a-secret",
+                           "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:9",
+                           "GCP_ACCESS_TOKEN": "gcp-not-a-secret" if signed_in else "",
                            "ANTHROPIC_IDENTITY_TOKEN_FILE": str(token), "GITHUB_OUTPUT": str(directory / "output"),
                            "GITHUB_STEP_SUMMARY": str(directory / "summary")}
             run = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-c", review_step()["run"]],
                                  cwd=directory, env=environment, capture_output=True, text=True)
             self.assertFalse(token.exists(), "the identity token file is removed")
+            self.curl_called = (directory / "curl-called").exists()
             if output is not None:
                 output.append((directory / "output").read_text() if (directory / "output").exists() else "")
             return run.returncode, run.stdout, (directory / "summary").read_text()
 
-    def test_a_token_that_cannot_be_read_stops_the_review(self):
-        code, out, summary = self.run_step(0, secret_manager=False)
+    def test_a_token_that_cannot_be_read_does_not_stop_the_review(self):
+        # Fail-soft: the export is a measurement. A read that fails, a value of whitespace alone, or a sign-in that
+        # gave no access token is one warning; the review runs without the token and the step's result is the review's.
+        warning = "::warning::Could not read the cost collector's token"
+        for case in ({"secret_manager": False}, {"secret": "\n\n"}, {"secret": " \t\n"}, {"signed_in": False}):
+            with self.subTest(**case):
+                code, out, summary = self.run_step(0, **case)
+                self.assertEqual(code, 0, out)
+                self.assertIn(warning, out)
+                self.assertNotIn("::error::", out)
+                self.assertIn("review-run: gcp=unset otel=\n", out)
+                self.assertEqual(summary, "")
+                if case == {"signed_in": False}:
+                    self.assertFalse(self.curl_called, "Secret Manager is called with no access token")
+        # The review's own failure still fails the step.
+        code, _, _ = self.run_step(1, "plain words\n", secret_manager=False)
         self.assertEqual(code, 1)
-        self.assertIn("::error::Could not read the cost collector's token", out)
-        self.assertNotIn("The review did not finish", out)
+
+    def test_the_sign_in_never_fails_the_review_job(self):
+        steps = {s.get("name"): s for s in yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
+                 ["jobs"]["review"]["steps"]}
+        self.assertIs(steps["Sign in to Google Cloud"].get("continue-on-error"), True)
 
     def test_the_token_read_is_masked(self):
         code, out, summary = self.run_step(0)

@@ -120,9 +120,12 @@ name: "Build"
 # sealed because anyone signed in to GitHub can download this repository's artifacts, and it is not in the Actions
 # cache because every pull request's own run, a fork's too, can read main's caches (the header of
 # .github/scripts/review-session has the measurement).
-# Only the review job holds the key: the environment's deployment branch rule allows main alone, and GitHub checks it
-# against the run's ref, which is main for pull_request_target and refs/pull/<n>/merge for a pull request's own run
-# (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
+# Only the review job holds the key, and only the review job can act as ossv-ci: both come with the environment
+# enroll-review. Its deployment branch rule, declared in Theorem's infrastructure code, is to allow main alone; GitHub
+# checks it against the run's ref, which is main for pull_request_target and refs/pull/<n>/merge for a pull request's
+# own run (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
+# That rule is the second lock beside Google's provider, which admits refs/heads/main alone; until it is applied, a job
+# that names the environment from another branch gets the environment's secrets, though not ossv-ci.
 # Without the key the review runs fresh on each push, with a warning. An artifact lasts as
 # long as the repository's artifact retention (90 days by default). The environment, its deployment branch rule and
 # the key are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand, which
@@ -317,7 +320,8 @@ jobs:
       id-token: write
     env:
       # Theorem's Google project, as Theorem's infrastructure code declares them. Public identifiers, not
-      # credentials: the provider admits only this workflow file on refs/heads/main.
+      # credentials: the provider admits this file, triage.yaml and enroll-dispatch.yml on refs/heads/main, and only
+      # a job in the environment enroll-review can act as this account.
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
       GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
     outputs:
@@ -396,10 +400,12 @@ jobs:
 
       # Theorem's Google project trusts this workflow's identity token (Theorem's infrastructure code), so the
       # collector's token is read at run time instead of being stored here. Nothing is written to the workspace and
-      # nothing is exported: the Google access token is this step's output alone, and it lives five minutes. This
-      # step comes before the Anthropic identity token is written, so a failure here leaves no token file behind.
+      # nothing is exported: the Google access token is this step's output alone, and it lives five minutes. The
+      # token only feeds the usage export, so a failed sign-in must not stop the review: continue-on-error, and the
+      # Review step warns and runs without the export when the output is empty.
       - name: Sign in to Google Cloud
         id: gcp
+        continue-on-error: true
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (sha-pinned)
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -446,17 +452,17 @@ jobs:
           # pipefail: the default shell of a step is `bash -e`, whose pipeline status is the last command's, so
           # without it a curl or jq failure would be hidden by a base64 that succeeded on what it got.
           set -o pipefail
-          # The collector's bearer token: Secret Manager agent-spend-otel-token, which Theorem's infrastructure code declares and
-          # grants this job's account. It stays a variable of this shell, masked in the log and no process's argument;
-          # without it review-run exports nothing, which is for a person's own run: here it would lose the review's
-          # spend in silence. `jq -e` with the type check refuses a response with no payload, which would otherwise
-          # decode "null" into bytes that look like a token.
-          if ! OTEL_COLLECTOR_TOKEN=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
-            'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/agent-spend-otel-token/versions/latest:access' \
-            | jq -er '.payload.data | select(type == "string" and length > 0)' | base64 -d); then
-            rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
-            echo "::error::Could not read the cost collector's token (Secret Manager agent-spend-otel-token in theorem-agent-infra), so the review's usage would not reach Theorem's cost collector."
-            exit 1
+          # The collector's bearer token: Secret Manager agent-spend-otel-token, which Theorem's infrastructure code
+          # declares and grants this job's account. It stays a variable of this shell, masked in the log and no
+          # process's argument. The export is a measurement and never decides whether the review runs: if the sign-in
+          # failed, or the read fails, or the value is blank, this is one warning and review-run exports nothing.
+          # `jq -e` with the type check refuses a response with no payload, which would otherwise decode "null" into
+          # bytes that look like a token.
+          OTEL_COLLECTOR_TOKEN=""
+          if [ -n "$GCP_ACCESS_TOKEN" ]; then
+            OTEL_COLLECTOR_TOKEN=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
+              'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/agent-spend-otel-token/versions/latest:access' \
+              | jq -er '.payload.data | select(type == "string" and length > 0)' | base64 -d) || OTEL_COLLECTOR_TOKEN=""
           fi
           # The Google access token is needed for nothing else, so review-run and Claude Code never inherit it.
           unset GCP_ACCESS_TOKEN
@@ -465,6 +471,11 @@ jobs:
           while IFS= read -r line; do
             if [ -n "$line" ]; then builtin printf '::add-mask::%s\n' "$line"; fi
           done <<< "$OTEL_COLLECTOR_TOKEN"
+          # A value of whitespace alone is no token: without this, review-run would skip the export with no warning.
+          if [ -z "${OTEL_COLLECTOR_TOKEN//[[:space:]]/}" ]; then
+            OTEL_COLLECTOR_TOKEN=""
+            echo "::warning::Could not read the cost collector's token (Secret Manager agent-spend-otel-token in theorem-agent-infra), so this review's usage does not reach Theorem's cost collector. The review runs."
+          fi
           export OTEL_COLLECTOR_TOKEN
           # Until the token is printed again, the runner reads none of the review's output as a workflow command.
           resume="$(openssl rand -hex 16)"
