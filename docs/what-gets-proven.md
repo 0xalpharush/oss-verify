@@ -14,14 +14,14 @@ A statement is about the exact bytes of one binary: one fuzz target in one build
 
 There are two main statements:
 
-* **Halts.** On each input that stays in the build's memory budget, each run exits with status 0 or 2 ([below](#what-a-statement-accepts)). Thus the binary does not crash, fail an assertion, hang, or fail a sanitizer check on such an input.
+* **Halts.** On each input that stays in the build's memory budget, each run exits with a status that the statement accepts, usually 0 or 2 ([below](#what-a-statement-accepts)). Thus the binary does not crash, fail an assertion, hang, or fail a sanitizer check on such an input.
 * **Agrees.** On each input on which the plain build stays in its budget, the plain build and a sanitizer build both reach no error. They also have the same behaviour: they write the same bytes and exit with the same status. A sanitizer detection stops the program, so this statement excludes each error that the sanitizer checks.
 
 The project's directory in the proofs repository, `projects/<name>/`, lists the statements of each fuzz target and build, and the proofs that are done.
 
 ## What a statement accepts
 
-A halts statement with the `budget` reading accepts only the exit statuses **0 and 2** ([build-contract.md](build-contract.md#exit-statuses)). Status 0 tells that each call of the fuzz target returned 0 or -1. Status 2 tells that the driver refused the input, for example a file of 64 MiB or more. A `may-fail` halts statement accepts any exit status ([below](#memory-budgets)).
+A halts statement accepts only the exit statuses that its `exits` field names. Most `budget` halts statements accept only **0 and 2** ([build-contract.md](build-contract.md#exit-statuses)). Status 0 tells that each call of the fuzz target returned 0 or -1. Status 2 tells that the driver refused the input, for example a file of 64 MiB or more. A `may-fail` halts statement, and a few `budget` ones, accept any exit status ([below](#memory-budgets)).
 
 **Next toolchain version.** For a fuzz target in C, C++ or Rust, and for a DSL fuzz target, the driver exits with status 3 when one or more calls returned -1. A halts statement for such a fuzz target then accepts 0, 2 and 3. The drivers for Python, JavaScript, Go and JVM fuzz targets do not give status 3, so their halts statements accept only 0 and 2. A project with proofs keeps today's driver ([build-contract.md](build-contract.md#exit-statuses)).
 
@@ -68,9 +68,9 @@ A program can run out of memory, and a statement must tell what happens then. Th
   * `budget` (halts statements): a call fails only where the process's own state forces it to. Thus LPS refuses a memory request only when the build has used its budget or no address range is free.
   * `alloc-forced-only` (agrees, bound and decidability statements): any other system call can fail, but memory is refused as in `budget`.
   * `may-fail` (halts, agrees, bound and decidability statements): any system call can fail at any time, and memory requests too.
-* **A `budget` halts statement permits exhaustion.** On each input in the budget, each run exits with status 0 or 2. A run that stops because it has no memory exits with status 0 or 2 too, or the statement is false. Refusals at start do not count: the statement is not about a program that gets no memory before it gets to the fuzz target.
+* **A `budget` halts statement permits exhaustion.** On each input in the budget, each run exits with a status that the statement accepts (usually 0 or 2). A run that stops because it has no memory must exit with such a status too, or the statement is false. Refusals at start do not count: the statement is not about a program that gets no memory before it gets to the fuzz target.
 * **A `may-fail` halts statement covers each refusal.** Each run must halt, whatever LPS refuses, but it can exit with any status. A refusal at start counts: a build that waits forever when a refusal at start occurs makes the statement false.
-* **An agrees statement compares behaviour.** It does not claim that a run halts. An input on which the plain build is refused memory for its budget is not in the statement. In an `alloc-forced-only` agrees statement, a memory refusal that only the sanitizer build gets, because it used its budget or found no free address range, can make the two builds write different bytes, and that makes the statement false. In a `may-fail` agrees statement, either build can get each refusal, so the two builds are compared over the same refusals.
+* **An agrees statement compares behaviour.** It does not claim that a run halts. An input on which the plain build is refused memory for its budget is not in the statement. In an `alloc-forced-only` agrees statement, a memory refusal that only the sanitizer build gets, because it used its budget or found no free address range, can make the two builds write different bytes, and that makes the statement false. In a `may-fail` agrees statement, either build can get any refusal. So each output of one build, under some refusals, must also be an output of the other build, under some refusals.
 * **Only a `may-fail` statement lets an allocation fail at random.** No other statement lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
 
 A budget is a quantity of memory that a build can allocate. It is a condition of the statement: an input that needs more memory is not in the statement. It is not a failure. These are the defaults, which the oss-fuzz-theorems 2026.10 release uses:
