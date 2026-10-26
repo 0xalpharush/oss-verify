@@ -60,7 +60,8 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
   the record names the endpoint, and run does not start the agent at another. Of the tool's own variables
   (ANTHROPIC_*, CLAUDE_CODE_*), in its environment or in any `env` it reads, it allows only the credentials and the
   knobs of TOOL_VARIABLES: any other is refused, since several send its requests elsewhere (a base URL, a socket, a
-  gateway, a host's credentials file, a settings source this script does not read). It reads the settings files a
+  gateway, a host's credentials file, a settings source this script does not read); an `env` it reads that sets HOME
+  or XDG_CONFIG_HOME, which moves the Anthropic profile, is refused too. It reads the settings files a
   machine or a user can write, and the global config in each of the files the tool can take it from (.config.json in
   the config home, and .claude.json and its -staging-oauth, -local-oauth and -custom-oauth names), whose `env` the
   tool also applies as it starts. Remote managed settings that the organization's admin signs (the tool applies
@@ -92,6 +93,10 @@ TOOL_VARIABLES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_IDENTI
 TOOL_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_", "_CLAUDE_CODE_")
 # Other variables that let another party answer as the provider's API: the TLS settings that would let a proxy do it.
 ELSEWHERE = ("NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR")
+# Variables that move the folder of the Anthropic profile the tool reads, when an `env` it applies as it starts (a
+# global config's) sets them: the profile's base_url is then one profile_base_url does not read. In any `env` but the
+# process environment, which profile_base_url follows, they are refused.
+PROFILE_PLACES = ("HOME", "XDG_CONFIG_HOME")
 # The names the tool gives its global config, .claude<name>.json (its own list, 2.1.310).
 GLOBAL_CONFIG_NAMES = ("", "-staging-oauth", "-local-oauth", "-custom-oauth")
 PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
@@ -205,12 +210,13 @@ def endpoint(host):
         found.add(profile)
     elif profile is not None:
         found.add(base_url(profile, host) or host)
-    for env in sources:
+    for number, env in enumerate(sources):   # sources[0] is the process environment
         for name, value in env.items():
             if name == "ANTHROPIC_BASE_URL":
                 found.add(base_url(value, host) or host)
             elif name.startswith(TOOL_PREFIXES) and name not in TOOL_VARIABLES or name in ELSEWHERE \
-                    or name.upper() in PROXIES or name in OTHER_MODEL_SETTINGS or name == "unreadable-settings":
+                    or name.upper() in PROXIES or name in OTHER_MODEL_SETTINGS or name == "unreadable-settings" \
+                    or number > 0 and name in PROFILE_PLACES:
                 found.add(clean(name))
     found.discard(host)
     return "+".join(sorted(found)) or host

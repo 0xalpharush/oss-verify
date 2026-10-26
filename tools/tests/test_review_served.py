@@ -591,7 +591,9 @@ class Run(StandIn):
         with open(os.path.join(self.dir, ".claude", "settings.json"), "w") as f:
             json.dump({"env": {"CLAUDE_CODE_HOST_CREDS_FILE": "/tmp/c.json"}}, f)
         code, err, _ = self.run_agent([init()] + turn(1) + [result()])
+        self.assertEqual(code, 4, err)
         self.assertIn("settings set CLAUDE_CODE_HOST_CREDS_FILE, which", err)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
         os.remove(os.path.join(self.dir, ".claude", "settings.json"))
         # The credentials and knobs that are allowed.
         allowed = {"ANTHROPIC_API_KEY": "k", "ANTHROPIC_AUTH_TOKEN": "t", "CLAUDE_CODE_OAUTH_TOKEN": "o",
@@ -601,6 +603,23 @@ class Run(StandIn):
                    "CLAUDE_CODE_ENABLE_TELEMETRY": "1", "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "1000",
                    "ANTHROPIC_BASE_URL": f"https://{HOST}"}
         code, err, _ = self.run_agent([init()] + turn(1) + [result()], **allowed)
+        self.assertEqual(code, 0, err)
+
+    def test_a_global_config_that_moves_the_profile_starts_no_agent(self):
+        """HOME or XDG_CONFIG_HOME in a global config's env moves the folder of the Anthropic profile the tool reads,
+        and so its base_url; in the process environment the script follows them itself."""
+        for path in (os.path.join(self.dir, ".claude.json"), os.path.join(self.dir, ".claude", ".config.json")):
+            for name in ("XDG_CONFIG_HOME", "HOME"):
+                with self.subTest(path=path, name=name):
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "w") as f:
+                        json.dump({"env": {name: os.path.join(self.dir, "elsewhere")}}, f)
+                    code, err, _ = self.run_agent([init()] + turn(1) + [result()])
+                    os.remove(path)
+                    self.assertEqual(code, 4, err)
+                    self.assertIn(f"settings set {name}, which", err)
+                    self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
+        code, err, _ = self.run_agent([init()] + turn(1) + [result()], XDG_CONFIG_HOME=os.path.join(self.dir, "x"))
         self.assertEqual(code, 0, err)
 
     def gone(self, pid):
