@@ -1804,8 +1804,8 @@ class ReviewSession(unittest.TestCase):
         sealed = self.directory / "sealed"
         out = self.run_session("seal", str(self.session), str(sealed), REVIEW_CONVERSATION_KEY="")
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("::warning::The secret REVIEW_CONVERSATION_KEY of the environment enroll-review is not set",
-                      out.stdout)
+        self.assertIn("::warning::The secret REVIEW_CONVERSATION_KEY of the review job's environment (enroll-review, "
+                      "or enroll-review-test on a ci-test/ branch) is not set", out.stdout)
         self.assertFalse(sealed.exists())
         stdout, files, _ = self.restored(REVIEW_CONVERSATION_KEY="")
         self.assertIn("::warning::", stdout)

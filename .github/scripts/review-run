@@ -11,10 +11,12 @@
 # Run it from the root of the base branch's checkout. build.yaml's review job runs it in CI. A person can run it on
 # their own machine too, with their own Claude Code login, to see the comment a pull request would get: run
 # review-gather first, then this, and read comment.md. Nothing is posted. review-served refuses to start Claude Code
-# (exit 4, naming them) when the shell or Claude Code's settings set any ANTHROPIC_* or CLAUDE_CODE_* variable other
-# than a credential (an API key, an OAuth token, the federation variables) or one of its harmless knobs: unset those
-# for the run, for example with `env -u <name> .github/scripts/review-run …`, or take them out of the settings file's
-# `env` that sets them.
+# (exit 4, naming what it found) when the shell, Claude Code's settings, global config or managed settings, or the
+# Anthropic profile set anything that can send its requests elsewhere or let another model answer: any ANTHROPIC_* or
+# CLAUDE_CODE_* variable other than a credential (an API key, an OAuth token, the federation variables) or one of its
+# harmless knobs, a proxy or TLS trust variable, HOME or XDG_CONFIG_HOME in a file's `env`, advisorModel or a policy
+# helper, or a base_url. Unset those for the run (`env -u <name> .github/scripts/review-run …`), or take them out of
+# the file that sets them. It runs on Linux and macOS.
 # The model gets three tools only, Read, Glob and Grep, in Claude Code's restricted mode, which also keeps them inside
 # this checkout: no shell, no network tool, no file writes, no MCP server. It reads what the pull request and the
 # project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the

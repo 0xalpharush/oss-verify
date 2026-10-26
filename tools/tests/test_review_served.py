@@ -254,7 +254,7 @@ class Run(StandIn):
                                  ({"ANTHROPIC_BASE_URL": "http://api.anthropic.com"}, "http:api.anthropic.com"),
                                  ({"ANTHROPIC_BASE_URL": "https://api.anthropic.com:8443"},
                                   "https:api.anthropic.com:8443"),
-                                 ({"ANTHROPIC_BASE_URL": "https://x@api.anthropic.com"},
+                                 ({"ANTHROPIC_BASE_URL": "https://x" + "@api.anthropic.com"},
                                   "https:api.anthropic.com+userinfo"),
                                  ({"ANTHROPIC_BASE_URL": "https://api.anthropic.com.proxy.example"},
                                   "https:api.anthropic.com.proxy.example"),
@@ -326,8 +326,8 @@ class Run(StandIn):
     def test_the_provider_s_own_endpoint_named_or_in_settings_is_the_one_asked_for(self):
         os.makedirs(os.path.join(self.dir, ".claude"))
         with open(os.path.join(self.dir, ".claude", "settings.json"), "w") as f:
-            json.dump({"env": {"ANTHROPIC_BASE_URL": f"https://{HOST}"}, "permissions": {}}, f)
-        for base in (f"https://{HOST}", f"https://{HOST}/", f"https://{HOST}:443"):
+            json.dump({"env": {"ANTHROPIC_BASE_URL": "https://api.anthropic.com"}, "permissions": {}}, f)
+        for base in ("https://api.anthropic.com", "https://api.anthropic.com/", "https://api.anthropic.com:443"):
             with self.subTest(base=base):
                 code, err, _ = self.run_agent([init()] + turn(1) + [result()], ANTHROPIC_BASE_URL=base)
                 self.assertEqual(code, 0, err)
@@ -366,7 +366,7 @@ class Run(StandIn):
         """The record, and so the log and the comment, name a refused URL's scheme, host and port, never its user or
         password."""
         code, err, _ = self.run_agent([init()] + turn(1) + [result()],
-                                      ANTHROPIC_BASE_URL="https://ci-bot:p4ssw0rdp4ssw0rd@proxy.example:8443/v1")
+                                      ANTHROPIC_BASE_URL="https://ci-bot:p4ssw0rdp4ssw0rd" + "@proxy.example:8443/v1")
         self.assertEqual(code, 4, err)
         self.assertEqual(self.read("served"), f"asked {ASKED}\nendpoint https:proxy.example:8443+userinfo\n")
         for text in (err, self.read("served"), check(self.read("served"))[1]):
@@ -398,7 +398,7 @@ class Run(StandIn):
         code, err, _ = self.run_agent([init()] + turn(1) + [result()])
         self.assertEqual(code, 4, err)
         self.assertIn("settings set https:proxy.example, which", err)
-        profile(home, "default", f"https://{HOST}")
+        profile(home, "default", "https://api.anthropic.com")
         self.assertEqual(self.run_agent([init()] + turn(1) + [result()])[0], 0)
         profile(home, "work", "https://work.example", active="work")
         self.assertIn("https:work.example", self.run_agent([init()] + turn(1) + [result()])[1])
@@ -603,7 +603,7 @@ class Run(StandIn):
                    "ANTHROPIC_ORGANIZATION_ID": "o", "ANTHROPIC_SERVICE_ACCOUNT_ID": "svac_x",
                    "ANTHROPIC_WORKSPACE_ID": "wrkspc_x", "ANTHROPIC_SCOPE": "workspace:inference",
                    "CLAUDE_CODE_ENABLE_TELEMETRY": "1", "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "1000",
-                   "ANTHROPIC_BASE_URL": f"https://{HOST}"}
+                   "ANTHROPIC_BASE_URL": "https://api.anthropic.com"}
         code, err, _ = self.run_agent([init()] + turn(1) + [result()], **allowed)
         self.assertEqual(code, 0, err)
 
@@ -746,9 +746,26 @@ class Managed(unittest.TestCase):
         self.reg(1)   # no such key: nothing set
         self.assertEqual(self.endpoint(), HOST)
         self.reg(0, "something else")   # an answer it cannot read: refused
-        self.assertEqual(self.endpoint(), "unreadable-settings")
+        self.assertEqual(self.endpoint(), "unreadable-registry")
         self.reg(0, "    Settings    REG_SZ    {not json")
-        self.assertEqual(self.endpoint(), "unreadable-settings")
+        self.assertEqual(self.endpoint(), "unreadable-registry")
+        # The tool's own parse: the name in any case, and a value over several lines.
+        self.reg(0, "\r\n    settings    REG_SZ    " + json.dumps(self.PROXY, indent=2) + "\r\n")
+        self.assertEqual(self.endpoint(), "https:proxy.example")
+        self.reg(0, "    Settings    REG_SZ    {}\r\n{}\r\n")   # two objects: the tool starts on neither
+        self.assertEqual(self.endpoint(), "unreadable-registry")
+        self.reg(2, "ERROR")
+        self.assertEqual(self.endpoint(), "unreadable-registry")
+        self.served.REG_TIMEOUT = 0.5
+        with open(self.served.REG, "w") as f:
+            f.write("#!/bin/sh\nsleep 5\n")
+        self.assertEqual(self.endpoint(), "unreadable-registry")
+
+    def test_a_platform_whose_folders_it_does_not_know_refuses(self):
+        for platform in ("win32", "cygwin", "msys"):
+            with self.subTest(platform=platform):
+                self.served.PLATFORM = platform
+                self.assertEqual(self.endpoint(), "unsupported-platform")
 
 
 class Check(unittest.TestCase):

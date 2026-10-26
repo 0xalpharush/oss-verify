@@ -67,7 +67,8 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
   tool also applies as it starts, and the managed settings of the platform (/etc/claude-code, or /Library/Application
   Support/ClaudeCode on macOS) and, under WSL, Windows' (/mnt/c/Program Files/ClaudeCode, and the ClaudeCode policy
   keys of the Windows registry). Remote managed settings that the organization's admin signs (the tool applies routing
-  names only from a verified copy) are not read.
+  names only from a verified copy) are not read. It runs on Linux (WSL too) and macOS only: elsewhere the tool's
+  folders are others, and run refuses.
 """
 import collections
 import glob
@@ -106,6 +107,7 @@ GLOBAL_CONFIG_NAMES = ("", "-staging-oauth", "-local-oauth", "-custom-oauth")
 MANAGED = {"darwin": "/Library/Application Support/ClaudeCode", "linux": "/etc/claude-code",
            "wsl": "/mnt/c/Program Files/ClaudeCode"}
 REG = "/mnt/c/Windows/System32/reg.exe"
+REG_TIMEOUT = 10   # seconds for one reg.exe query; one that takes longer refuses
 PLATFORM = sys.platform
 PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
 # Settings, outside `env`, that let another model answer part of a review, or give the tool an `env` another way.
@@ -140,15 +142,16 @@ def registry_settings():
     for key in ("HKLM", "HKCU") if os.path.exists(REG) else ():
         try:
             answer = subprocess.run([REG, "query", fr"{key}\SOFTWARE\Policies\ClaudeCode", "/v", "Settings"],
-                                    capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+                                    capture_output=True, text=True, timeout=REG_TIMEOUT, stdin=subprocess.DEVNULL)
         except (OSError, subprocess.TimeoutExpired) as e:
             raise ValueError(f"reg.exe: {type(e).__name__}") from e
         if answer.returncode == 1:   # no such key or value
             continue
-        value = re.search(r"^\s+Settings\s+REG_(?:EXPAND_)?SZ\s+(.*?)\s*$", answer.stdout, re.M)
+        # The tool's own pattern (2.1.310): the value runs from its line to the end of the output.
+        value = re.search(r"^[ \t]+Settings[ \t]+REG_(?:EXPAND_)?SZ[ \t]+([\s\S]*)", answer.stdout, re.M | re.I)
         if answer.returncode != 0 or value is None:
             raise ValueError("reg.exe gave no Settings value")
-        texts.append(value.group(1))
+        texts.append(value.group(1).rstrip())
     return texts
 
 
@@ -236,8 +239,11 @@ def endpoint(host):
     config = [os.path.join(home, ".claude"), os.environ.get("CLAUDE_CONFIG_DIR")]
     globals_ = [os.path.join(d, ".config.json") for d in config if d] + \
         [os.path.join(d, f".claude{name}.json") for d in (home, config[1]) if d for name in GLOBAL_CONFIG_NAMES]
-    wsl = PLATFORM.startswith("linux") and under_wsl()
-    managed = [MANAGED["darwin" if PLATFORM == "darwin" else "linux"]] + [MANAGED["wsl"]] * wsl
+    if PLATFORM not in ("darwin", "linux"):
+        # Elsewhere (Windows, Cygwin, MSYS) the tool's folders are others than these: nothing here shows them.
+        return "unsupported-platform"
+    wsl = PLATFORM == "linux" and under_wsl()
+    managed = [MANAGED[PLATFORM]] + [MANAGED["wsl"]] * wsl
     managed_files = [os.path.join(d, "managed-settings.json") for d in managed] + \
         [p for d in managed for p in sorted(glob.glob(os.path.join(glob.escape(d), "managed-settings.d", "*.json")))]
     for path in [os.path.join(d, "settings.json") for d in config if d] + globals_ + [".claude/settings.json",
@@ -256,9 +262,9 @@ def endpoint(host):
     try:
         for text in registry_settings() if wsl else ():
             if not add_settings(sources, json.loads(text)):
-                return "unreadable-settings"
+                return "unreadable-registry"
     except (ValueError, RecursionError):
-        return "unreadable-settings"
+        return "unreadable-registry"
     found = set()
     profile = profile_base_url()
     if profile == "unreadable-profile":
