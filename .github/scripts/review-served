@@ -36,13 +36,17 @@ record it cannot read.
 asked exits 0 when run can check <provider>/<model>, and 2, saying why, when it cannot.
 
 What Claude Code reports, measured on its version 2.1.310, the one build.yaml installs:
-- each `assistant` event of the stream carries `.message.model` and `.message.id` from the API's own response (the
-  tool builds the event from the response's message_start); a response of two content blocks is two events with one
-  id. Nothing else in the stream names the model that answered. A message the tool writes itself (an API error's
-  text, for one) is an `assistant` event whose model is "<synthetic>" and which the tool itself marks
-  `"is_api_error_message": true`: no model answered it, so it is no turn. The model's name alone comes from the
-  response, so "<synthetic>" without that mark is a turn, of another model. The model of every event is checked, not
-  only the first of a message id: the tool can switch models within a response (its server fallback).
+- each `assistant` event of the stream carries `.message.model` and `.message.id` from the API's message_start (the
+  tool builds the event from it); a response of two content blocks is two events with one id. A message the tool
+  writes itself (an API error's text, for one) is an `assistant` event whose model is "<synthetic>" and which the tool
+  itself marks `"is_api_error_message": true`: no model answered it, so it is no turn. The model's name alone comes
+  from the response, so "<synthetic>" without that mark is a turn, of another model. The model of every event is
+  checked, not only the first of a message id.
+- the API can hand a response to another model part way (a server fallback). It marks that with a content block
+  `{"type": "fallback", "from": {"model": ...}, "to": {"model": ...}}`; the tool renames the response's model to the
+  new one only when it asked for the fallback itself, so the block's `to.model` is checked too. CLAUDE_CODE_EXTRA_BODY
+  and ANTHROPIC_BETAS, which could ask the API for one outside the tool, are refused, as is the advisorModel setting
+  (a server-side tool that another model answers).
 - no event before the last names the provider: `system`/`init` names the model asked for (`.model`) and the key's
   source, and an `assistant` event names no provider. So a turn's model is checked as it comes, and the provider at
   the end.
@@ -52,7 +56,10 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
   {} when no request got a response (a refused key, a provider with no credentials): that names no provider.
 - "firstParty" does not say where the requests went: the tool reports it also when ANTHROPIC_BASE_URL names a proxy
   (its own policy code calls that a custom endpoint), which could answer with any model and name it as it likes. So
-  the record names the endpoint, and run does not start the agent at another.
+  the record names the endpoint, and run does not start the agent at another. It reads the settings files a machine
+  or a user can write; a folder named by CLAUDE_CODE_MANAGED_SETTINGS_PATH or CLAUDE_CODE_REMOTE_SETTINGS_PATH is
+  refused rather than read. Remote managed settings that the organization's admin signs (the tool applies routing
+  names only from a verified copy) are not read.
 """
 import collections
 import glob
@@ -70,10 +77,15 @@ import urllib.parse
 TOOL_PROVIDER = {"anthropic": ("firstParty", "api.anthropic.com")}
 # Variables that send the tool's requests elsewhere than the provider's own API, or let another party answer for it,
 # besides an ANTHROPIC_BASE_URL of another URL and any CLAUDE_CODE_USE_* (a provider of another name, or a gateway):
-# a socket or another base URL, a proxy (in any case), and the TLS settings that would let a proxy answer as the API.
+# a socket or another base URL, the TLS settings that would let a proxy answer as the API, request fields and betas
+# that could arm a server fallback, and settings folders this script does not read.
 ELSEWHERE = ("ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BASE_URL", "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
-             "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR")
-PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")
+             "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+             "CLAUDE_CODE_EXTRA_BODY", "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
+             "CLAUDE_CODE_REMOTE_SETTINGS_PATH")
+PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
+# Settings, outside `env`, that let another model answer part of a review.
+OTHER_MODEL_SETTINGS = ("advisorModel",)
 STOPPED = 4         # run: the agent was not started or was stopped, or the record does not show the provider asked for
 UNATTRIBUTED = 3    # check: no other provider or model answered, but a turn names none, or no turn answered
 NAME = re.compile(r"[A-Za-z0-9._:@+\[\]_-]{1,100}")
@@ -160,12 +172,14 @@ def endpoint(host):
             + sorted(glob.glob("/etc/claude-code/managed-settings.d/*.json")):
         try:
             with open(path) as f:
-                env = json.load(f).get("env", {})
+                settings = json.load(f)
+            env = settings.get("env", {})
         except FileNotFoundError:
             continue
         except (OSError, ValueError, RecursionError, AttributeError):
             return "unreadable-settings"
         sources.append(env if isinstance(env, dict) else {"unreadable-settings": ""})
+        sources.append({name: "" for name in OTHER_MODEL_SETTINGS if name in settings})
     found = set()
     profile = profile_base_url()
     if profile == "unreadable-profile":
@@ -177,7 +191,7 @@ def endpoint(host):
             if name == "ANTHROPIC_BASE_URL":
                 found.add(base_url(value, host) or host)
             elif name in ELSEWHERE or name.upper() in PROXIES or name.startswith("CLAUDE_CODE_USE_") \
-                    or name == "unreadable-settings":
+                    or name in OTHER_MODEL_SETTINGS or name == "unreadable-settings":
                 found.add(clean(name))
     found.discard(host)
     return "+".join(sorted(found)) or host
@@ -226,7 +240,7 @@ def check(record):
     if any("none" in (provider, name) for (provider, name), _ in answered):
         return UNATTRIBUTED, f"it asked for {asked}, and {counts} answered, where none is a provider or model the " \
                              "tool did not name: it is not attributable"
-    if any("none" in (provider, name) for provider, name in used):
+    if not used or any("none" in (provider, name) for provider, name in used):
         return UNATTRIBUTED, f"it asked for {asked}, and {counts} answered, but the tool's usage names {usage}, " \
                              "where none is a provider or model the tool did not name: it is not attributable"
     return 0, counts
@@ -256,8 +270,9 @@ def write_record(directory, asked, where, seen):
     """Writes `served`, then claude.json, from what read has seen so far: the record also when run is stopped."""
     result = seen["result"]
     usage = result.get("modelUsage") if result is not None else None
-    used = sorted({(clean(u.get("provider")), clean(u.get("canonicalModel") or key))
-                   for key, u in usage.items() if isinstance(u, dict)}) if isinstance(usage, dict) else []
+    # An entry that is not an object names no provider or model: `none`, so the record is not attributable.
+    used = sorted({(clean(u.get("provider")), clean(u.get("canonicalModel") or key)) if isinstance(u, dict)
+                   else ("none", clean(key)) for key, u in usage.items()}) if isinstance(usage, dict) else []
     provider = "+".join(sorted({provider for provider, _ in used})) or "none"
     counts = collections.Counter(f"{provider}/{model}" for model in seen["answered"].values())
     record = f"asked {asked}\nendpoint {where}\n" + "".join(f"usage {provider}/{model}\n" for provider, model in used) \
@@ -330,13 +345,24 @@ def read(command, stream, model, seen):
             if message.get("model") == SYNTHETIC and event.get("is_api_error_message") is True:
                 continue
             key = message.get("id") if isinstance(message.get("id"), str) else f"#{len(answered)}"
-            name = clean(message.get("model"))
-            if key not in answered or not is_model(name, model):
-                answered[key] = name
-            if not is_model(name, model):
+            if key not in answered:
+                answered[key] = clean(message.get("model"))
+            # The response's model, then the model of each server fallback that a content block hands it to; the raw
+            # names are compared, not the record's cut ones. Content that is not a list hides what it holds.
+            content = message.get("content") if message.get("content") is not None else []
+            handed = [block.get("to").get("model") if isinstance(block.get("to"), dict) else None
+                      for block in content if isinstance(block, dict) and block.get("type") == "fallback"] \
+                if isinstance(content, list) else [None]
+            for answer, how in [(message.get("model"), "")] + [(m, " (a server fallback within the response)")
+                                                               for m in handed]:
+                if isinstance(answer, str) and is_model(answer, model):
+                    continue
+                answered[key] = name = clean(answer)
                 name = "no model it named" if name == "none" else name
-                stopped = f"stopped Claude Code: turn {list(answered).index(key) + 1} was answered by {name}, not " \
-                          f"{model}"
+                stopped = f"stopped Claude Code: turn {list(answered).index(key) + 1} was answered by {name}{how}, " \
+                          f"not {model}"
+                break
+            if stopped:
                 break
         if stopped:
             stop(agent)

@@ -194,8 +194,12 @@ FOOTER = ("<sub>Claude wrote this review, following `.claude/skills/review-enrol
           "enrollment.</sub>")
 # The footer as this script writes it, for any commit: a kept comment loses it from its front, and gets it again.
 FOOTER_WRITTEN = re.compile(r"(?:It is the review of `[0-9a-f]{7}`\. )?".join(map(re.escape, FOOTER.split("{of}"))))
+# The footer of a comment with no review: no AI review is there, so it says nothing of who wrote one.
+NO_REVIEW_FOOTER = ("<sub>`tools/check --checks` measured the checks. No AI review of this push is posted. A person at "
+                    "Theorem reviews the enrollment.</sub>")
 # What answered the review: after the footer of a review that is posted, and in the notice when there is none.
 ANSWERED = "<sub>Answered by `{}`, as Claude Code reported it.</sub>"
+ANSWERED_WRITTEN = re.compile(r"<sub>Answered by `[^`\n]*`, as Claude Code reported it\.</sub>")
 ANSWERED_NOTICE = "What answered it, as Claude Code reported it: `{}`."
 SERVED = pathlib.Path(__file__).resolve().with_name("review-served")
 # The characters of what `review-served check` prints: names it has cleaned, and its own words. No backtick, so the
@@ -256,11 +260,19 @@ def served(record):
     return code, line
 
 
+def turned(record):
+    """Whether the record names a turn that answered: a line other than its asked, endpoint and usage lines."""
+    return any(line.strip() and not line.startswith(("asked ", "endpoint ", "usage ")) for line in record.splitlines())
+
+
 def not_current(previous, head, run, answered=""):
     """The comment already posted, kept: as the review of head when it is that, else marked not the review of head;
     None when it holds no review to keep. answered: what answered head's review, a sentence of the notice."""
     status, of_head, version, body = read_previous(previous)
-    current = bool(head) and of_head == head and status in ("review", "stale")
+    # A review is the review of head only when it names what answered it: one posted before review-served existed
+    # names nothing, and is kept as not current rather than posted again as the review.
+    recorded = any(ANSWERED_WRITTEN.fullmatch(paragraph.strip()) for paragraph in body.split("\n\n")[:3])
+    current = bool(head) and of_head == head and status in ("review", "stale") and recorded
     if current and status == "review":
         # A later run for the same commit (a rerun, or an edit of the pull request) wrote no review: this one is
         # still the review of it, kept as posted. GitHub keeps the comment's last newline and `gh --jq` adds one, so
@@ -335,9 +347,10 @@ def main():
     record = options.served.read_text(encoding="utf-8", errors="replace") if options.served \
         and options.served.is_file() else ""
     answered_status, answered = served(record)
-    # Another endpoint, provider or model answered (in CI the review job then passes on no review text at all), or
-    # nothing shows which answered a review that is here: none of its text is posted, and the comment says so.
-    withheld = answered_status == 1 or bool(review) and answered_status != 0
+    # Another endpoint, provider or model answered, or nothing shows which answered a review that is here or a turn
+    # that the record names (in CI the review job then passes on no review text at all): none of its text is posted,
+    # and the comment says so.
+    withheld = answered_status == 1 or answered_status != 0 and (bool(review) or turned(record))
     if withheld:
         review = ""
     notice = ANSWERED_NOTICE.format(answered)
@@ -364,7 +377,7 @@ def main():
                                                                          f": {why}" if why else "")
         else:
             first = f"The review agent did not run on this push{this}: {why or 'it wrote no comment'}"
-        notes = [f"{first}{where}. {notice} A person at Theorem reviews the enrollment.", FOOTER.format(of=of)]
+        notes = [f"{first}{where}. {notice} A person at Theorem reviews the enrollment.", NO_REVIEW_FOOTER]
         status = "none"
     checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
     if credential(checks):

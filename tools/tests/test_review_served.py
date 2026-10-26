@@ -25,7 +25,8 @@ HEAD = f"asked {ASKED}\nendpoint {HOST}\n"   # the record's first lines, when th
 ELSEWHERE = ("ANTHROPIC_BASE_URL", "ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BASE_URL",
              "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL", "CLAUDE_CONFIG_DIR", "NODE_TLS_REJECT_UNAUTHORIZED",
              "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY",
-             "ANTHROPIC_PROFILE", "ANTHROPIC_CONFIG_DIR", "XDG_CONFIG_HOME")
+             "ANTHROPIC_PROFILE", "ANTHROPIC_CONFIG_DIR", "XDG_CONFIG_HOME", "CLAUDE_CODE_EXTRA_BODY",
+             "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH", "CLAUDE_CODE_REMOTE_SETTINGS_PATH")
 # A stand-in agent: prints the events of the JSON list in $HOME/events.json, each on a line of its own as it comes; an
 # item {"sleep": seconds} waits, {"exit": status} ends there, {"raw": text} prints the text as it is, and {"child":
 # seconds} starts a process of its own that sleeps that long, as a tool the agent runs would. It writes its arguments
@@ -258,6 +259,16 @@ class Run(StandIn):
                                  ({"https_proxy": "http://proxy.example"}, "https_proxy"),
                                  ({"NODE_EXTRA_CA_CERTS": "/tmp/ca.pem"}, "NODE_EXTRA_CA_CERTS"),
                                  ({"NODE_TLS_REJECT_UNAUTHORIZED": "0"}, "NODE_TLS_REJECT_UNAUTHORIZED"),
+                                 ({"SSL_CERT_FILE": "/tmp/ca.pem"}, "SSL_CERT_FILE"),
+                                 ({"SSL_CERT_DIR": "/tmp/certs"}, "SSL_CERT_DIR"),
+                                 ({"HTTP_PROXY": "http://proxy.example"}, "HTTP_PROXY"),
+                                 ({"all_proxy": "socks5://proxy.example"}, "all_proxy"),
+                                 ({"CLAUDE_CODE_EXTRA_BODY": '{"x": 1}'}, "CLAUDE_CODE_EXTRA_BODY"),
+                                 ({"ANTHROPIC_BETAS": "x-2026-01-01"}, "ANTHROPIC_BETAS"),
+                                 ({"CLAUDE_CODE_MANAGED_SETTINGS_PATH": "/tmp/managed"},
+                                  "CLAUDE_CODE_MANAGED_SETTINGS_PATH"),
+                                 ({"CLAUDE_CODE_REMOTE_SETTINGS_PATH": "/tmp/remote.json"},
+                                  "CLAUDE_CODE_REMOTE_SETTINGS_PATH"),
                                  ({"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, "ANTHROPIC_UNIX_SOCKET"),
                                  ({"CLAUDE_CODE_API_BASE_URL": "https://proxy.example"}, "CLAUDE_CODE_API_BASE_URL"),
                                  ({"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL": "1"},
@@ -437,6 +448,55 @@ class Run(StandIn):
                 r = subprocess.run([sys.executable, SERVED, "asked", asked], capture_output=True, text=True)
                 self.assertEqual(r.returncode, status, r.stderr)
 
+    def test_a_server_fallback_to_another_model_within_a_response_stops_the_agent(self):
+        """The API can hand a response to another model part way, with a content block naming it; the tool renames the
+        response only when it asked for the fallback itself, so the event still names the model asked for."""
+        handed = turn(2)
+        handed[0]["message"]["content"] = [{"type": "fallback", "from": {"model": "model-a-1"},
+                                            "to": {"model": "other-b-1"}}, {"type": "text", "text": "..."}]
+        code, err, seconds = self.run_agent([init()] + turn(1) + handed + [{"sleep": 100}, result()])
+        self.assertEqual(code, 4, err)
+        self.assertLess(seconds, 60)
+        self.assertIn("turn 2 was answered by other-b-1 (a server fallback within the response), not model-a-1", err)
+        self.assertEqual(self.read("served"), f"{HEAD}none/model-a-1 1\nnone/other-b-1 1\n")
+        self.assertEqual(check(self.read("served"))[0], 1)
+        # A fallback to the model asked for is no other model.
+        handed[0]["message"]["content"][0]["to"]["model"] = "model-a-1"
+        self.assertEqual(self.run_agent([init()] + turn(1) + handed + [result()])[0], 0)
+
+    def test_a_setting_that_lets_another_model_answer_starts_no_agent(self):
+        os.makedirs(os.path.join(self.dir, ".claude"))
+        with open(os.path.join(self.dir, ".claude", "settings.json"), "w") as f:
+            json.dump({"advisorModel": "other-b-1"}, f)
+        code, err, _ = self.run_agent([init()] + turn(1) + [result()])
+        self.assertEqual(code, 4, err)
+        self.assertIn("send its requests to advisorModel, not to", err)
+
+    def test_a_usage_entry_that_is_not_an_object_is_not_attributable(self):
+        side = result()
+        side["modelUsage"]["model-a-1-20251001"] = None
+        code, err, _ = self.run_agent([init()] + turn(1) + [side])
+        self.assertEqual(code, 4, err)
+        self.assertIn("usage none/model-a-1-20251001\n", self.read("served"))
+        self.assertIn("firstParty+none/model-a-1 1\n", self.read("served"))
+        self.assertNotEqual(check(self.read("served"))[0], 0)
+
+    def test_a_long_name_that_the_record_cuts_to_the_model_asked_for_is_another(self):
+        """The record cuts a name to 100 characters; the stream's own name is compared."""
+        asked = "model-" + "a" * 94
+        code, err, _ = self.run_agent([init()] + turn(1, asked + "-evil") + [{"sleep": 100}, result()],
+                                      asked=f"anthropic/{asked}")
+        self.assertEqual(code, 4, err)
+
+    def test_the_profile_under_xdg_config_home_is_read(self):
+        xdg = os.path.join(self.dir, "xdg")
+        os.makedirs(os.path.join(xdg, "anthropic", "configs"))
+        with open(os.path.join(xdg, "anthropic", "configs", "default.json"), "w") as f:
+            json.dump({"base_url": "https://proxy.example"}, f)
+        code, err, _ = self.run_agent([init()] + turn(1) + [result()], XDG_CONFIG_HOME=xdg)
+        self.assertEqual(code, 4, err)
+        self.assertIn("https:proxy.example", err)
+
     def gone(self, pid):
         """Whether the process `pid` has ended (and been reaped), waiting up to 10 seconds."""
         for _ in range(100):
@@ -511,6 +571,12 @@ class Check(unittest.TestCase):
 
     def test_a_usage_entry_that_names_no_model_is_not_attributable(self):
         self.assertEqual(check(f"{HEAD}usage firstParty/none\nfirstParty/model-a-1 3\n")[0], 3)
+
+    def test_a_record_with_no_usage_line_is_not_attributable(self):
+        """run writes a usage line for each entry of the tool's .modelUsage; with none, nothing names the provider."""
+        code, line = check(f"{HEAD}firstParty/model-a-1 3\n")
+        self.assertEqual(code, 3, line)
+        self.assertIn("the tool's usage names nothing", line)
 
     def test_a_count_of_digits_that_are_not_ascii_is_not_attributable_and_no_crash(self):
         """str.isdigit takes "²" for a digit and int() does not: that once crashed check with exit 1, which is the

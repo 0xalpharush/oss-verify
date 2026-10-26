@@ -11,7 +11,8 @@ name: "Build"
 # Then two more jobs:
 #   review   Claude Code follows .claude/skills/review-enrollment/SKILL.md on what the workflow gathered: the pull
 #            request, the project's source at the built commit, and the build's results. It writes a comment that asks
-#            the maintainer for each fix.
+#            the maintainer for each fix. On a later push it resumes the conversation of the last review, so it knows
+#            what it asked for and why, and checks those requests against the changes since then.
 #   comment  posts that comment, with the checks' report folded under it, or replaces the one already there. The
 #            comment starts with <!-- oss-verify-review -->, as the triage comment starts with its own marker.
 #
@@ -93,6 +94,30 @@ name: "Build"
 # theorem.credential=oss-verify-ci (.github/scripts/review-run sets them). The review fails if either is not set, or if
 # the collector does not answer 200 to an empty export with the token before the review starts, rather than lose the
 # review's spend in silence. If it refuses one after the review, the comment is still posted and the review job fails.
+#
+# The review's conversation goes from one push to the next as an artifact of the review's run, named
+# enroll-review-<pull request>-<project>, sealed (AES-256-GCM) by .github/scripts/review-session under a key derived
+# from REVIEW_CONVERSATION_KEY (32 random bytes, base64), a secret of the environment enroll-review. The review job
+# restores the newest one of the pull request and project that build.yaml uploaded, that opens with the key, and whose
+# review is the one the review comment shows; review-run resumes it in a fork (claude --resume <id> --fork-session) and
+# keeps the new conversation, and the review job seals and uploads that once the review has written a comment. The logs
+# of the Restore and Review steps say which it did: "review-run: resuming the conversation <id> of the review of
+# <commit>", or "a fresh review". A conversation holds the public inputs the review read and the review's own
+# reasoning, which no log or comment shows, and no token: review-run keeps none that looks like a credential. It is
+# sealed because anyone signed in to GitHub can download this repository's artifacts, and it is not in the Actions
+# cache because every pull request's own run, a fork's too, can read main's caches (the header of
+# .github/scripts/review-session has the measurement).
+# Only the review job holds the key: the environment's deployment branch rule allows main alone, and GitHub checks it
+# against the run's ref, which is main for pull_request_target and refs/pull/<n>/merge for a pull request's own run
+# (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
+# A run on a ci-test/ branch uses the environment enroll-review-test instead, which holds no key unless someone gives it
+# one, so it reviews fresh. Without the key the review runs fresh on each push, with a warning. An artifact lasts as
+# long as the repository's artifact retention (90 days by default). To make the environment's rule and the key (an
+# admin of this repository; a new key discards every kept conversation):
+#   gh api -X PUT repos/theorem-labs/oss-verify/environments/enroll-review \
+#     -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+#   gh api -X POST repos/theorem-labs/oss-verify/environments/enroll-review/deployment-branch-policies -f name=main
+#   openssl rand -base64 32 | gh secret set REVIEW_CONVERSATION_KEY --env enroll-review -R theorem-labs/oss-verify
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -257,12 +282,18 @@ jobs:
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # For the key that seals the review's conversation, which only a run on main gets (the top of this file). No
+    # deployment: the environment holds a secret, and the pull request shows no deployment.
+    environment:
+      name: ${{ startsWith(github.ref, 'refs/heads/ci-test/') && 'enroll-review-test' || 'enroll-review' }}
+      deployment: false
     permissions:
       contents: read
       pull-requests: read
       # For the pull request's checks, which the review reads.
       checks: read
       statuses: read
+      # Also for the artifacts of the review's earlier runs (the conversation).
       actions: read
       # Only for the GitHub identity token that workload identity federation trades for an Anthropic token.
       id-token: write
@@ -287,6 +318,25 @@ jobs:
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
         run: GITHUB_STEP_SUMMARY=/dev/null .github/scripts/take-project build
 
+      # The conversation of the last review of this pull request and project, which the review resumes (sealed, at the
+      # top of this file). None on its first review, or once its artifact has expired: a fresh review. A failure of
+      # this step (an install, a time limit) gives a fresh review too, never no review: review-run resumes only a
+      # directory whose `session` file, written last, names a whole conversation.
+      - name: Restore the last review's conversation
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          NAME: ${{ needs.project-builds.outputs.name }}
+          REVIEW_CONVERSATION_KEY: ${{ secrets.REVIEW_CONVERSATION_KEY }}
+        run: |
+          dpkg -s python3-cryptography > /dev/null 2>&1 \
+            || sudo apt-get install -y -qq python3-cryptography \
+            || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-cryptography; }
+          .github/scripts/review-session restore "$RUNNER_TEMP/review-session"
+
       - name: Gather what the review reads
         timeout-minutes: 15
         env:
@@ -299,6 +349,9 @@ jobs:
           BINARIES: ${{ needs.project-builds.outputs.binaries }}
           CHECKS: ${{ needs.project-builds.outputs.checks }}
           BUILD_CONCLUSION: ${{ needs.project-builds.result }}
+          # For the changes since the last review's commit, when there is one.
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
+          REVIEW_SESSION: ${{ runner.temp }}/review-session
         run: |
           dpkg -s python3-yaml unzip > /dev/null 2>&1 \
             || sudo apt-get install -y -qq python3-yaml unzip \
@@ -344,6 +397,10 @@ jobs:
           # Usage, to Theorem's cost collector. review-run checks that the collector takes the token.
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_COLLECTOR_TOKEN: ${{ secrets.OTEL_COLLECTOR_TOKEN }}
+          # The conversation of the last review, which review-run resumes, and the commit this review is of. After a
+          # review, the directory holds this review's conversation, which the next step keeps for the next push.
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
+          REVIEW_SESSION: ${{ runner.temp }}/review-session
         run: |
           # Without the two, review-run exports nothing, which is for a person's own run: here it would lose the
           # review's spend in silence.
@@ -418,6 +475,32 @@ jobs:
           fi
           delimiter="review-$(openssl rand -hex 16)"
           { echo "comment<<$delimiter"; head -c 60000 .review/comment.md; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+          if [ -s "$REVIEW_SESSION/session" ]; then echo "session=kept" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Seal this review's conversation for the next push's review
+        id: seal
+        if: ${{ steps.review.outputs.session == 'kept' }}
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          NAME: ${{ needs.project-builds.outputs.name }}
+          REVIEW_CONVERSATION_KEY: ${{ secrets.REVIEW_CONVERSATION_KEY }}
+        run: |
+          sealed="$RUNNER_TEMP/review-sealed/conversation.sealed"
+          .github/scripts/review-session seal "$RUNNER_TEMP/review-session" "$sealed"
+          if [ -s "$sealed" ]; then echo "sealed=$sealed" >> "$GITHUB_OUTPUT"; fi
+
+      # Public, as every artifact of this repository is: it opens only with the key (the top of this file).
+      - name: Keep the sealed conversation for the next push's review
+        if: ${{ steps.seal.outputs.sealed != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (sha-pinned)
+        with:
+          name: enroll-review-${{ github.event.pull_request.number || inputs.pr }}-${{ needs.project-builds.outputs.name }}
+          path: ${{ steps.seal.outputs.sealed }}
+          if-no-files-found: error
+          # Sealed bytes do not compress. A re-run of the job replaces the artifact of its run.
+          compression-level: 0
+          overwrite: true
 
       - name: Fail if the collector refused the token after the review
         if: ${{ steps.review.outputs.collector == 'refused' }}

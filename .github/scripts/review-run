@@ -5,7 +5,8 @@
 # Runs the enrollment review: Claude Code follows .claude/skills/review-enrollment/SKILL.md on the files that
 # review-gather wrote, and its last message, the comment to the maintainer, is written to <directory>/comment.md.
 #
-#   PR=<number> NAME=<project> .github/scripts/review-run <directory inside this checkout>
+#   PR=<number> NAME=<project> [HEAD_SHA=<head commit> REVIEW_SESSION=<directory>] \
+#     .github/scripts/review-run <directory inside this checkout>
 #
 # Run it from the root of the base branch's checkout. build.yaml's review job runs it in CI. A person can run it on
 # their own machine too, with their own Claude Code login, to see the comment a pull request would get: run
@@ -27,6 +28,16 @@
 # In CI it keeps Claude Code's workload identity usable for a review of any length, and runs Claude Code once more when
 # it ends without a review (both below). A run that ends without a comment writes why, in plain words, to
 # <directory>/failure.txt, and Claude Code's own message, for the job's summary, to <directory>/failure-detail.txt.
+# With REVIEW_SESSION=<directory outside this checkout> and HEAD_SHA=<the pull request's head commit>, the review keeps
+# its conversation: build.yaml's review job restores that directory from the sealed artifact of the last review
+# (.github/scripts/review-session), so that the review of each push resumes the conversation of the last review of the
+# pull request, and knows what it asked for and why. The directory holds `session` (id=<the conversation's id>,
+# head=<the commit it reviewed>, dir=<its folder in ~/.claude/projects>) and the conversation, <id>.jsonl. The first
+# try resumes it in a fork with a new id (--resume --fork-session), so a review that fails leaves the last one whole;
+# when that try ends without a review ("No conversation found", a conversation too long to load, or any other reason),
+# the second try is a fresh review. When the directory holds no conversation, the review starts fresh. The log says
+# which: "resuming the conversation <id> of the review of <commit>", or "a fresh review". After a review that wrote a
+# comment, the directory holds this review's conversation instead, unless it holds what looks like a credential.
 set -euo pipefail
 
 in=${1:?usage: review-run <directory>}
@@ -38,12 +49,44 @@ model=${REVIEW_MODEL:-claude-opus-5-5}
 every=${REVIEW_TOKEN_EVERY:-60}
 [[ $every =~ ^[1-9][0-9]{0,3}$ ]] || { echo "review-run: REVIEW_TOKEN_EVERY is not a number of seconds" >&2; exit 2; }
 rm -f "$in/failure.txt" "$in/failure-detail.txt"
+session_dir=${REVIEW_SESSION:-}
+if [ -n "$session_dir" ]; then
+  case $(realpath -m "$session_dir")/ in
+    "$(pwd -P)"/*) echo "review-run: REVIEW_SESSION is inside this checkout" >&2; exit 2 ;;
+  esac
+  [[ ${HEAD_SHA:-} =~ ^[0-9a-f]{40}$ ]] || { echo "review-run: REVIEW_SESSION needs HEAD_SHA, a commit" >&2; exit 2; }
+fi
+uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 
 prompt="You are the agent of OSS Verify's enrollment check, in CI, on pull request #$PR of theorem-labs/oss-verify, \
 which adds or changes projects/$NAME/. Read .claude/skills/review-enrollment/SKILL.md and do the review that it \
 describes, as its section \"In CI\" says. The workflow gathered the inputs into $in/, and the pull request's \
 projects/$NAME/ is in this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing \
 else: it starts with the sentence of thanks, with no line before it about you or your review."
+
+# The conversation of the last review, when REVIEW_SESSION holds one that is whole.
+last_id="" last_head=""
+if [ -n "$session_dir" ] && [ -f "$session_dir/session" ]; then
+  last_id=$(sed -n 's/^id=//p' "$session_dir/session")
+  last_head=$(sed -n 's/^head=//p' "$session_dir/session")
+  last_dir=$(sed -n 's/^dir=//p' "$session_dir/session")
+  if [[ $last_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ && $last_head =~ ^[0-9a-f]{40}$ \
+        && $last_dir =~ ^-[A-Za-z0-9-]{1,200}$ ]] && [ -s "$session_dir/$last_id.jsonl" ]; then
+    mkdir -p "$HOME/.claude/projects/$last_dir"
+    cp "$session_dir/$last_id.jsonl" "$HOME/.claude/projects/$last_dir/"
+  else
+    echo "review-run: $session_dir/session does not name a whole conversation"
+    last_id=""
+  fi
+fi
+again="This is a new push to pull request #$PR. Earlier in this conversation you reviewed its commit \
+${last_head:0:12}, and your last message was the comment that the workflow posted. The workflow gathered the inputs \
+again into $in/, for its commit ${HEAD_SHA:-}, and put the pull request's projects/$NAME/ in this checkout again. Any \
+of those files can have changed: read again each one that you use, and use nothing that you read before. \
+$in/since-last-review.diff has the changes to projects/$NAME/ since the commit that you reviewed. Read \
+.claude/skills/review-enrollment/SKILL.md again, because main can have changed it, and do the review again, as its \
+section \"In CI\" says for a later push. Your last message is the new comment to the maintainer, in Markdown, and \
+nothing else: it starts with the sentence of thanks, with no line before it about you or your review."
 
 # The HTTP status that the collector answers to an export of no records with the token (000 when it did not answer in
 # time). The header reaches curl through a pipe that the builtin printf writes, not an argument; -q, first, keeps a
@@ -140,9 +183,9 @@ holds_credential() {
 here=$(dirname "$(realpath "$0")")
 
 # The file tools never read the runner's temporary directory or the identity token's: --restricted keeps them inside
-# this checkout, and these deny rules say so again, should that ever change: one for each of the three tools, so that
-# the protection does not rest on Claude Code applying a Read rule to Grep and Glob too. `//` starts an absolute path
-# in a rule.
+# this checkout, and these deny rules say so again, should that ever change. Claude Code 2.1.310 matches a path in a
+# Read(...) rule for Read, Grep and Glob alike; the Grep(...) and Glob(...) rules are copies of it, kept so that the
+# protection holds if a later version matches a rule by its tool's name. `//` starts an absolute path in a rule.
 deny=()
 for directory in "${RUNNER_TEMP:-}" "${ANTHROPIC_IDENTITY_TOKEN_FILE:+$(dirname "$ANTHROPIC_IDENTITY_TOKEN_FILE")}"; do
   [ -z "$directory" ] || for tool in Read Grep Glob; do deny+=("$tool(/$(realpath -m "$directory")/**)"); done
@@ -152,15 +195,16 @@ done
 # Claude Code's exit status is kept, and how it ended is read from claude.json and written where a reader sees it. All
 # tries stop at 40 minutes, inside the review step's 45, so that a review that runs too long says so too (exit status
 # 124). A try that ends without a review is tried once more if 10 minutes are left, and not after the time limit or
-# without a new identity token for it.
+# without a new identity token for it. Each try is a conversation of its own id: the first resumes the last review's
+# conversation when there is one, and the second is a fresh review. A resumed try keeps --model as it is.
 # Claude Code runs under review-served, which reads its event stream (stream-json), stops it at a response that a
 # model other than the one asked for answers, and writes what answered, with its turns, to $in/served for the comment
 # job, and the stream's last event to claude.json, the object `--output-format json` writes. It does not start Claude
 # Code when the environment, Claude Code's settings or its Anthropic profile send its requests elsewhere than the API of
 # the provider asked for (REVIEW_PROVIDER, by default anthropic), ANTHROPIC_BASE_URL for one. Its exit status 4, with a
 # record that does not pass, means that another provider or model answered, or that nothing shows which: that review
-# is not published, and is not tried again. It runs in the environment below, the one it gives Claude Code, so it reads
-# that one.
+# is not published, and is not tried again. Both tries, the resumed and the fresh, go through it. It runs in the
+# environment below, the one it gives Claude Code, so it reads that one.
 served="$(dirname "$0")/review-served"
 asked=${REVIEW_PROVIDER:-anthropic}/$model
 "$served" asked "$asked" || { echo "review-run: REVIEW_PROVIDER/REVIEW_MODEL is not one review-served can check" >&2
@@ -169,6 +213,16 @@ deadline=$((SECONDS + 40 * 60))
 first_why=""
 for try in 1 2; do
   status=0
+  id=$(uuid)
+  text=$prompt conversation=(--session-id "$id") resumed=""
+  if [ -n "$last_id" ] && [ "$try" = 1 ]; then
+    echo "review-run: resuming the conversation $last_id of the review of $last_head, as $id"
+    text=$again conversation=(--resume "$last_id" --fork-session --session-id "$id") resumed=yes
+  elif [ -n "$last_id" ]; then
+    echo "review-run: the resumed review of the conversation $last_id ended without a review: a fresh review, as $id"
+  elif [ "$try" = 1 ]; then
+    echo "review-run: no conversation of an earlier review of pull request #$PR: a fresh review, as $id"
+  fi
   # Claude Code's whole environment, one NUL-ended entry each, goes through a pipe to a launcher that execs
   # review-served, with this same Python, with that environment only, as env -i would, and stdin from /dev/null;
   # review-served starts Claude Code with that environment as it is. env -i took the entries as arguments. A loop of
@@ -187,14 +241,16 @@ with open(os.devnull, "rb") as empty:
     os.dup2(empty.fileno(), 0)
 os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
     "$served" run "$in" "$asked" -- \
-    claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \
-      "${deny[@]}" \
+    claude -p "$text" "${conversation[@]}" --restricted --tools Read,Glob,Grep --strict-mcp-config \
+      --permission-mode dontAsk "${deny[@]}" \
       --model "$model" --effort xhigh --max-turns 300 --output-format stream-json --verbose > /dev/null \
       2> "$in/claude.err" || status=$?
   # What answered, as review-served checks its record: the counts, or why the review is not to be posted.
   served_status=0
   answered=$({ cat "$in/served" 2> /dev/null || true; } | "$served" check) || served_status=$?
-  if [ "$status" = 4 ] && [ "$served_status" != 0 ]; then
+  # Not published, and not tried again: review-served stopped it or refused its record, or another endpoint, provider
+  # or model answered a run that also failed by itself.
+  if [ "$served_status" = 1 ] || { [ "$status" = 4 ] && [ "$served_status" != 0 ]; }; then
     echo "review-run: the review is not published: $answered" >&2
     if [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
       echo "review-run: Claude Code's standard error is not shown: it holds what looks like a credential" >&2
@@ -261,7 +317,27 @@ if [ ! -s "$in/comment.md" ]; then
   exit 1
 fi
 echo "review-run: $(wc -c < "$in/comment.md") bytes in $in/comment.md, asked for $asked, answered by $answered," \
-  "$subtype after $turns turns and $seconds seconds (try $try)"
+  "$subtype after $turns turns and $seconds seconds (try $try${resumed:+, resumed})"
+# This review's conversation, for the next push's review, in place of the last one. The review cannot read this run's
+# tokens, so its conversation holds none of them; it is not kept if it holds what looks like a credential, or the
+# identity token now in the file.
+if [ -n "$session_dir" ]; then
+  mkdir -p "$session_dir"
+  rm -f "$session_dir/session" "$session_dir"/*.jsonl
+  file=$(find "$HOME/.claude/projects" -name "$id.jsonl" -print -quit 2> /dev/null || true)
+  identity=""
+  [ ! -f "${ANTHROPIC_IDENTITY_TOKEN_FILE:-}" ] || identity=$(< "$ANTHROPIC_IDENTITY_TOKEN_FILE")
+  if [ -z "$file" ] || [ ! -s "$file" ]; then
+    echo "review-run: Claude Code kept no conversation $id: the next push's review starts fresh"
+  elif holds_credential "$file" || { [ -n "$identity" ] && [[ $(tr -d '\0' < "$file") == *"$identity"* ]]; }; then
+    echo "review-run: the conversation $id holds what looks like a credential, so it is not kept: the next push's" \
+      "review starts fresh"
+  else
+    cp "$file" "$session_dir/"
+    printf 'id=%s\nhead=%s\ndir=%s\n' "$id" "$HEAD_SHA" "$(basename "$(dirname "$file")")" > "$session_dir/session"
+    echo "review-run: kept the conversation $id of the review of $HEAD_SHA, for the next push's review to resume"
+  fi
+fi
 if [ ${#telemetry[@]} != 0 ]; then
   answer=$(collector)
   if [ "$answer" != 200 ]; then
