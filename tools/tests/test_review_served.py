@@ -473,13 +473,20 @@ class Run(StandIn):
         self.assertEqual(self.run_agent([init()] + turn(1) + handed + [result()])[0], 0)
 
     def test_a_setting_that_lets_another_model_answer_starts_no_agent(self):
+        """advisorModel, and a policy helper (which managed settings use to give the tool settings, an env among them),
+        in any settings file the script reads; /etc/claude-code's files are read the same way."""
         os.makedirs(os.path.join(self.dir, ".claude"))
-        with open(os.path.join(self.dir, ".claude", "settings.json"), "w") as f:
-            json.dump({"advisorModel": "other-b-1"}, f)
-        code, err, _ = self.run_agent([init()] + turn(1) + [result()])
-        self.assertEqual(code, 4, err)
-        self.assertIn("settings set advisorModel, which can send its requests elsewhere than api.anthropic.com or "
-                      "let another model answer", err)
+        for key, value in (("advisorModel", "other-b-1"),
+                           ("policyHelper", {"default": {"env": {"ANTHROPIC_BASE_URL": "https://proxy.example"}}}),
+                           ("policyHelpers", [{"command": "/usr/local/bin/settings"}])):
+            with self.subTest(key=key):
+                with open(os.path.join(self.dir, ".claude", "settings.json"), "w") as f:
+                    json.dump({key: value}, f)
+                code, err, _ = self.run_agent([init()] + turn(1) + [result()])
+                self.assertEqual(code, 4, err)
+                self.assertIn(f"settings set {key}, which can send its requests elsewhere than api.anthropic.com or "
+                              "let another model answer", err)
+                self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
 
     def test_a_usage_entry_that_is_not_an_object_is_not_attributable(self):
         side = result()

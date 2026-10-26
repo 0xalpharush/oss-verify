@@ -115,7 +115,8 @@ name: "Build"
 # one, so it reviews fresh. Without the key the review runs fresh on each push, with a warning. An artifact lasts as
 # long as the repository's artifact retention (90 days by default). The environments, their deployment branch rule and
 # the key are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand, which
-# the next apply would undo or fail on. A new key discards every kept conversation.
+# the next apply would undo or fail on. A new key, or a new seal version in review-session, discards every kept
+# conversation.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123

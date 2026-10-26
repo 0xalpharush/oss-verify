@@ -46,7 +46,8 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
   `{"type": "fallback", "from": {"model": ...}, "to": {"model": ...}}`; the tool renames the response's model to the
   new one only when it asked for the fallback itself, so the block's `to.model` is checked too. CLAUDE_CODE_EXTRA_BODY
   and ANTHROPIC_BETAS, which could ask the API for one outside the tool, are refused, as is the advisorModel setting
-  (a server-side tool that another model answers).
+  (a server-side tool that another model answers), and a managed policy helper (policyHelper, policyHelpers), which
+  gives the tool settings, an `env` among them, another way than a settings file's `env`.
 - no event before the last names the provider: `system`/`init` names the model asked for (`.model`) and the key's
   source, and an `assistant` event names no provider. So a turn's model is checked as it comes, and the provider at
   the end.
@@ -89,8 +90,8 @@ ELSEWHERE = ("ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BASE_URL", "_CLAUDE_CODE_
 # The names the tool gives its global config, .claude<name>.json (its own list, 2.1.310).
 GLOBAL_CONFIG_NAMES = ("", "-staging-oauth", "-local-oauth", "-custom-oauth")
 PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
-# Settings, outside `env`, that let another model answer part of a review.
-OTHER_MODEL_SETTINGS = ("advisorModel",)
+# Settings, outside `env`, that let another model answer part of a review, or give the tool an `env` another way.
+OTHER_MODEL_SETTINGS = ("advisorModel", "policyHelper", "policyHelpers")
 STOPPED = 4         # run: the agent was not started or was stopped, or the record does not show the provider asked for
 UNATTRIBUTED = 3    # check: no other provider or model answered, but a turn names none, or no turn answered
 NAME = re.compile(r"[A-Za-z0-9._:@+\[\]_-]{1,100}")

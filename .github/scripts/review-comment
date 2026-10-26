@@ -65,10 +65,10 @@ JWT = "eyJ"
 # commit the review is of, and the status (review: a review is here; none: there is none; stale: a kept review that a
 # later push's review did not replace). It is the only place the status and the commit are read from. The version is
 # the layout: 1, the review first and the footer last (before this layout); 2, what this script writes first, then
-# the checks, the review last; 3, the layout of 2, in a comment whose review names what answered it (the record of
-# .github/scripts/review-served, after the footer). Only in a comment of version 2 or 3 is the first paragraph (after
-# a notice) this script's. A review is current again, or kept as posted, only in a comment of version 3: one written
-# before the record existed names nothing that answered it, whatever its text says.
+# the checks, the review last; 3, the layout of 2, written since the record of .github/scripts/review-served existed:
+# a review in it (status review or stale) names what answered it, after the footer. Only in a comment of version 2 or
+# 3 is the first paragraph (after a notice) this script's. A review is current again, or kept as posted, only in a
+# comment of version 3: one written before the record existed names nothing that answered it, whatever its text says.
 META = re.compile(r"^<!-- oss-verify-meta v=(?P<version>[123])"
                   r"(?: head=(?P<head>[0-9a-f]{7,40}))?"
                   r" status=(?P<status>review|none|stale) -->$")
