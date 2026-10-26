@@ -612,6 +612,26 @@ class WorkflowArguments(unittest.TestCase):
     def steps(self, workflow):
         return [step for job in self.workflow(workflow)["jobs"].values() for step in job["steps"] if "run" in step]
 
+    def argument_problems(self, run, name):
+        """Where `run` gives $name to a process as an argument, as far as this test can read: [] if nowhere."""
+        variable = re.escape(f'"${name}"')
+        # The forms a builtin reads, and only these: printf into a process substitution; printf as a statement of its
+        # own (the shell's builtin, so no process holds the value; its output goes to stdout or a redirection) or
+        # piped from a command substitution; a test; a [[ ]] pattern; a here-string into `read`. printf inside a
+        # command substitution that is itself an argument ("$(builtin printf … "$X")") is none of these.
+        rest = re.sub(rf"<\((?:builtin )?printf '[^']*' {variable}\)|\$\(builtin printf '[^']*' {variable} \|"
+                      rf"|\[ -[zn] {variable} \]|\*{variable}\*|<<< {variable}", "", run)
+        rest = re.sub(rf"(?m)(^|[;{{]|\bthen|\bdo)(\s*)builtin printf '[^']*' {variable}(?=\s*(?:$|;|>>?|\||&&))",
+                      r"\1\2", rest)
+        problems = []
+        if f"${name}" in rest:
+            problems.append(f"${name} is an argument")
+        # ${NAME…} (with or without a modifier) is the same value in a spelling none of the forms above use, so it is
+        # refused outright rather than matched: a step that starts using it must be read again.
+        if "${" + name in run:
+            problems.append("${" + name + "…} is not one of the forms this test reads")
+        return problems
+
     def test_no_credential_is_an_argument(self):
         # The App's key and the base64 it is decoded from are shell variables of their step, so they are named here
         # by those names, beside the environment variables.
@@ -622,18 +642,20 @@ class WorkflowArguments(unittest.TestCase):
             for name in names:
                 used = 0
                 for step in steps:
-                    variable = re.escape(f'"${name}"')
-                    # The forms a builtin reads: printf into a process substitution, printf itself (the shell's
-                    # builtin, so no process holds the value), a test, a [[ ]] pattern, a here-string into `read`.
-                    rest = re.sub(rf"<\((?:builtin )?printf '[^']*' {variable}\)|builtin printf '[^']*' {variable}"
-                                  rf"|\[ -[zn] {variable} \]|\*{variable}\*|<<< {variable}", "", step["run"])
                     used += step["run"].count(f"${name}")
-                    self.assertNotIn(f"${name}", rest, f"{workflow} {step.get('name')}: ${name} is an argument")
-                    # ${NAME} is the same value in a spelling none of the forms above use, so it is refused outright
-                    # rather than matched: a step that starts using it must be read again.
-                    self.assertNotIn("${" + name + "}", step["run"],
-                                     f"{workflow} {step.get('name')}: " + "${" + name + "} is not one of the forms this test reads")
+                    self.assertEqual(self.argument_problems(step["run"], name), [], f"{workflow} {step.get('name')}")
                 self.assertGreater(used, 0, f"{workflow} {name}")
+
+    def test_the_argument_forms_are_refused(self):
+        for run in ('curl -H "$(builtin printf \'Authorization: Bearer %s\\n\' "$X")" https://x',
+                    'curl -H "Authorization: Bearer ${X:-}" https://x', 'echo "$X"',
+                    'curl -H "$(printf \'%s\' "$X")" https://x', 'f "$(builtin printf \'%s\' "$X")"'):
+            self.assertTrue(self.argument_problems(run, "X"), run)
+        for run in ('curl -H @<(builtin printf \'Authorization: Bearer %s\\n\' "$X") https://x',
+                    'builtin printf \'::add-mask::%s\\n\' "$X"', 'k=$(builtin printf \'%s\' "$X" | base64 -d)',
+                    '{ echo a; builtin printf \'%s\\n\' "$X"; echo b; } >> out', 'if [ -n "$X" ]; then :; fi',
+                    'done <<< "$X"'):
+            self.assertEqual(self.argument_problems(run, "X"), [], run)
 
     def test_only_the_jobs_that_run_no_pull_request_code_hold_an_identity_token(self):
         # A GitHub identity token names no job, so Google's provider cannot keep ossv-ci to these jobs: these files
@@ -710,16 +732,16 @@ class WorkflowArguments(unittest.TestCase):
         """Why these jobs could let a job other than `comment` read the App's key, or [] if they cannot.
 
         The account that reads the key can be acted as only by an oss-verify job whose identity token carries
-        `environment: comment` (agent-infra bootstrap/, declareOssvCI). GitHub accepts an environment as a string,
+        `environment: comment` (Theorem's infrastructure code). GitHub accepts an environment as a string,
         as an object with `name`, and through an expression, and compares names without regard to case, so another
         job's `environment` is refused if its text names `comment` in any case and in any shape (the review job's
-        own, enroll-review, does not), and the comment job's must be exactly
-        the string `comment`."""
+        own, enroll-review, does not), and the comment job's must be the plain
+        name `comment`, with no expression and nothing but `deployment: false` beside it."""
         problems = []
         for name, job in jobs.items():
             if name == "comment":
-                if job.get("environment") != "comment":
-                    problems.append(f"comment: environment {job.get('environment')!r}, want exactly 'comment'")
+                if job.get("environment") not in ("comment", {"name": "comment", "deployment": False}):
+                    problems.append(f"comment: environment {job.get('environment')!r}, want the plain name 'comment'")
                 if (job.get("env") or {}).get("GCP_SERVICE_ACCOUNT") != self.APP_ACCOUNT:
                     problems.append(f"comment: does not sign in as {self.APP_ACCOUNT}")
             else:
@@ -735,6 +757,22 @@ class WorkflowArguments(unittest.TestCase):
             self.assertIn("comment", jobs, workflow)
             self.assertEqual(self.app_key_jobs_problems(jobs), [], workflow)
 
+    def test_only_the_review_job_can_read_the_collector_token(self):
+        # ossv-ci can be acted as only from oss-verify's GitHub Environment `enroll-review` (Theorem's
+        # infrastructure code), which the review job declares; no other job of either file may name that account or
+        # that environment, and the review job must keep it, or its sign-in stops working.
+        account = "ossv-ci@theorem-agent-infra.iam.gserviceaccount.com"
+        for workflow in ("build.yaml", "triage.yaml"):
+            for name, job in self.workflow(workflow)["jobs"].items():
+                review = workflow == "build.yaml" and name == "review"
+                environment = json.dumps(job.get("environment", "")).lower()
+                if review:
+                    self.assertEqual(job.get("environment"), {"name": "enroll-review", "deployment": False})
+                    self.assertEqual((job.get("env") or {}).get("GCP_SERVICE_ACCOUNT"), account)
+                else:
+                    self.assertNotIn(account, json.dumps(job), f"{workflow} {name} names {account}")
+                    self.assertNotIn("enroll-review", environment, f"{workflow} {name} is in enroll-review")
+
     def test_another_job_in_the_comment_environment_is_refused_in_every_shape(self):
         # The shapes GitHub takes for `environment` (workflow syntax, jobs.<job_id>.environment), each put on the
         # review job of the real build.yaml: every one must be refused.
@@ -744,7 +782,7 @@ class WorkflowArguments(unittest.TestCase):
             jobs = self.workflow("build.yaml")["jobs"]
             jobs["review"]["environment"] = shape
             self.assertTrue(self.app_key_jobs_problems(jobs), f"review with environment {shape!r} was not refused")
-        for shape in ({"name": "comment"}, "${{ 'comment' }}"):
+        for shape in ({"name": "comment"}, "${{ 'comment' }}", {"name": "comment", "url": "https://example.invalid"}):
             jobs = self.workflow("build.yaml")["jobs"]
             jobs["comment"]["environment"] = shape
             self.assertTrue(self.app_key_jobs_problems(jobs), f"comment with environment {shape!r} was not refused")
@@ -1977,7 +2015,7 @@ class ReviewStep(unittest.TestCase):
                            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:9", "GCP_ACCESS_TOKEN": "gcp-not-a-secret",
                            "ANTHROPIC_IDENTITY_TOKEN_FILE": str(token), "GITHUB_OUTPUT": str(directory / "output"),
                            "GITHUB_STEP_SUMMARY": str(directory / "summary")}
-            run = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", review_step()["run"]],
+            run = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-c", review_step()["run"]],
                                  cwd=directory, env=environment, capture_output=True, text=True)
             self.assertFalse(token.exists(), "the identity token file is removed")
             if output is not None:

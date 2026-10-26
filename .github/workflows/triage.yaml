@@ -15,16 +15,20 @@ name: "Triage"
 #            installation token that can write pull requests in this repository only. It makes that token from the
 #            App's client id and its private key, which it reads at run time from Secret Manager
 #            (oss-verify-github-app-key in theorem-agent-infra), signing in with this job's GitHub identity token by
-#            Google workload identity federation (agent-infra bootstrap/, declareOssvCI). This repository stores no
-#            copy of the key. The provider admits this file and build.yaml alone, on refs/heads/main, from
-#            pull_request_target or workflow_dispatch; a token carries no job name, so what keeps the Google account
-#            to this job is this file: gather must never be given id-token: write.
+#            Google workload identity federation (Theorem's infrastructure code). This repository stores no
+#            copy of the key. The provider admits this file, build.yaml and the enrollment workflow
+#            enroll-dispatch.yml, each on refs/heads/main and only from its own events. The account that reads the key
+#            can be acted as only by a job of this repository that declares the GitHub Environment `comment`, as this
+#            job does; a token carries no job name, so the environment is what keeps the key to such jobs, and a job
+#            that declares none reaches no account at all. gather must never be given id-token: write, nor an
+#            environment.
 # Values from the event reach the scripts through environment variables, never by ${{ }} substitution into them.
 #
 # A pull request that has had none of the events below since this workflow was added has no comment. Someone with
 # write access can ask for one, or for a fresh one, from the same two jobs with the same permissions:
 #   gh workflow run triage.yaml -f pr=123
-# That run checks out the branch it is started on (main, unless --ref names another): still never a pull request.
+# Started on any branch but main, its comment job cannot read the App's key, which the provider admits on main alone,
+# so start it on main. It never checks out a pull request.
 # For many pull requests, leave a few minutes between runs. A run makes about 30 API requests, plus one per file in the
 # project's directory, every run in this repository draws on the same 1,000 an hour, and a check that finds them spent
 # says "could not be checked".
@@ -85,18 +89,22 @@ jobs:
     timeout-minutes: 2
     # The GitHub Environment is what gets this job the App's key and keeps it from every other job: its identity
     # token carries an `environment` claim, and only a token with that claim may act as ossv-app-comment, the
-    # dedicated reader of the key for these jobs (agent-infra bootstrap/, declareOssvCI). Its one protection rule is
-    # the deployment-branch policy `main` (agent-infra github/, declareOssVerifyCommentEnvironment); it has no
+    # dedicated reader of the key for these jobs (Theorem's infrastructure code). Its one protection rule is
+    # the deployment-branch policy `main` (Theorem's infrastructure code); it has no
     # required reviewer and no wait timer, so it adds no wait and no approval. Removing this line does not weaken the
     # job; it stops it working.
-    environment: comment
+    # deployment: false, so the comment posts no deployment; the environment claim the account needs is in the token
+    # either way.
+    environment:
+      name: comment
+      deployment: false
     permissions:
       # Only for the GitHub identity token that Google's federation trades for an access token of
       # ossv-app-comment@theorem-agent-infra, which reads the App's key. This job posts text and runs no code of the
       # pull request.
       id-token: write
     env:
-      # Theorem's Google project, as agent-infra bootstrap/ declares them (declareOssvCI). Public identifiers, not
+      # Theorem's Google project, as Theorem's infrastructure code declares them. Public identifiers, not
       # credentials: the provider admits only this file and build.yaml, on refs/heads/main.
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
       GCP_SERVICE_ACCOUNT: ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com

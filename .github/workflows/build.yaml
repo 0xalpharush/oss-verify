@@ -58,7 +58,7 @@ name: "Build"
 # The review job runs no code of the pull request or the project. It and the comment job hold identity tokens
 # (id-token: write), which they trade for short-lived tokens: the review's for an Anthropic token by workload identity
 # federation, so no API key is stored, and both jobs' for a Google access token by Google workload identity
-# federation (agent-infra bootstrap/, declareOssvCI). Claude
+# federation (Theorem's infrastructure code). Claude
 # gets three tools only, Read, Glob and Grep, inside the checkout (.github/scripts/review-run), and an environment
 # without the runner's tokens. Its review is posted only when the provider and model it asked for, at that provider's
 # own API, answered every turn, as Claude Code reported each turn (.github/scripts/review-served);
@@ -69,14 +69,16 @@ name: "Build"
 # its private key, which it reads at run time from Secret Manager (oss-verify-github-app-key), and runs no code of the
 # pull request or the project.
 #
-# This repository stores no long-lived credential for any of that. Google's provider admits this file and
-# triage.yaml, each on refs/heads/main, from pull_request_target or workflow_dispatch: a token carries no job name,
-# so what keeps each Google account to the jobs that need it is this file and the GitHub Environment `comment`. The
-# review job acts as ossv-ci, which reads the cost collector's token and nothing else; the comment job declares
-# `environment: comment`, whose claim is the only way to act as ossv-app-comment, the one account that reads the
-# App's key. project-builds, the job that builds the pull request's code, must never be given id-token: write.
-# A pull request from a fork gets the same identity tokens: pull_request_target runs this file from the base branch,
-# never the fork's, so the fork's code never holds them.
+# This repository stores no long-lived credential for any of that. Google's provider admits this file, triage.yaml
+# and the enrollment workflow enroll-dispatch.yml, each on refs/heads/main and only from its own events (here
+# pull_request_target and workflow_dispatch). A token carries no job name, so what keeps each Google account to the
+# job that needs it is the job's GitHub Environment, which the token carries a claim for: `ossv-ci`, which reads the
+# cost collector's token and nothing else, can be acted as only from the environment `enroll-review`, which the
+# review job declares; `ossv-app-comment`, the one account that reads the App's key, only from `comment`, which the
+# comment job declares. A job that declares no environment, project-builds among them, reaches neither account, and
+# project-builds, which builds the pull request's code, must never be given id-token: write.
+# A pull request from a fork gets the same identity tokens in the review and comment jobs: pull_request_target runs
+# this file from the base branch, never the fork's, so the fork's code never holds them.
 # Runs do not wait for a maintainer's approval. To build only on request, remove pull_request_target below.
 #
 # The review reaches Claude by workload identity federation, with no stored key: the review job's GitHub identity token
@@ -98,9 +100,9 @@ name: "Build"
 # repository, never a maintainer's open enrollment, because the run posts its comment there.
 #
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, at the public URL below
-# (agent-infra spend/'s stack output publicCollectorUrl, a literal here because it is public), with the collector's
+# (a literal here because it is public), with the collector's
 # bearer token, which the Review step reads at run time from Secret Manager (agent-spend-otel-token, whose readers
-# agent-infra spend/ names in its tokenReaders config). The export is tagged theorem.project=oss-verify,
+# Theorem's infrastructure code names). The export is tagged theorem.project=oss-verify,
 # theorem.subproject=<name>, theorem.lane=enroll-review-ci and theorem.credential=oss-verify-ci
 # (.github/scripts/review-run sets them). The review fails if the token cannot be read, or if the collector does not
 # answer 200 to an empty export with the token before the review starts, rather than lose the review's spend in
@@ -314,7 +316,7 @@ jobs:
       # token of ossv-ci@theorem-agent-infra. This job runs no code of the pull request.
       id-token: write
     env:
-      # Theorem's Google project, as agent-infra bootstrap/ declares them (declareOssvCI). Public identifiers, not
+      # Theorem's Google project, as Theorem's infrastructure code declares them. Public identifiers, not
       # credentials: the provider admits only this workflow file on refs/heads/main.
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
       GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
@@ -392,7 +394,7 @@ jobs:
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code@2.1.310
 
-      # Theorem's Google project trusts this workflow's identity token (agent-infra bootstrap/, declareOssvCI), so the
+      # Theorem's Google project trusts this workflow's identity token (Theorem's infrastructure code), so the
       # collector's token is read at run time instead of being stored here. Nothing is written to the workspace and
       # nothing is exported: the Google access token is this step's output alone, and it lives five minutes. This
       # step comes before the Anthropic identity token is written, so a failure here leaves no token file behind.
@@ -433,7 +435,7 @@ jobs:
           ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01WdHTLcJPEfiPttcuLK1hGT
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Qr1iUVcow4jdgQM7Amfks5
           # Usage, to Theorem's cost collector. review-run checks that the collector takes the token.
-          # The collector's public URL: agent-infra spend/'s stack output publicCollectorUrl.
+          # The collector's public URL.
           OTEL_EXPORTER_OTLP_ENDPOINT: https://agent-otel-public-6acxmql5za-uw.a.run.app
           GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
           # The conversation of the last review, which review-run resumes, and the commit this review is of. After a
@@ -444,7 +446,7 @@ jobs:
           # pipefail: the default shell of a step is `bash -e`, whose pipeline status is the last command's, so
           # without it a curl or jq failure would be hidden by a base64 that succeeded on what it got.
           set -o pipefail
-          # The collector's bearer token: Secret Manager agent-spend-otel-token, which agent-infra spend/ declares and
+          # The collector's bearer token: Secret Manager agent-spend-otel-token, which Theorem's infrastructure code declares and
           # grants this job's account. It stays a variable of this shell, masked in the log and no process's argument;
           # without it review-run exports nothing, which is for a person's own run: here it would lose the review's
           # spend in silence. `jq -e` with the type check refuses a response with no payload, which would otherwise
@@ -464,11 +466,6 @@ jobs:
             if [ -n "$line" ]; then builtin printf '::add-mask::%s\n' "$line"; fi
           done <<< "$OTEL_COLLECTOR_TOKEN"
           export OTEL_COLLECTOR_TOKEN
-          if [ -z "$OTEL_EXPORTER_OTLP_ENDPOINT" ] || [ -z "$OTEL_COLLECTOR_TOKEN" ]; then
-            rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
-            echo "::error::The collector's endpoint or token is empty, so the review's usage would not reach Theorem's cost collector."
-            exit 1
-          fi
           # Until the token is printed again, the runner reads none of the review's output as a workflow command.
           resume="$(openssl rand -hex 16)"
           echo "::stop-commands::$resume"
@@ -587,11 +584,15 @@ jobs:
     timeout-minutes: 5
     # The GitHub Environment is what gets this job the App's key and keeps it from every other job: its identity
     # token carries an `environment` claim, and only a token with that claim may act as ossv-app-comment, the
-    # dedicated reader of the key for these jobs (agent-infra bootstrap/, declareOssvCI). Its one protection rule is
-    # the deployment-branch policy `main` (agent-infra github/, declareOssVerifyCommentEnvironment); it has no
+    # dedicated reader of the key for these jobs (Theorem's infrastructure code). Its one protection rule is
+    # the deployment-branch policy `main` (Theorem's infrastructure code); it has no
     # required reviewer and no wait timer, so it adds no wait and no approval. Removing this line does not weaken the
     # job; it stops it working.
-    environment: comment
+    # deployment: false, so a comment posts no deployment on the pull request; the environment claim, which is what
+    # the account needs, is in the token either way (measured on a run of this file).
+    environment:
+      name: comment
+      deployment: false
     # One comment job at a time for a pull request, whatever event started its run (the run's own group is by event):
     # two at once could each find no comment, each post one, and only the first would ever be updated after.
     concurrency:
@@ -606,7 +607,7 @@ jobs:
       id-token: write
     env:
       # The review job's provider, and the account only a job in this environment can act as
-      # (agent-infra bootstrap/, declareOssvCI).
+      # (Theorem's infrastructure code).
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
       GCP_SERVICE_ACCOUNT: ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com
     steps:
@@ -626,8 +627,8 @@ jobs:
           create_credentials_file: false
           export_environment_variables: false
 
-      # The App's private key: Secret Manager oss-verify-github-app-key in theorem-agent-infra, which agent-infra
-      # bootstrap/ declares and versions from its encrypted stack config. This repository stores no copy of it. Each
+      # The App's private key: Secret Manager oss-verify-github-app-key in theorem-agent-infra, which Theorem's
+      # infrastructure code declares and versions. This repository stores no copy of it. Each
       # line of the key is masked, and so is its base64 form, because one mask command registers one line: that keeps
       # these two representations out of the log, not every possible re-encoding of the key.
       - name: Read the oss-verify App's key
