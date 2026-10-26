@@ -1099,10 +1099,10 @@ class ReviewRun(unittest.TestCase):
         self.session = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.session)
 
-    def fake_claude(self, *calls, wait=0, until_new=0):
-        """A claude that, on its call N, appends the identity token file's text to `tokens` (and again after `wait`
-        seconds, as Claude Code reads it again for each exchange; or, with `until_new`, again as soon as the file
-        holds another token, polling for at most that many seconds), then prints the stream of a review whose turn
+    def fake_claude(self, *calls, until_new=0):
+        """A claude that, on its call N, appends the identity token file's text to `tokens` (and, with `until_new`,
+        again as soon as the file holds another token, as Claude Code reads it again for each exchange, polling for at
+        most that many seconds), then prints the stream of a review whose turn
         calls[N-1][2] (by default claude-opus-5-5) answered and whose result is calls[N-1][0], and exits with
         calls[N-1][1]."""
         for n, (result, status, *model) in enumerate(calls, 1):
@@ -1118,7 +1118,7 @@ class ReviewRun(unittest.TestCase):
             f"cd {self.directory}\n"
             "n=$(( $(cat calls 2> /dev/null || echo 0) + 1 )); echo $n > calls\n"
             'read_token() { { cat "$ANTHROPIC_IDENTITY_TOKEN_FILE"; echo; } >> tokens; }\n'
-            f"read_token\n{f'sleep {wait}; read_token' if wait else ''}\n"
+            "read_token\n"
             f"{poll}"
             '[ -f err.$n ] && cat err.$n >&2\n'
             'cat result.$n; exit "$(cat status.$n)"\n')
