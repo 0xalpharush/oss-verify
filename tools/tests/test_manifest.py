@@ -36,7 +36,15 @@ def elf(symbols=(), e_type=2, symtab=True, wide=True, sections=(), segments=()):
     body = table + strtab + shstrtab
     segments_at = header_size + len(body)
     segment_layout = "<IIQQQQQQ" if wide else "<IIIIIIII"
-    program = b"".join(struct.pack(segment_layout, kind, *([0] * 7)) for kind in segments)
+
+    def segment(item):
+        # a program header type, or (type, flags, memsz)
+        kind, flags, memsz = (item, 0, 0) if isinstance(item, int) else item
+        if wide:
+            return struct.pack(segment_layout, kind, flags, 0, 0, 0, 0, memsz, 0)
+        return struct.pack(segment_layout, kind, 0, 0, 0, 0, memsz, flags, 0)
+
+    program = b"".join(segment(item) for item in segments)
     sections_at = segments_at + len(program)
     section_layout = "<IIQQQQIIQQ" if wide else "<IIIIIIIIII"
 
@@ -174,6 +182,24 @@ class Layout(Scratch):
         for name, (segments, static) in cases.items():
             path = self.write(name, elf(symtab=False, sections=[(".text", 1)], segments=segments))
             self.assertIs(manifest.binary_layout(path)["static"], static, name)
+
+    def test_executable_bytes_sum_the_executable_loaded_segments(self):
+        segments = [(PT_LOAD, 5, 3000), (PT_LOAD, 4, 9000), (PT_LOAD, 7, 400), (PT_DYNAMIC, 1, 77)]
+        for wide in (True, False):
+            # .text says 10 bytes; the loader maps 3,400 executable bytes, and that is what is counted
+            path = self.write(f"exec-{wide}", elf(symtab=False, wide=wide, sections=[(".text", 10)], segments=segments))
+            self.assertEqual(manifest.executable_bytes(path), 3400, wide)
+            self.assertEqual(manifest.binary_layout(path)["text_bytes"], 10, wide)
+
+    def test_executable_bytes_of_a_file_that_cannot_be_read(self):
+        data = elf(symtab=False, sections=[(".text", 1)], segments=[(PT_LOAD, 5, 8)])
+        self.assertIsNone(manifest.executable_bytes(self.write("truncated-exec", data[:len(data) - 200])))
+        self.assertIsNone(manifest.executable_bytes(self.write("not-elf", b"#!/bin/sh\n")))
+        self.assertEqual(manifest.executable_bytes(self.write("no-segments", elf(symtab=False))), 0)
+        # e_phentsize smaller than one entry, and the PN_XNUM count: the program headers cannot be read
+        for offset, value in ((54, 8), (56, 0xFFFF)):
+            bad = data[:offset] + struct.pack("<H", value) + data[offset + 2:]
+            self.assertIsNone(manifest.executable_bytes(self.write(f"phdr-{offset}", bad)), offset)
 
     def test_a_truncated_file_is_not_read(self):
         data = elf(symtab=False, sections=[(".text", 1)], segments=[PT_LOAD, PT_INTERP])

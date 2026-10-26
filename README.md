@@ -14,7 +14,7 @@ We accept an established open-source project ([theorem.dev/oss-verify](https://t
 5. Our builder can build the project. The [language table](docs/project-yaml.md#language) tells which languages it builds today.
 6. The enrollment names, in `primary_contact`, the one address that gets findings.
 
-A project of any size can enroll. Because of our capacity, we are most likely to respond quickly to a project in C whose plain binaries (`<target>.plain`) are statically linked and have less than 1 MB of `.text`, the size that `tools/check` shows. If your organisation wants to help us increase that capacity, so that we can take on more projects now, write to [oss-verify@theorem.dev](mailto:oss-verify@theorem.dev). We are interested in corporate partners and sponsorship.
+A project of any size can enroll. Because of our capacity, we are most likely to respond quickly to a project in C whose plain binaries (`<target>.plain`) are statically linked and have less than 1 MB of code: the larger of their `.text` section, the size that `tools/check` shows, and their executable segments (which can hold read-only data too). If your organisation wants to help us increase that capacity, so that we can take on more projects now, write to [oss-verify@theorem.dev](mailto:oss-verify@theorem.dev). We are interested in corporate partners and sponsorship.
 
 We seeded some projects already, and a maintainer can adopt one ([docs/project-yaml.md](docs/project-yaml.md#seeded-projects)).
 
@@ -43,6 +43,10 @@ You need a Linux x86-64 machine with Docker and its buildx plugin, git, and Pyth
 4. Run `tools/validate.py projects/<name>`. Correct each problem that it shows.
 5. Run `tools/check --no-shell --twice <name>`. Make sure that it builds each fuzz target, and that the second build has the same bytes. Without `--no-shell`, `tools/check` opens a shell in the build image when it finishes.
 6. Open a pull request. Complete its checklist.
+
+## When the checks pass
+
+When every required check of your pull request passes, and each plain binary has at most 1 MB of code, we start to write the theorem statements for the commit that the pull request is at. The code of a binary is the larger of its `.text` section and its executable segments, which can hold read-only data too. We start a few projects a day, and one commit of each project a day. If your pull request must wait for a later day, or for our next release because statements of an earlier commit of the project are not released yet, it gets the label `statements-queued`. If a plain binary has more than 1 MB of code, or a size that we cannot read, the pull request gets the label `size-review`, and we decide what to do. Python and Go projects are paused for now (our tools do not write theorem statements for Go yet): such a pull request gets the label `language-paused`. A project name with a dot, which the names in our statements repository cannot have, or a name that we already use there for another project, gets the label `name-review`. A new commit on the pull request starts this again, and so does an edit of its title or description; a commit whose statements we already wrote is not written again. A pull request that changes a project that is already enrolled starts it too.
 
 ## After we merge
 
