@@ -1194,14 +1194,19 @@ class ReviewRun(unittest.TestCase):
                                          ANTHROPIC_IDENTITY_TOKEN_FILE="/x/jwt"))
         self.assertNotIn("theorem.credential", self.child()["OTEL_RESOURCE_ATTRIBUTES"])
 
-    def test_a_token_the_collector_refuses_stops_the_review(self):
+    def test_a_token_the_collector_refuses_does_not_stop_the_review(self):
+        # Fail-soft: the export is a measurement, so a refused token loses this run's usage and nothing else. The
+        # review runs, with no telemetry in the child's environment, and the run says so.
         out = self.run_review(**self.collector(OTEL_COLLECTOR_TOKEN="wrong-token-not-a-secret"))
-        self.assertEqual(out.returncode, 1)
+        self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 401", out.stderr)
+        self.assertIn("this review's usage is not exported", out.stderr)
+        self.assertIn("review-run: usage is not exported", out.stdout)
         self.assertNotIn("wrong-token-not-a-secret", out.stdout + out.stderr)
-        self.assertFalse((self.directory / "environ").exists())
-        self.assertEqual(self.failure()[0], "the cost collector answered 401, not 200, to an empty export with "
-                                            "OTEL_COLLECTOR_TOKEN before the review\n")
+        self.assertFalse((self.directory / "review" / "failure.txt").exists())
+        self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+        for name in self.child():
+            self.assertFalse(name.startswith("OTEL_") or name.startswith("CLAUDE_CODE_ENABLE"), name)
 
     def test_a_curlrc_never_prints_the_token(self):
         (self.directory / ".curlrc").write_text(f"verbose\ntrace-ascii {self.directory}/trace\n")
@@ -1210,24 +1215,26 @@ class ReviewRun(unittest.TestCase):
         self.assertNotIn(self.TOKEN, out.stdout + out.stderr)
         self.assertFalse((self.directory / "trace").exists())
 
-    def test_a_token_refused_after_the_review_keeps_the_review_and_fails(self):
+    def test_a_token_refused_after_the_review_keeps_the_review_and_says_so(self):
         self.answers = [200, 401]
         # With workload identity too: stopping the identity token loop at the end leaves the exit status as it is.
         out = self.run_review(**self.collector(**self.identity()))
-        self.assertEqual(out.returncode, 3, out.stderr)
+        self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 401", out.stderr)
         self.assertIn("usage is likely lost", out.stderr)
         self.assertNotIn(self.TOKEN, out.stdout + out.stderr)
         self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
 
-    def test_a_collector_that_does_not_answer_stops_the_review(self):
+    def test_a_collector_that_does_not_answer_does_not_stop_the_review(self):
         with socket.socket() as closed:
             closed.bind(("127.0.0.1", 0))
             port = closed.getsockname()[1]
         out = self.run_review(**self.collector(OTEL_EXPORTER_OTLP_ENDPOINT=f"http://127.0.0.1:{port}"))
-        self.assertEqual(out.returncode, 1)
+        self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 000", out.stderr)
-        self.assertFalse((self.directory / "environ").exists())
+        self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+        for name in self.child():
+            self.assertFalse(name.startswith("OTEL_"), name)
 
     def test_without_the_collector_nothing_is_exported(self):
         out = self.run_review()
@@ -1866,7 +1873,7 @@ class ReviewSession(unittest.TestCase):
 class ReviewStep(unittest.TestCase):
     """build.yaml's own Review step, over a stand-in review-run that fails: what the run's page and summary say."""
 
-    def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None):
+    def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None, collector=True):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / ".github" / "scripts").mkdir(parents=True)
@@ -1884,8 +1891,8 @@ class ReviewStep(unittest.TestCase):
             token = directory / "jwt"
             token.write_text("jwt-0\n")
             (directory / "summary").write_text("")
-            environment = {**os.environ, "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:9",
-                           "OTEL_COLLECTOR_TOKEN": "collector-token-not-a-secret",
+            environment = {**os.environ, "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:9" if collector else "",
+                           "OTEL_COLLECTOR_TOKEN": "collector-token-not-a-secret" if collector else "",
                            "ANTHROPIC_IDENTITY_TOKEN_FILE": str(token), "GITHUB_OUTPUT": str(directory / "output"),
                            "GITHUB_STEP_SUMMARY": str(directory / "summary")}
             run = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", review_step()["run"]],
@@ -1894,6 +1901,16 @@ class ReviewStep(unittest.TestCase):
             if output is not None:
                 output.append((directory / "output").read_text() if (directory / "output").exists() else "")
             return run.returncode, run.stdout, (directory / "summary").read_text()
+
+    def test_without_the_endpoint_or_the_token_the_review_still_runs(self):
+        # Fail-soft: an unset variable or secret warns and the review goes ahead, so a stale export credential never
+        # stops an enrollment's review. The negative control is the step's own exit status: it is the review's.
+        code, out, summary = self.run_step(0, collector=False)
+        self.assertEqual(code, 0, out)
+        self.assertIn("::warning::The repository variable OTEL_EXPORTER_OTLP_ENDPOINT or the repository secret "
+                      "OTEL_COLLECTOR_TOKEN is not set", out)
+        self.assertNotIn("::error::", out)
+        self.assertEqual(summary, "")
 
     def test_a_review_that_did_not_finish_says_why_in_the_summary(self):
         code, out, summary = self.run_step(1, WHY_401 + ", on both tries\n", API_401[0]["result"] + "\n")
@@ -1936,14 +1953,16 @@ class ReviewStep(unittest.TestCase):
         self.assertIn("::error::The review is not published: review-run gave no reason\n", out)
 
     def test_the_record_of_what_answered_reaches_the_comment_job_whatever_the_ending(self):
-        for code in (0, 1, 3):
+        for code in (0, 1, 4):
             with self.subTest(code=code):
                 output = []
                 self.run_step(code, "plain words\n", served=SERVED_OK, output=output)
                 self.assertIn(SERVED_OK, output[0])
 
     def test_a_review_that_finished_writes_no_summary(self):
-        code, out, summary = self.run_step(3)
+        # review-run returns 0 when the review is written, also when the collector refused its token: the export is
+        # fail-soft, so the step passes and the comment is posted.
+        code, out, summary = self.run_step(0)
         self.assertEqual((code, summary), (0, ""))
         self.assertNotIn("::error::", out)
 
