@@ -50,9 +50,9 @@ Facts about the run that the trace does not carry, and what the checker takes fo
   the run's own create of it until the run's own removal, and no key lives under one.
 - The contents of the files the caller names in `inputs` (input.bin, which tools/checks/run-binaries writes in the
   run's working directory). A read-only descriptor of such a file has an offset the replay follows, so read, pread64
-  and lseek on it have one answer each (Sys/Fs/ReadWrite.v read_spec: Fs.v file_read), readv is held to the bytes
-  that remain, and opening it cannot answer -ENOENT. A descriptor that can write it, or its unlinkat, makes its
-  contents unknown from then on.
+  and lseek on it have one answer each (Sys/Fs/ReadWrite.v read_spec: Fs.v file_read), and readv is held to the bytes
+  that remain. The file exists: openat, faccessat and newfstatat find it (never -ENOENT) until the run's unlinkat of
+  it succeeds. A descriptor that can write it, or its unlinkat, makes its contents unknown from then on.
 - The abort stance: whether a SIGABRT the run sends itself is a modeled end of the run (State.v in_abort_terminal).
   The caller names it. The published statements leave it `error`, which is stance "off": every tkill and tgkill is
   then unmodeled (Sys/Kernel/Signal.v tkill_spec answers unmodeled when m_abort_terminal is false).
@@ -731,12 +731,12 @@ class Arg:
 # (qemu 8.2 also hands the host 0 and -1 for the offset and descriptor of every anonymous mmap, so its log cannot show
 # an offset's top half: no 8.2 run is read.)
 # A guest call takes the first unused line of the same name that agrees with every printed argument it can be keyed on
-# (in the low 32 bits for a cut print, in full for the rest), and for mmap, munmap, mprotect, madvise and connect with
-# the guest's result too: qemu answers some of those calls itself, with no host call, and its own calls (its loading
-# of the program, its start-up mappings, its log) are in the log too. A call of qemu's own can still agree with a guest
-# call's print, so lines are not dropped; instead, a guest call takes a value only when EVERY unused line that agrees
-# with the print gives the same value. Where they disagree, the argument stays unpinned, and the rules decline what it
-# would decide.
+# (in the low 32 bits for a cut print, in full for the rest) and with the guest's result (HostLog.take): qemu answers
+# some calls itself, with no host call (an address it cannot lock is -EFAULT; MAP_FIXED at an unaligned address is
+# -EINVAL; most madvise advice is 0), and its own calls (its loading of the program, its start-up mappings, its log)
+# are in the log too. A call of qemu's own, or a later guest call, can still agree with a guest call's print and
+# result, so lines are not dropped; instead, a guest call takes a value only when EVERY unused line that agrees gives
+# the same value. Where they disagree, the argument stays unpinned, and the rules decline what it would decide.
 HOST_NAMES = ("mmap", "munmap", "mprotect", "madvise", "mremap", "read", "write", "pread64", "pwrite64", "getrandom",
               "getcwd", "sendto", "connect")
 HOST_LINE = re.compile(r"(" + "|".join(HOST_NAMES) + r") (-?\d+)((?: [0-9a-fA-F]+){6})(?: ([0-9a-fA-F]{1,4}|-))?\s*$")
@@ -816,10 +816,16 @@ class HostLog:
             if not answers[answer]:
                 del answers[answer]
 
-    def take(self, name, keys, wanted):
+    def take(self, name, keys, wanted, ret, errno):
         """The full values of the arguments `wanted` (indexes) of one host call of `name`, or None. `keys` is
-        {index: Arg} that the host line must agree with. The first unused agreeing line is taken, and None comes back
+        {index: Arg} that the host line must agree with, and the line's result must be the guest's (`ret`, and
+        `errno` for a failure): qemu gives the guest the host's result unchanged when it makes the host call, so a
+        call that qemu answered itself, with no host call, cannot take a line of another call that agrees with its
+        print (qemu's own start-up calls succeed, and a later guest call has its own result). With `ret` None (the
+        trace shows no return) the result is not keyed. The first unused agreeing line is taken, and None comes back
         when the agreeing lines disagree on a wanted value."""
+        if ret is not None:
+            keys = {**keys, HOST_RESULT: Arg.full((ret if ret >= 0 else -(errno or 0)) % TWO_POW_64)}
         shape = tuple(sorted((i, a.exact) for i, a in keys.items()))
         wanted = tuple(wanted)
         probe = tuple(keys[i].v if exact else keys[i].v % TWO_POW_32 for i, exact in shape)
@@ -956,7 +962,7 @@ def peer_error(run, fd, ret, errno):
 
 def forget_contents(run, path):
     """Stop treating `path`'s contents as known: a descriptor that can write it, or its removal, changes what later
-    reads of the name see."""
+    reads of the name see. The name stays in run.present until a removal succeeds."""
     run.inputs.pop(path, None)
     for fd, kind in run.led.fds.items():
         if kind[0] in FILE_KINDS and kind[1] == path:
@@ -1065,21 +1071,13 @@ NOREPLACE_FLAG_WORDS = [
 NOREPLACE_PROTS = [{"PROT_READ", "PROT_WRITE"}, {"PROT_NONE"}]
 
 
-def host_result(ret, errno):
-    """The key on a host line's result for a guest call that returned `ret` (None when the trace shows no return).
-    qemu gives the guest the host's result unchanged when it makes the host call (with no -R a guest address is the
-    host address; linux-user/mmap.c mmap_h_eq_g), so a call that qemu answered itself, with no host call, cannot take
-    one of qemu's own lines that happens to agree with its print: those succeed, or fail with their own errno."""
-    return {} if ret is None else {HOST_RESULT: Arg.full((ret if ret >= 0 else -(errno or 0)) % TWO_POW_64)}
-
-
 def host_length(run, name, addr, length, ret, errno, extra=None):
     """The length of a munmap, mprotect or madvise at `addr`, recovered from its host call, which has the guest's
-    address and the guest's length rounded up to a page (Arg.paged), and the guest's result (host_result); `extra`
-    are more {index: Arg} keys (madvise's advice). `length` as printed when no host line pins it."""
+    address and the guest's length rounded up to a page (Arg.paged); `extra` are more {index: Arg} keys (madvise's
+    advice). `length` as printed when no host line pins it."""
     paged = length.paged()
-    keys = {0: Arg.full(addr), 1: paged, **(extra or {}), **host_result(ret, errno)}
-    full = run.host.take(name, keys, (1,)) if paged is not None else None
+    keys = {0: Arg.full(addr), 1: paged, **(extra or {})}
+    full = run.host.take(name, keys, (1,), ret, errno) if paged is not None else None
     return (length.unpaged(full[1]) or length) if full else length
 
 
@@ -1098,8 +1096,8 @@ def _mmap(run, args, ret, errno, tid):
     fd = num(args[4])
     fbits = bits(flags)
     # The host call's length is the guest's rounded up to a page; its offset and descriptor are the guest's.
-    keys = {1: length.paged(), 5: off, **({4: Arg.cut(fd)} if fd is not None else {}), **host_result(ret, errno)}
-    full = run.host.take("mmap", keys, (1, 5))
+    keys = {1: length.paged(), 5: off, **({4: Arg.cut(fd)} if fd is not None else {})}
+    full = run.host.take("mmap", keys, (1, 5), ret, errno)
     if full:
         length, off = length.unpaged(full[1]) or length, Arg.full(full[5])
     aligned = off.aligned(PAGE_SIZE)
@@ -1748,7 +1746,7 @@ def _openat(run, args, ret, errno, tid):
             if len(path) > NAME_MAX:
                 return "a directory open of a name over NAME_MAX (Sys/Fs/Open.v openat_dir_spec)"
             # fs_lookup finds a file the run's environment holds (input.bin): a key is never a directory.
-            dir_errnos = {ENOTDIR} if path in run.inputs else {ENOENT, ENOTDIR}
+            dir_errnos = {ENOTDIR} if path in run.present else {ENOENT, ENOTDIR}
             return errno_only(ret, errno, dir_errnos | {ENAMETOOLONG, EFAULT}, f"openat(O_DIRECTORY) of {path!r}",
                               "Sys/Fs/Open.v openat_dir_spec: a name, not a directory the file system only implies")
         if fl == OPEN_WR_CREATE:
@@ -1767,7 +1765,7 @@ def _openat(run, args, ret, errno, tid):
             path_errnos = {EEXIST}
         else:
             path_errnos = {EISDIR} if "O_CREAT" in fl else {EISDIR, ENOENT}
-        if path in run.inputs:
+        if path in run.present:
             path_errnos = path_errnos - {ENOENT}    # the run's environment holds this file (fs_lookup finds it)
         why = any_open_answer(f"openat of {path!r}", "Sys/Fs/Open.v openat_resolved_spec", path_errnos)
         if why:
@@ -1928,13 +1926,14 @@ def _unlinkat(run, args, ret, errno, tid):
     if led.names_key(c):
         return (f"an unlink of {path!r} while a descriptor on it is open: the model declines "
                 "(Sys/Fs/Namei.v unlink_found_spec, fd_names_path)")
-    if c in run.inputs:
-        # The run's environment holds this file, so it is found (unlink_found_spec); once removed, its contents are
-        # no longer known to later opens of the name.
+    if c in run.present:
+        # The run's environment holds this file, so it is found (unlink_found_spec); once removed, it is gone, and its
+        # contents are no longer known to later opens of the name.
         why = answered(ret, errno, {0}, found | {ENAMETOOLONG, EFAULT}, f"unlinkat of {path!r}",
                        "Sys/Fs/Namei.v unlink_found_spec")
         if why is None and ret in (None, 0):
             forget_contents(run, c)
+            run.present.discard(c)
         return why
     return answered(ret, errno, {0}, found | {ENOENT, ENAMETOOLONG, EFAULT}, f"unlinkat of {path!r}",
                     "Sys/Fs/Namei.v unlinkat_body_spec, unlink_found_spec")
@@ -1965,7 +1964,7 @@ def modeled_rw_range(buf, count):
     return False if (small is False and ok is False) else None
 
 
-def rw_args(run, name, args, ret, fd_index=0, buf_index=1, count_index=2):
+def rw_args(run, name, args, ret, errno, fd_index=0, buf_index=1, count_index=2):
     """(fd, buf, count) of a read-like record, with the host-call log's full values where it has them. qemu 10.0.11
     prints the buffer of read and write through `%p` and their count through `%d` (strace.list), and the buffer of
     pread64 and pwrite64 through print_pointer (strace.c print_pread64): the buffer is whole, the count is cut."""
@@ -1975,7 +1974,7 @@ def rw_args(run, name, args, ret, fd_index=0, buf_index=1, count_index=2):
     if fd is None or buf is None or count is None:
         return None, None, None
     keys = {0: Arg.full(fd), 1: buf, 2: count}
-    full = run.host.take(name, keys, (1, 2))
+    full = run.host.take(name, keys, (1, 2), ret, errno)
     if full:
         buf, count = Arg.full(full[1]), Arg.full(full[2])
     return fd, buf, count
@@ -2006,7 +2005,7 @@ def _read(run, args, ret, errno, tid):
     up to rw_count_clamp count; /dev/null delivers 0, and a socket no connect has reached answers -ENOTCONN."""
     if len(args) < 3:
         return und("unparseable argument list")
-    fd, buf, count = rw_args(run, "read", args, ret)
+    fd, buf, count = rw_args(run, "read", args, ret, errno)
     if fd is None:
         return und("unparseable argument list")
     cite = "Sys/Fs/ReadWrite.v read_spec"
@@ -2117,7 +2116,7 @@ def _write(run, args, ret, errno, tid):
     -EINVAL (rw_pos_einvalb)."""
     if len(args) < 3:
         return und("unparseable argument list")
-    fd, buf, count = rw_args(run, "write", args, ret)
+    fd, buf, count = rw_args(run, "write", args, ret, errno)
     if fd is None:
         return und("unparseable argument list")
     cite = "Sys/Fs/ReadWrite.v write_spec"
@@ -2282,7 +2281,7 @@ def _pread64(run, args, ret, errno, tid):
         return und(f"unparseable position {args[3]}")
     if neg:
         return errno_only(ret, errno, {EINVAL}, "pread64 at a negative position", "Sys/Fs/ReadWrite.v ppos_einvalb")
-    fd, buf, count = rw_args(run, "pread64", args, ret)
+    fd, buf, count = rw_args(run, "pread64", args, ret, errno)
     if fd is None:
         return und("unparseable argument list")
     why = bad_fd_only(run, fd, ret, errno, "pread64", cite)
@@ -2325,7 +2324,7 @@ def _pwrite64(run, args, ret, errno, tid):
     if neg:
         return errno_only(ret, errno, {EINVAL}, "pwrite64 at a negative position",
                           "Sys/Fs/ReadWrite.v ppos_einvalb")
-    fd, _, count = rw_args(run, "pwrite64", args, ret)
+    fd, _, count = rw_args(run, "pwrite64", args, ret, errno)
     if fd is None:
         return und("unparseable argument list")
     why = bad_fd_only(run, fd, ret, errno, "pwrite64", cite)
@@ -2420,7 +2419,7 @@ def _getrandom(run, args, ret, errno, tid):
     buf, buflen, flags = Arg.full(num(args[0])), Arg.cut(num(args[1])), Arg.sext(num(args[2]))
     if buf is None or buflen is None or flags is None:
         return und("unparseable argument list")
-    full = run.host.take("getrandom", {0: buf, 1: buflen, 2: flags}, (1,))
+    full = run.host.take("getrandom", {0: buf, 1: buflen, 2: flags}, (1,), ret, errno)
     if full:
         buflen = Arg.full(full[1])
     cite = "Sys/Drivers/Char/Random.v getrandom_spec"
@@ -2455,7 +2454,7 @@ def _getcwd(run, args, ret, errno, tid):
     size = Arg.cut(num(args[1]))
     if size is None:
         return und(f"unparseable size {args[1]}")
-    full = run.host.take("getcwd", {0: Arg.full(num(args[0])), 1: size}, (1,))
+    full = run.host.take("getcwd", {0: Arg.full(num(args[0])), 1: size}, (1,), ret, errno)
     if full:
         size = Arg.full(full[1])
     small = size.le(1)
@@ -2541,7 +2540,7 @@ def _newfstatat(run, args, ret, errno, tid):
         return f"dirfd {args[0]} is not AT_FDCWD (Sys/Fs/Stat.v newfstatat_core_spec)"
     if q[0] == ".":
         return 'newfstatat of "." is unmodeled (Sys/Fs/Stat.v newfstatat_core_spec)'
-    if q[0] in run.inputs and not q[1]:
+    if q[0] in run.present and not q[1]:
         # The run's environment holds this file, so fs_lookup finds it, and a path that resolves is unmodeled.
         return f"newfstatat of {args[1]}, a file the run's environment holds, is unmodeled (Sys/Fs/Stat.v " \
                "newfstatat_core_spec: a path that resolves)"
@@ -3245,7 +3244,7 @@ def _faccessat(run, args, ret, errno, tid, name="faccessat"):
     if len(path) > NAME_MAX:
         return f"a path longer than NAME_MAX ({cite})"
     # A file the run's environment holds (input.bin) is found by fs_lookup: never -ENOENT.
-    absent = set() if path in run.inputs else {ENOENT}
+    absent = set() if path in run.present else {ENOENT}
     return answered(ret, errno, exists[0], exists[1] | absent, f"{name} of {path!r}",
                     "Sys/Fs/Open.v faccessat_body_spec, access_exists_spec")
 
@@ -3642,18 +3641,16 @@ def _connect(run, args, ret, errno, tid):
     if kind[0] != "socket":
         return errno_only(ret, errno, {ENOTSOCK, EFAULT}, f"connect on a {kind_name(kind)} descriptor", cite)
     keys = {0: Arg.cut(fd), 2: Arg.cut(num(args[2]))}
-    if ret is not None:
-        keys[HOST_RESULT] = Arg.full((ret if ret >= 0 else -(errno or 0)) % TWO_POW_64)
     if ret is not None and ret < 0 and errno == EFAULT:
         # The model's -EFAULT is an address it cannot read (read_bytes_map fails), before anything else is looked at.
         # qemu answers it itself, with no host call; a host line of this call means qemu did read the address.
-        if run.host.take("connect", keys, ()) is None:
+        if run.host.take("connect", keys, (), ret, errno) is None:
             return None
         return (f"connect returned -EFAULT, but the host-call log holds its host call, so qemu read the address, and "
                 f"{cite} answers -EFAULT only for an address it cannot read (read_bytes_map)")
     if alen < SA_FAMILY_SIZE:
         return errno_only(ret, errno, {EINVAL}, f"connect with addrlen {alen}, shorter than a family", cite)
-    host = run.host.take("connect", keys, (HOST_FAMILY,))
+    host = run.host.take("connect", keys, (HOST_FAMILY,), ret, errno)
     family = host[HOST_FAMILY] if host else None
     if family is None:
         return und(f"connect returned {ret_text(ret, errno)}, and no line of the host-call log gives the family of "
@@ -4073,6 +4070,8 @@ class _Run:
         self.led = Ledger(reserved)
         self.host = HostLog(lengths)
         self.inputs = dict(inputs or {})    # path -> bytes: the files whose contents the run's environment fixes
+        self.present = set(self.inputs)     # the names of those files that exist: a write leaves the name, an unlink
+                                            # removes it
         self.self_kill = False      # a tkill or tgkill of SIGABRT to the caller's own task was decided
         self.tail = ""              # text after the current record's `)`: qemu prints prlimit64's old limit here
 

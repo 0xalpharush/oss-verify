@@ -69,9 +69,39 @@ GO_SETTINGS = {"-buildmode": "exe", "-compiler": "gc", "-trimpath": "true", "CGO
                "GOOS": "linux", "GORISCV64": "rva20u64"}
 
 
-def go_executable(section=b".go.buildinfo", flags=2, truncate=False, **settings):
-    """A minimal riscv64 executable with one section, `section`, that holds Go's build information as Go 1.27.1 writes
-    it (src/debug/buildinfo/buildinfo.go), with the `build` settings GO_SETTINGS and `settings` (None drops one)."""
+# The functions of a minimal Go program: Go's runtime's unqualified assembly, and package-qualified code.
+GO_FUNCTIONS = ("_rt0_riscv64_linux", "runtime.rt0_go", "compare", "main.main", "main")
+
+
+def gopclntab(functions, size=16):
+    """Go 1.27.1's function table (src/runtime/symtab.go pcHeader) for `functions`, each `size` bytes of .text in
+    order from its start: [(name, size)] or names."""
+    functions = [(f, size) if isinstance(f, str) else f for f in functions]
+    names = b"".join(name.encode() + b"\0" for name, _ in functions)
+    name_offsets, at = [], 0
+    for name, _ in functions:
+        name_offsets.append(at)
+        at += len(name) + 1
+    names_at = 72
+    pcln_at = names_at + len(names)
+    funcs_at = (len(functions) + 1) * 8         # the _func records, after the function table, from pcln_at
+    table, records, entry = b"", b"", 0
+    for (name, length), name_off in zip(functions, name_offsets):
+        table += struct.pack("<II", entry, funcs_at + len(records))
+        records += struct.pack("<Ii", entry, name_off)
+        entry += length
+    table += struct.pack("<II", entry, 0)
+    header = struct.pack("<IHBB", 0xFFFFFFF1, 0, 1, 8)
+    header += struct.pack("<8Q", len(functions), 0, 0, names_at, 0, 0, 0, pcln_at)
+    return header + names + table + records
+
+
+def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=GO_FUNCTIONS, text_size=None,
+                  **settings):
+    """A minimal riscv64 executable with a .text section, a .gopclntab of `functions` (16 bytes each, unless
+    `text_size` makes .text longer, with zero padding), and the section `section` that holds Go's build information
+    as Go 1.27.1 writes it (src/debug/buildinfo/buildinfo.go), with the `build` settings GO_SETTINGS and `settings`
+    (None drops one)."""
     lines = ["path\tcommand-line-arguments"] + [f"build\t{key}={value}" for key, value in
                                                 {**GO_SETTINGS, **settings}.items() if value is not None]
     # The 16-byte frames Go puts around the module information (cmd/go/internal/modload: infoStart, infoEnd), which
@@ -83,14 +113,26 @@ def go_executable(section=b".go.buildinfo", flags=2, truncate=False, **settings)
     body += bytes([len(version)]) + version
     size = len(module) + (1000 if truncate else 0)
     body += bytes([0x80 | (size & 0x7F), size >> 7]) + module
-    shstrtab = b"\0" + section + b"\0.shstrtab\0"
-    data = bytearray(64) + body + shstrtab
+    text = struct.pack("<I", 0x00000013) * (len(functions) * 4)
+    text += bytes((text_size or len(text)) - len(text))
+    pcln = gopclntab(functions)
+    blobs = [(b".text", 1, 0x6, 0x11000, text), (section, 1, 0x3, 0x100000, body),
+             (b".gopclntab", 1, 0x2, 0x200000, pcln)]
+    shstrtab = b"\0" + b"".join(name + b"\0" for name, *_ in blobs) + b".shstrtab\0"
+    data = bytearray(64)
+    headers = [struct.pack("<IIQQQQIIQQ", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)]
+    name_at = 1
+    for name, kind, sflags, addr, blob in blobs:
+        headers.append(struct.pack("<IIQQQQIIQQ", name_at, kind, sflags, addr, len(data), len(blob), 0, 0, 16, 0))
+        name_at += len(name) + 1
+        data += blob
+    headers.append(struct.pack("<IIQQQQIIQQ", name_at, 3, 0, 0, len(data), len(shstrtab), 0, 0, 1, 0))
+    data += shstrtab
     shoff = len(data)
-    data += struct.pack("<IIQQQQIIQQ", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    data += struct.pack("<IIQQQQIIQQ", 1, 1, 0x3, 0x10000, 64, len(body), 0, 0, 16, 0)
-    data += struct.pack("<IIQQQQIIQQ", 2 + len(section), 3, 0, 0, 64 + len(body), len(shstrtab), 0, 0, 1, 0)
+    data += b"".join(headers)
     header = b"\x7fELF" + bytes([2, 1, 1, 0]) + bytes(8)
-    header += struct.pack("<HHIQQQIHHHHHH", 2, 0xF3, 1, 0x10000, 0, shoff, 0, 64, 56, 0, 64, 3, 2)
+    header += struct.pack("<HHIQQQIHHHHHH", 2, 0xF3, 1, 0x11000, 0, shoff, 0, 64, 56, 0, 64, len(headers),
+                          len(headers) - 1)
     data[:64] = header
     return bytes(data)
 
@@ -519,11 +561,23 @@ class Analyse(unittest.TestCase):
             "cannot be read": go_executable(truncate=True),
             "not the build information of Go 1.18": go_executable(flags=0),
             "not a RISC-V ELF file": b"\x7fELF" + b"\0" * 60,
+            # A .syso file's C code, which CGO_ENABLED=0 still links: named by its own symbols, with no package path.
+            "no Go package names, so code that Go did not compile (a .syso file, for one): $x, cfunc_c":
+                go_executable(functions=GO_FUNCTIONS + ("cfunc_c", "$x")),
+            "no Go package names": go_executable(functions=GO_FUNCTIONS + ("compare",)),
+            "0 .gopclntab sections": go_executable(section=b".go.buildinfo").replace(b".gopclntab", b".gopclnta_"),
         }
         for expected, data in cases.items():
             why = check_links.go_program(data)
             self.assertIsInstance(why, str, expected)
             self.assertIn(expected, why)
+        # Zero bytes after the last function are padding; any other byte there is code the table does not name.
+        end = len(GO_FUNCTIONS) * 16
+        padded = go_executable(text_size=end + 16)
+        self.assertIsInstance(check_links.go_program(padded), check_links.GoProgram)
+        code = bytearray(padded)
+        code[64 + end] = 0x13
+        self.assertIn("not zero padding", check_links.go_program(bytes(code)))
 
     def test_record_of_reads_a_go_program_and_refuses_any_other_binary_without_a_map(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -716,10 +770,14 @@ class Runs(unittest.TestCase):
             self.assertEqual(seen, {"stance": "off", "lengths": "exec\n",
                                     "inputs": {"input.bin": check_binaries.HEADER + b"x"}})
             self.assertEqual(run(qemu="qemu-riscv64 version 9.1.0")["result"], "error")
+            # 10.0.0 prints read's and write's buffer in 32 bits, which the checker does not read so.
+            self.assertEqual(run(qemu="qemu-riscv64 version 10.0.0 (Debian 1:10.0.0+ds-1)")["result"], "error")
+            self.assertEqual(run(qemu="qemu-riscv64 version 10.0.110")["result"], "error")
             # qemu 8.2 hands the host 0 for every anonymous mmap's offset: its runs decide nothing.
             result = run(qemu="qemu-riscv64 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)")
             self.assertEqual(result["result"], "error")
-            self.assertIn("qemu 10.0 only", result["detail"])
+            self.assertIn("qemu 10.0.11 only", result["detail"])
+            self.assertIn("docs/build-contract.md", result["detail"])
             verdicts["calls"] = 3
             self.assertEqual(run()["result"], "error")
             verdicts["calls"] = 12

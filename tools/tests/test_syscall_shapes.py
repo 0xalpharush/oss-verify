@@ -77,7 +77,16 @@ def faithful_log(trace, *, started=True, extra=(), families=()):
     or `-` once they run out. `extra` adds lines."""
     lines = ["exec"] if started else []
     families = list(families)
+    waiting = None      # a host line whose record's return comes on a later line of its own, as check_trace reads it
     for line in trace.splitlines():
+        if not S.RECORD.match(line) and S.parse_ret(line) is not None:
+            if waiting is not None:
+                failed = S.ERRNO_TAIL.match(line)
+                name, values, family = waiting
+                result = -int(failed.group(1)) if failed else S.parse_ret(line)
+                lines.append(" ".join([name, str(result)] + [f"{v:x}" for v in values]) + family)
+                waiting = None
+            continue
         for _, name, args, tail, closed in S.split_records(line):
             if name not in S.HOST_NAMES or not closed:
                 continue
@@ -87,7 +96,13 @@ def faithful_log(trace, *, started=True, extra=(), families=()):
             if values is None:
                 continue
             family = (f" {families.pop(0):x}" if families else " -") if name == "connect" else ""
+            if ret is None and not failed:
+                waiting = (name, values, family)
+                continue
             lines.append(" ".join([name, str(result)] + [f"{v:x}" for v in values]) + family)
+    if waiting is not None:
+        name, values, family = waiting
+        lines.append(" ".join([name, "0"] + [f"{v:x}" for v in values]) + family)
     return "\n".join(lines + list(extra)) + "\n"
 
 
@@ -763,11 +778,17 @@ def test_host_log_take_is_first_unused_and_needs_agreement():
                     "mmap 200000 0 200000000 3 22 ffffffffffffffff 0\n"
                     "mmap 300000 0 1000 3 22 ffffffffffffffff 0\n")
     # Two lines agree with a printed length of 0 and disagree on the full one: nothing is taken.
-    assert log.take("mmap", {1: S.Arg.cut(0)}, (1,)) is None
+    assert log.take("mmap", {1: S.Arg.cut(0)}, (1,), None, None) is None
     # With the offset keyed as well, each of the first two is still a candidate; the third disagrees on the length.
-    assert log.take("mmap", {1: S.Arg.cut(0x1000)}, (1,)) == {1: 0x1000}
-    assert log.take("mmap", {1: S.Arg.cut(0x1000)}, (1,)) is None, "the line is used up"
-    assert log.take("munmap", {}, (1,)) is None
+    assert log.take("mmap", {1: S.Arg.cut(0x1000)}, (1,), None, None) == {1: 0x1000}
+    assert log.take("mmap", {1: S.Arg.cut(0x1000)}, (1,), None, None) is None, "the line is used up"
+    assert log.take("munmap", {}, (1,), None, None) is None
+    # The result is keyed: a call that failed takes no line that succeeded, and one that succeeded only its own.
+    log = S.HostLog("exec\nwrite -9 1 14668 40 0 0 0\nwrite 64 1 14668 40 0 0 0\n")
+    keys = {0: S.Arg.full(1), 1: S.Arg.full(0x14668), 2: S.Arg.cut(64)}
+    assert log.take("write", keys, (2,), -1, S.EFAULT) is None
+    assert log.take("write", keys, (2,), 64, None) == {2: 64}
+    assert log.take("write", keys, (2,), -1, S.EBADF) == {2: 64}
 
 
 @needs_model
@@ -1073,7 +1094,8 @@ def test_matching_a_long_host_log_takes_linear_time():
     log = S.HostLog("exec\n" + "".join(f"read 2 3 {0x100000 + 16 * i:x} 2 0 0 0\n" for i in range(n)))
 
     def take_all():
-        return [log.take("read", {0: S.Arg.full(3), 1: S.Arg.cut(0x100000 + 16 * i), 2: S.Arg.cut(2)}, (1, 2))
+        return [log.take("read", {0: S.Arg.full(3), 1: S.Arg.cut(0x100000 + 16 * i), 2: S.Arg.cut(2)}, (1, 2),
+                         2, None)
                 for i in range(n)]
     taken, took = _timed(take_all)
     assert all(t == {1: 0x100000 + 16 * i, 2: 2} for i, t in enumerate(taken)) and took < LINEAR_SECONDS, took
@@ -2235,3 +2257,28 @@ def test_getrandoms_flags_are_sign_extended(model, image):
     assert check(model, image, "1 getrandom(0x7f8eafbfd04c,4,1) = 4\n" + EXIT)["verdict"] == "pass"
     why = one_why(check(model, image, "1 getrandom(0x7f8eafbfd04c,4,2) = 4\n" + EXIT), "getrandom")
     assert "sign extension" in why
+
+
+@needs_model
+def test_a_write_qemu_refused_takes_no_later_calls_line(model, image):
+    # qemu answers a write whose buffer it cannot lock with -EFAULT and no host call (do_syscall: lock_user). The
+    # later write on a closed descriptor reaches the host and fails -EBADF; its line agrees with the first write's
+    # print, but not with its result. Taken, it would pin the count to 64; the true count may be 2^63 + 64, which
+    # modeled_rw_range refuses, so the first write decides nothing.
+    text = ("1 write(1,0x14668,64) = -1 errno=14\n1 close(1) = 0\n1 write(1,0x14668,64) = -1 errno=9\n" + EXIT)
+    stolen = "exec\nwrite -9 1 14668 40 0 0 0\n"
+    assert "the write's count" in one_undecided(check(model, image, text, lengths=stolen), "write")
+    own = f"exec\nwrite -14 1 14668 {(1 << 63) + 64:x} 0 0 0\nwrite -9 1 14668 40 0 0 0\n"
+    assert "modeled_rw_range" in one_why(check(model, image, text, lengths=own), "write")
+
+
+@needs_model
+def test_input_bin_stays_found_after_a_writable_open(model, image):
+    # A writable open makes input.bin's contents unknown, not the file absent: every lookup still finds it.
+    rdwr = '1 openat(AT_FDCWD,"input.bin",O_RDWR|O_LARGEFILE) = 3\n'
+    assert check(model, image, rdwr + EXIT, inputs={"input.bin": INPUT})["verdict"] == "pass"
+    for line in ('1 faccessat(AT_FDCWD,"input.bin",F_OK) = -1 errno=2',
+                 '1 newfstatat(AT_FDCWD,"input.bin",0x7ffd00001000,0) = -1 errno=2',
+                 '1 openat(AT_FDCWD,"input.bin",O_RDONLY|O_LARGEFILE) = -1 errno=2'):
+        result = check(model, image, rdwr + line + "\n" + EXIT, inputs={"input.bin": INPUT})
+        assert result["verdict"] == "fail", (line, result["undecided"])

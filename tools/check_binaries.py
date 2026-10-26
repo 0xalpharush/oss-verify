@@ -65,9 +65,9 @@ STANCE = "off"
 MIN_CALLS = 8
 INPUT_OPEN = re.compile(r'^\d+ openat\(AT_FDCWD,"input\.bin",O_RDONLY[^)]*\) = [0-9]+$', re.M)
 # The one qemu release whose -strace formats and host calls tools/syscall_shapes.py reads (measured: Debian 13's
-# qemu-user 10.0.11, which CI and the collection's runner install). A run of any other release leaves check 2 not
-# decided.
-QEMU_VERSIONS = re.compile(r"qemu-riscv64 version 10\.0\.[0-9]+")
+# qemu-user 10.0.11, which CI and the collection's runner install; 10.0.0 prints read's and write's buffer in 32 bits,
+# 10.0.11 in full). A run of any other release leaves check 2 not decided.
+QEMU_VERSIONS = re.compile(r"qemu-riscv64 version 10\.0\.11\b")
 MAX_RESULT_BYTES = 256 << 20
 
 
@@ -243,9 +243,9 @@ def system_calls(model, stale, qemu, binary, inputs, results):
     if isinstance(model, str):
         return {"result": "error", "detail": model}
     if not QEMU_VERSIONS.match(qemu):
-        return {"result": "error", "detail": f"{qemu or 'no qemu version'}: check 2 reads the runs of qemu 10.0 only "
-                                             "(tools/syscall_shapes.py reads its -strace formats and host calls; qemu "
-                                             "8.2 hands the host 0 for every anonymous mmap's offset, so its runs "
+        return {"result": "error", "detail": f"{qemu or 'no qemu version'}: check 2 reads the runs of qemu 10.0.11 "
+                                             "only (tools/syscall_shapes.py reads its -strace formats and host calls; "
+                                             "qemu 8.2 hands the host 0 for every anonymous mmap's offset, so its runs "
                                              "cannot show one). docs/build-contract.md, \"The checks of a fuzz "
                                              "target\", says how to get qemu-user 10.0.11"}
     statuses, unmodeled, undecided, calls, whole = {}, {}, [], 0, set()

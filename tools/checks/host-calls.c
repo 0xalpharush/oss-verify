@@ -8,8 +8,7 @@
  *     host-calls <log> <uid> <program> [<argument>...]
  *
  * qemu-riscv64's -strace log prints some arguments of a guest call as 32-bit numbers: the length of mmap, munmap,
- * mprotect and madvise, the offset of mmap, the count of read and write, the size of getrandom and getcwd. qemu
- * answers some calls itself, with no host call; the result on each line lets a guest call take only its own line.
+ * mprotect and madvise, the offset of mmap, the count of read and write, the size of getrandom and getcwd.
  * qemu makes the guest's call on the host with the same numbers (with no -R, a guest address is the host address),
  * except that it rounds those four lengths up to a page, so the host call shows them in full. Each call of the list
  * below, whether it succeeds or fails, gives one line:
@@ -24,8 +23,9 @@
  * would need CAP_SYS_PTRACE for a tracee of another user (the run's container does not grant it).
  *
  * tools/syscall_shapes.py takes a guest call's full arguments from the first unused line of the same name that agrees
- * with the printed values in their low 32 bits. qemu's own calls (its log, its loading of the program) are in the log
- * too; they agree with no guest call, or only by a coincidence of all the printed bits.
+ * with the printed values (in their low 32 bits where qemu cut them) and with the guest's result. qemu answers some
+ * calls itself, with no host call, and its own calls (its log, its loading of the program, its start-up mappings) are
+ * in the log too; a value is taken only when every unused line that agrees gives the same one.
  *
  * The command runs with no environment, so that no QEMU_* variable of the image changes what qemu does, and as <uid>,
  * so that the guest cannot write the results that this run's caller reads. It exits with the command's status, or 128

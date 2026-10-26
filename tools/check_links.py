@@ -30,14 +30,15 @@ and gives each build of each fuzz target two results:
 
 The plain build instruments nothing, by design; its result is "plain" when its record is complete, and "error"
 when it has no record or an incomplete one. A Go program has no record (Go's linker writes no map): its result is
-"plain" when its own build information says Go's linker linked it from Go code only, with no cgo, and "error"
-otherwise.
+"plain" when its own build information says Go's linker linked it with no cgo, and its function table names every
+function of its code with a Go package path (a .syso file's C code has none), and "error" otherwise.
 
 What this catches: a build whose sanitizer flags did not reach some of its code, by mistake. The records are written
 inside the build's own container, so a build.sh that sets out to deceive the check can; the review of the pull request
 is what stands against that.
 """
 import array
+import collections
 import dataclasses
 import hashlib
 import os
@@ -171,8 +172,8 @@ class Record:
 
 @dataclasses.dataclass
 class GoProgram:
-    """A program that Go's own linker linked from Go code only, as the program's build information says. Go's linker
-    writes no map, so such a link has no Record; this stands in for it."""
+    """A program that Go's own linker linked from Go code only, as the program's build information and its function
+    table say. Go's linker writes no map, so such a link has no Record; this stands in for it."""
 
     version: str  # the Go release, as the build information names it
     settings: dict  # the build information's `build` lines: {key: value}
@@ -203,6 +204,82 @@ def _uvarint(data, at):
             return value, at
         shift += 7
     raise ValueError("a length is longer than 64 bits")
+
+
+# Go's function table (.gopclntab; src/runtime/symtab.go pcHeader, src/debug/gosym/pclntab.go) of Go 1.18 and later:
+# a header of the magic, two zero bytes, minLC, ptrSize, then nfunc, nfiles, textStart and the offsets of funcnametab,
+# cutab, filetab, pctab and pclntab, each ptrSize bytes; at pclntab, nfunc + 1 pairs of uint32 (entry offset from
+# textStart, offset of the _func), the last one's entry being the end of the code; each _func starts with its entry
+# offset (uint32) and the offset of its name in funcnametab (int32).
+GO_PCLNTAB_MAGICS = (0xFFFFFFF0, 0xFFFFFFF1)
+
+
+def go_functions(data, sections):
+    """[(start, end, name)] of every function in the executable's Go function table, in address order, as offsets
+    from the start of .text, or the reason it cannot be read (str). Go's linker lists here each function it lays out,
+    a host object's (a .syso file's) under the object's own symbol name. (Go 1.27.1 writes textStart as 0; its
+    offsets are from .text's start.)"""
+    found = [s for s in sections if s["name"] == ".gopclntab" and s["type"] != SHT_NOBITS]
+    if len(found) != 1:
+        return f"{len(found)} .gopclntab sections, not one"
+    tab = data[found[0]["off"]:found[0]["off"] + found[0]["size"]]
+    if len(tab) < 72 or struct.unpack_from("<I", tab, 0)[0] not in GO_PCLNTAB_MAGICS or tab[4:6] != b"\0\0" \
+            or tab[7] != 8:
+        return "its .gopclntab is not Go 1.18's function table for a 64-bit target"
+    nfunc, _, text_start, names_at, _, _, _, pcln_at = struct.unpack_from("<8Q", tab, 8)
+    if text_start != 0:
+        return f"its .gopclntab's textStart is {text_start:#x}, not the 0 that Go 1.27.1 writes"
+    if pcln_at + (nfunc + 1) * 8 > len(tab) or names_at > len(tab):
+        return "its .gopclntab's function table runs past the end of the section"
+    functions = []
+    for i in range(nfunc):
+        entry, func = struct.unpack_from("<II", tab, pcln_at + i * 8)
+        end = struct.unpack_from("<I", tab, pcln_at + (i + 1) * 8)[0]
+        if pcln_at + func + 8 > len(tab) or end < entry:
+            return f"its .gopclntab's function {i} runs past the end of the section"
+        name_off = struct.unpack_from("<i", tab, pcln_at + func + 4)[0]
+        at = names_at + name_off
+        stop = tab.find(b"\0", at)
+        if name_off < 0 or stop < 0:
+            return f"its .gopclntab's function {i} has no name"
+        functions.append((entry, end, tab[at:stop].decode("latin1")))
+    return functions
+
+
+# The functions of Go 1.27.1's runtime for linux/riscv64 whose names carry no package path: assembly with no
+# package-qualified name (TEXT compare<>, TEXT main, the rt0 entry) and the linker's FIPS markers. Every other
+# function that Go's compiler or assembler makes is named <package path>.<name>; a C function, which a .syso file
+# brings in with no cgo, is not. (Measured on the Go toolchain image's programs.)
+GO_UNQUALIFIED = frozenset({"compare", "indexByteBig", "setg_gcc", "gogo", "gosave_systemstack_switch", "callRet",
+                            "gcWriteBarrier", "_rt0_riscv64_linux", "main", "go:textfipsstart", "go:textfipsend"})
+
+
+def foreign_code(data, sections):
+    """Why the Go program's code may hold code that Go did not compile, or None. Go's function table must cover .text
+    from its start with no gap, up to zero padding, and name every function with a package path, or as one of
+    GO_UNQUALIFIED at most once. A .syso file's code (linked with CGO_ENABLED=0, which the build information does not
+    show) is named by its own symbols, which no C compiler qualifies."""
+    text = [s for s in sections if s["name"] == ".text" and s["type"] != SHT_NOBITS]
+    if len(text) != 1:
+        return f"{len(text)} .text sections, not one"
+    functions = go_functions(data, sections)
+    if isinstance(functions, str):
+        return functions
+    if not functions or functions[0][0] != 0:
+        return "its function table does not start at .text's start"
+    gaps = [f"{a[2]}..{b[2]}" for a, b in zip(functions, functions[1:]) if a[1] != b[0]]
+    if gaps:
+        return "its function table leaves gaps in .text: " + ", ".join(listed(gaps))
+    end, size = functions[-1][1], text[0]["size"]
+    if end > size or any(data[text[0]["off"] + end:text[0]["off"] + size]):
+        return f"its function table ends at {end:#x} of .text's {size:#x} bytes, and the rest is not zero padding"
+    names = [name for _, _, name in functions]
+    seen = collections.Counter(n for n in names if n in GO_UNQUALIFIED)
+    foreign = [n for n in names if "." not in n and n not in GO_UNQUALIFIED] + [n for n, k in seen.items() if k > 1]
+    if foreign:
+        return ("functions that no Go package names, so code that Go did not compile (a .syso file, for one): "
+                + ", ".join(listed(sorted(set(foreign)))))
+    return None
 
 
 def go_program(data):
@@ -246,6 +323,11 @@ def go_program(data):
         wrong.append(f"-ldflags={settings['-ldflags']} chooses the linker")
     if wrong:
         return f"a Go program ({version}) whose build information lets its link take C code: " + "; ".join(wrong)
+    # The build information does not show a .syso file, which Go's own linker takes with no cgo: the function table
+    # does.
+    foreign = foreign_code(data, sections)
+    if foreign:
+        return f"a Go program ({version}) whose code Go's function table does not account for: {foreign}"
     return GoProgram(version, settings)
 
 
