@@ -241,7 +241,7 @@ The driver itself never intercepts a signal or `abort()`.
 
 ## Allocation-failure fuzz targets
 
-An allocation-failure fuzz target shows that the library survives refused allocations. In it, the allocations fail as the allocation mask of the input tells them to. The other fuzz targets do not get refused allocations ([what-gets-proven.md](what-gets-proven.md#allocation-failure)).
+An allocation-failure fuzz target shows that the library survives refused allocations. In it, the allocations fail as the allocation mask of the input tells them to. In the other fuzz targets, the driver makes no allocation fail ([what-gets-proven.md](what-gets-proven.md#allocation-failure)).
 
 The fuzz target must change an out-of-memory stop into a normal exit, and only that stop. To do this, catch `std::bad_alloc`, or use the library's own hooks for allocation failure.
 
