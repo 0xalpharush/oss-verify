@@ -471,7 +471,7 @@ jobs:
           # One mask command covers one line, so each line of the value is masked: the declared token is one line of
           # 48 characters, and a replacement that is not stays out of the log this way too.
           while IFS= read -r line; do
-            if [ -n "$line" ]; then builtin printf '::add-mask::%s\n' "$line"; fi
+            if [[ $line == *[![:space:]]* ]]; then builtin printf '::add-mask::%s\n' "$line"; fi
           done <<< "$OTEL_COLLECTOR_TOKEN"
           # A value of whitespace alone is no token: without this, review-run would skip the export with no warning.
           if [ -z "${OTEL_COLLECTOR_TOKEN//[[:space:]]/}" ]; then
@@ -647,7 +647,7 @@ jobs:
           builtin printf '::add-mask::%s\n' "$payload"
           key=$(builtin printf '%s' "$payload" | base64 -d)
           while IFS= read -r line; do
-            if [ -n "$line" ]; then builtin printf '::add-mask::%s\n' "$line"; fi
+            if [[ $line == *[![:space:]]* ]]; then builtin printf '::add-mask::%s\n' "$line"; fi
           done <<< "$key"
           delimiter="key-$(openssl rand -hex 16)"
           { echo "key<<$delimiter"; builtin printf '%s\n' "$key"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"

@@ -749,10 +749,11 @@ class WorkflowArguments(unittest.TestCase):
 
         The account that reads the key can be acted as only by an oss-verify job whose identity token carries
         `environment: comment` (Theorem's infrastructure code). GitHub accepts an environment as a string,
-        as an object with `name`, and through an expression, and compares names without regard to case, so another
-        job's `environment` is refused if its text names `comment` in any case and in any shape (the review job's
-        own, enroll-review, does not), and the comment job's must be the plain
-        name `comment`, with no expression and nothing but `deployment: false` beside it."""
+        as an object with `name`, and through an expression, and compares names without regard to case. An expression
+        can compute `comment` from text that does not contain it (format('com{0}', 'ment')), so another job's
+        environment is refused if it holds an expression at all, or if its text names `comment` in any case; the
+        review job's own, the plain name enroll-review, passes. The comment job's must be the plain name `comment`,
+        with nothing but `deployment: false` beside it."""
         problems = []
         for name, job in jobs.items():
             if name == "comment":
@@ -761,7 +762,10 @@ class WorkflowArguments(unittest.TestCase):
                 if (job.get("env") or {}).get("GCP_SERVICE_ACCOUNT") != self.APP_ACCOUNT:
                     problems.append(f"comment: does not sign in as {self.APP_ACCOUNT}")
             else:
-                if "environment" in job and "comment" in json.dumps(job["environment"]).lower():
+                text = json.dumps(job.get("environment", ""))
+                if "${{" in text:
+                    problems.append(f"{name}: its environment ({job['environment']!r}) is an expression")
+                if "comment" in text.lower():
                     problems.append(f"{name}: its environment ({job['environment']!r}) names comment; only comment may")
                 if self.APP_ACCOUNT in json.dumps(job):
                     problems.append(f"{name}: names {self.APP_ACCOUNT}")
@@ -821,12 +825,29 @@ class WorkflowArguments(unittest.TestCase):
                 self.assertNotIn("MIIB", run.stdout.replace("::add-mask::MIIB", ""), workflow)
                 self.assertIn(key.splitlines()[1], (directory / "output").read_text(), workflow)
 
+    def test_every_google_sign_in_keeps_its_token_to_one_step(self):
+        # Each auth step writes no credentials file, exports no variable, and mints a five-minute access token: its
+        # output is all that holds it. Three steps, one per job that signs in.
+        found = 0
+        for workflow in ("build.yaml", "triage.yaml"):
+            for name, job in self.workflow(workflow)["jobs"].items():
+                for step in job["steps"]:
+                    if step.get("uses", "").startswith("google-github-actions/auth@"):
+                        found += 1
+                        self.assertEqual({k: step["with"].get(k) for k in ("token_format", "access_token_lifetime",
+                                          "create_credentials_file", "export_environment_variables")},
+                                         {"token_format": "access_token", "access_token_lifetime": "300s",
+                                          "create_credentials_file": False, "export_environment_variables": False},
+                                         f"{workflow} {name}")
+        self.assertEqual(found, 3)
+
     def test_another_job_in_the_comment_environment_is_refused_in_every_shape(self):
         # The shapes GitHub takes for `environment` (workflow syntax, jobs.<job_id>.environment), each put on the
         # review job of the real build.yaml: every one must be refused.
         for shape in ("comment", {"name": "comment"}, {"name": "comment", "url": "https://example.invalid"},
                       "${{ 'comment' }}", {"name": "${{ 'comment' }}"}, "Comment",
-                      {"name": "${{ github.ref == 'x' && 'enroll-review' || 'COMMENT' }}", "deployment": False}):
+                      {"name": "${{ github.ref == 'x' && 'enroll-review' || 'COMMENT' }}", "deployment": False},
+                      "${{ format('com{0}', 'ment') }}", {"name": "${{ format('com{0}', 'ment') }}"}):
             jobs = self.workflow("build.yaml")["jobs"]
             jobs["review"]["environment"] = shape
             self.assertTrue(self.app_key_jobs_problems(jobs), f"review with environment {shape!r} was not refused")
