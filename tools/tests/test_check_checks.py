@@ -249,6 +249,20 @@ class ReviewComment(unittest.TestCase):
         # still current, so it is not marked otherwise.
         first = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
         self.assertEqual(self.kept(first, "a" * 40), first)
+        # A comment of main's renderer (review first, footer last) is sent back as it was, not written again.
+        footer = review_comment.FOOTER.format(of=f"It is the review of `{'a' * 7}`. ")
+        base = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
+                f"{review_comment.HEADING}\n\nThanks.\n\n{review_comment.CHECKS_SUMMARY}\n\n### report\n\n"
+                f"</details>\n\n{footer}\n")
+        self.assertEqual(self.kept(base, "a" * 40), base)
+        # A review kept as not current, and the pull request back at its commit: it is current again, once.
+        again = self.kept(self.kept(first, "b" * 40), "a" * 40)
+        self.assertEqual(self.meta(again).group("status"), "review")
+        self.assertEqual(self.meta(again).group("head"), "a" * 40)
+        self.assertNotIn("Not current", again)
+        self.assertEqual(again.count("Claude wrote this review"), 1)
+        self.assertTrue(again.endswith("\n\n1. Fix X.\n"))
+        self.assertEqual(self.kept(again, "a" * 40), again)
 
     def test_a_review_that_reads_like_the_scripts_notes_stays_the_review(self):
         # Where an earlier keep cut the comment is read from the notice, which this script alone writes, never from
@@ -257,7 +271,7 @@ class ReviewComment(unittest.TestCase):
         # often it is kept, a keep for the same push gives the same comment, and keeping it never fails.
         footer = review_comment.FOOTER.format(of=f"It is the review of `{'a' * 7}`. ")
         for opening in (f"The review is cut at 7 characters: {review_comment.KEPT_WHERE}.",
-                        f"The review is cut at {'1,111' * 1_000} characters: {review_comment.KEPT_WHERE}.",
+                        f"The review is cut at 1{',111' * 1_500} characters: {review_comment.KEPT_WHERE}.",
                         f" The review is cut at 9 characters: {review_comment.KEPT_WHERE}.", footer,
                         f"{footer}\n\n{footer}"):
             review = f"{opening}\n\n1. Fix X."
@@ -492,7 +506,7 @@ class PostingStep(unittest.TestCase):
     """build.yaml's own "Post the comment" step, run with a fake gh: what it sends GitHub."""
     OLD = "Thanks.\n\n1. Fix X.\n"
 
-    def post(self, review, existing=True, previous=None):
+    def post(self, review, existing=True, previous=None, pr_head="b" * 40):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
         name = "Post the comment, or update the one already there"
         matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
@@ -507,13 +521,15 @@ class PostingStep(unittest.TestCase):
                 previous = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head",
                                            "a" * 40], input=self.OLD, capture_output=True, text=True, check=True).stdout
             (directory / "existing.md").write_text(previous)
+            # Like the real gh: --jq prints the body and then a newline, and the pull request's head is pr_head.
             (bin / "gh").write_text(
                 "#!/bin/bash\n"
                 f'case "$*" in\n'
+                f'  *"pulls/8 "*) echo {pr_head} ;;\n'
                 f'  *"--method PATCH"*) cat > {directory}/patch.json ;;\n'
                 f'  *"--method POST"*) cat > {directory}/post.json ;;\n'
                 f'  *"--paginate"*) {"echo 4242" if existing else "true"} ;;\n'
-                f'  *"issues/comments/4242"*) cat {directory}/existing.md ;;\n'
+                f'  *"issues/comments/4242"*) cat {directory}/existing.md; echo ;;\n'
                 '  *) echo "unexpected gh $*" >&2; exit 1 ;;\n'
                 "esac\n")
             (bin / "gh").chmod(0o755)
@@ -526,7 +542,7 @@ class PostingStep(unittest.TestCase):
                                  text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
             sent = directory / ("patch.json" if existing else "post.json")
-            return json.loads(sent.read_text())["body"]
+            return json.loads(sent.read_text())["body"] if sent.exists() else None
 
     def status(self, body):
         return review_comment.META.match(body.split("\n")[1]).group("status")
@@ -545,6 +561,22 @@ class PostingStep(unittest.TestCase):
         self.assertIn("2. Fix Y.", body)
         self.assertNotIn("1. Fix X.", body)
         self.assertIn("### new report", body)
+
+    def test_a_run_of_an_older_head_posts_nothing(self):
+        # The pull request moved on while this run worked: its newer head's run posts, and this one neither replaces
+        # that review nor marks it not current.
+        for review in ("Thanks again.\n\n2. Fix Y.\n", ""):
+            self.assertIsNone(self.post(review, pr_head="c" * 40))
+            self.assertIsNone(self.post(review, existing=False, pr_head="c" * 40))
+
+    def test_a_rerun_for_the_same_commit_sends_the_comment_as_it_is(self):
+        # A rerun, or an edit of the pull request, that writes no review for the commit already reviewed: the body
+        # sent is the body stored, rerun after rerun, though gh adds a newline to what it fetches.
+        stored = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head", "b" * 40],
+                                input=self.OLD, capture_output=True, text=True, check=True).stdout
+        once = self.post("", previous=stored)
+        self.assertEqual(once, stored)
+        self.assertEqual(self.post("", previous=once), stored)
 
     def test_without_a_posted_comment_it_posts_one(self):
         self.assertEqual(self.status(self.post(" \n", existing=False)), "none")

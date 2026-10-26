@@ -219,13 +219,15 @@ def assemble(head, status, notes, checks="", review="", where="the rest is in th
 
 
 def not_current(previous, head, run):
-    """The comment already posted, kept: as it was posted when it is the review of head, else marked not the review
-    of head; None when it holds no review to keep."""
+    """The comment already posted, kept: as the review of head when it is that, else marked not the review of head;
+    None when it holds no review to keep."""
     status, of_head, body = read_previous(previous)
-    if status == "review" and head and of_head == head:
+    current = bool(head) and of_head == head and status in ("review", "stale")
+    if current and status == "review":
         # A later run for the same commit (a rerun, or an edit of the pull request) wrote no review: this one is
-        # still the review of it.
-        return previous
+        # still the review of it, kept as posted. GitHub keeps the comment's last newline and `gh --jq` adds one, so
+        # one is put back, and a rerun does not add a line each time.
+        return previous.rstrip("\n") + "\n"
     paragraphs = body.split("\n\n")
     cut_at = None
     if status == "stale":
@@ -247,11 +249,15 @@ def not_current(previous, head, run):
             return None
         of_head = None
     of = f"`{of_head[:7]}`" if of_head else "an earlier commit"
+    footer = FOOTER.format(of=f"It is the review of {of}. " if of_head else "")
+    if current:
+        # A kept review of this very commit (the pull request went back to it): it is current again.
+        return assemble(of_head, "review", [footer], review=body, where=KEPT_WHERE, review_limit=MAX_COMMENT,
+                        cut_at=cut_at)
     this = f"`{head[:7]}`" if head else "the last push"
     where = f" ([the run]({run}))" if run else ""
     note = (f"**Not current:** this is the review of {of}. The review of {this} did not finish with a review that "
             f"can be posted{where}. A person at Theorem reviews the enrollment.")
-    footer = FOOTER.format(of=f"It is the review of {of}. " if of_head else "")
     # The old comment, its checks and review as they were posted, goes last and unchanged, so the notice and the footer
     # above it stay visible whatever it holds; only its length is cut, if it must be.
     return assemble(of_head, "stale", [note, footer], review=body, where=KEPT_WHERE, review_limit=MAX_COMMENT,
