@@ -50,8 +50,10 @@ ANTHROPIC = "sk-ant-"
 JWT = "eyJ"
 # The metadata line, always the second line of the comment and written by this script alone: the format version, the
 # commit the review is of, and the status (review: a review is here; none: there is none; stale: a kept review that a
-# later push's review did not replace). It is the only place the status and the commit are read from.
-META = re.compile(r"^<!-- oss-verify-meta v=1"
+# later push's review did not replace). It is the only place the status and the commit are read from. The version is
+# the layout: 1, the review first and the footer last (before this layout); 2, what this script writes first, then
+# the checks, the review last. Only in a comment of version 2 is the first paragraph (after a notice) this script's.
+META = re.compile(r"^<!-- oss-verify-meta v=(?P<version>[12])"
                   r"(?: head=(?P<head>[0-9a-f]{7,40}))?"
                   r" status=(?P<status>review|none|stale) -->$")
 # The no-review paragraph that this script wrote before the metadata line existed, in full: a legacy comment that is
@@ -146,7 +148,7 @@ def code_block(text, limit):
 
 
 def meta_line(head, status):
-    return f"<!-- oss-verify-meta v=1{f' head={head}' if head else ''} status={status} -->"
+    return f"<!-- oss-verify-meta v=2{f' head={head}' if head else ''} status={status} -->"
 
 
 # Blank lines, as CommonMark has them: nothing but spaces and tabs.
@@ -161,16 +163,17 @@ def trim(text):
 
 
 def read_previous(previous):
-    """The posted comment's (status, head, body): status/head from the metadata line only, None when it is legacy."""
+    """The posted comment's (status, head, version, body): status/head/version from the metadata line only, None when
+    it is legacy."""
     lines = previous.replace("\r\n", "\n").split("\n")
-    status = head = None
+    status = head = version = None
     if len(lines) >= 2 and lines[0].strip() == MARKER:
         match = META.match(lines[1].strip())
         if match:
-            status, head = match.group("status"), match.group("head")
+            status, head, version = match.group("status"), match.group("head"), match.group("version")
     start = previous.find("\n" + HEADING + "\n")
     body = previous[start + len(HEADING) + 2:] if start != -1 else previous.replace(MARKER, "")
-    return status, head, trim(body)
+    return status, head, version, trim(body)
 
 
 FOOTER = ("<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
@@ -222,7 +225,7 @@ def assemble(head, status, notes, checks="", review="", where="the rest is in th
 def not_current(previous, head, run):
     """The comment already posted, kept: as the review of head when it is that, else marked not the review of head;
     None when it holds no review to keep."""
-    status, of_head, body = read_previous(previous)
+    status, of_head, version, body = read_previous(previous)
     current = bool(head) and of_head == head and status in ("review", "stale")
     if current and status == "review":
         # A later run for the same commit (a rerun, or an edit of the pull request) wrote no review: this one is
@@ -237,9 +240,10 @@ def not_current(previous, head, run):
         cut = KEPT_CUT.search(paragraphs[0])
         cut_at = int(cut.group("at").replace(",", "")) if cut else None
         paragraphs = paragraphs[1:]
-    # The footer, first after the notice as this script writes it, is written again below too. A review that a keep
-    # had cut and that is current again carries the cut sentence at the end of its footer instead.
-    if paragraphs:
+    # The footer, first after the notice in a comment of this layout (version 2), is written again below too. A review
+    # that a keep had cut and that is current again carries the cut sentence at the end of its footer instead. In an
+    # older layout the first paragraph is the review's, so nothing is read from it.
+    if version == "2" and paragraphs:
         cut = KEPT_CUT.search(paragraphs[0])
         if FOOTER_WRITTEN.fullmatch(paragraphs[0][:cut.start()] if cut else paragraphs[0]):
             cut_at = int(cut.group("at").replace(",", "")) if cut else cut_at

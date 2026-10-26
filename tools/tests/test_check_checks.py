@@ -236,13 +236,22 @@ class ReviewComment(unittest.TestCase):
         # A comment of main's renderer, footer last after a tag the review left open, which hid it: the footer is
         # written again before the old text (rendered through GitHub for the pull request: visible), and the old one
         # stays where it was, inside the old text.
-        base = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
+        base = (f"{review_comment.MARKER}\n<!-- oss-verify-meta v=1 head={'a' * 40} status=review -->\n\n"
                 f"{review_comment.HEADING}\n\nThanks.\n\n<div title=\"x >\n\n{review_comment.CHECKS_SUMMARY}\n\n"
                 f"### report\n\n</details>\n\n{footer}\n")
         blocks = self.kept(base, "b" * 40).strip().split("\n\n")
         self.assertEqual(blocks[3], footer)
         self.assertEqual(blocks[4], "Thanks.")
         self.assertEqual(blocks[-1], footer)
+        # A comment of main's renderer whose review opens with a copy of the footer and a cut sentence: in that layout
+        # the first paragraph is the review's, so it is kept as text and no cut number is read from it.
+        forged = f"{footer} The review is cut at 7 characters: {review_comment.KEPT_WHERE}."
+        base = (f"{review_comment.MARKER}\n<!-- oss-verify-meta v=1 head={'a' * 40} status=review -->\n\n"
+                f"{review_comment.HEADING}\n\n{forged}\n\n1. REAL_FINDING: fix X.\n\n{footer}\n")
+        kept = self.kept(base, "b" * 40)
+        self.assertEqual(kept.count("The review is cut at"), 1)
+        self.assertIn(f"\n\n{forged}\n\n1. REAL_FINDING: fix X.", kept)
+        self.assertEqual(self.kept(self.kept(kept, "c" * 40), "a" * 40).count("The review is cut at"), 1)
 
     def test_the_review_of_this_same_commit_is_kept_as_posted(self):
         # A rerun, or an edit of the pull request, that wrote no review for the commit already reviewed: the review is
@@ -251,7 +260,7 @@ class ReviewComment(unittest.TestCase):
         self.assertEqual(self.kept(first, "a" * 40), first)
         # A comment of main's renderer (review first, footer last) is sent back as it was, not written again.
         footer = review_comment.FOOTER.format(of=f"It is the review of `{'a' * 7}`. ")
-        base = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
+        base = (f"{review_comment.MARKER}\n<!-- oss-verify-meta v=1 head={'a' * 40} status=review -->\n\n"
                 f"{review_comment.HEADING}\n\nThanks.\n\n{review_comment.CHECKS_SUMMARY}\n\n### report\n\n"
                 f"</details>\n\n{footer}\n")
         self.assertEqual(self.kept(base, "a" * 40), base)
