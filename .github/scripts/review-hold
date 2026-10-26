@@ -58,13 +58,17 @@ while IFS=$'\t' read -r name generation size; do
   dir="$work/$n"
   mkdir -p "$dir"
   url="$api/${name//\//%2F}"
+  # The whole object, or nothing: curl's own status (a connection cut after the 200 line exits non-zero) and the
+  # bytes on disk against the size the listing gave.
+  rc=0
   code=$(gcs --max-filesize 1100000 -o "$dir/object" -w '%{http_code}' "$url?alt=media&generation=$generation") \
-    || true
-  if [ "$code" = 404 ]; then
-    echo "review-hold: $name is gone: another hold job sent it"
+    || rc=$?
+  if [ "$rc" = 0 ] && [ "$code" = 404 ]; then
+    echo "review-hold: $name is no longer in the bucket (another hold job sent it, or the bucket deleted it)"
     continue
   fi
-  if [ "$code" = 200 ] && HELD_OBJECT=$name "$held" "$dir"; then
+  if [ "$rc" = 0 ] && [ "$code" = 200 ] && [ "$(wc -c < "$dir/object")" = "$size" ] \
+      && HELD_OBJECT=$name "$held" "$dir"; then
     if gcs -f -X DELETE "$url?generation=$generation" > /dev/null; then
       echo "review-hold: sent and deleted $name"
     else

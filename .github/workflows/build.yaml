@@ -684,10 +684,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # One hold job at a time in the repository, whatever pull request: two sweeps at once could each send the same
-    # stored finding before either filed its issue. A run's hold job waits for the one running.
+    # stored finding before either filed its issue. Every waiting hold job keeps its place (queue: max, up to 100), so
+    # none is cancelled by a later one (https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
     concurrency:
       group: build-hold
       cancel-in-progress: false
+      queue: max
     environment:
       name: comment
       deployment: false

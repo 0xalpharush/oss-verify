@@ -2007,19 +2007,27 @@ class ReviewHeld(unittest.TestCase):
     OBJECT = "held/7/" + "a" * 32
     HEADER = f"oss-verify held finding v1\npr: 68\nhead: {'1' * 40}\nproject: libreac\nrun: {RUN}\n---\n"
 
+    @staticmethod
+    def body(key):
+        """An issue body as review-held writes it: its key on the fifth line."""
+        return f"enrollment PR: x\nenrollment PR head: y\npublic PR comment: z\nreview run: r\n{key}\n"
+
     def run_held(self, held, bodies_on_github=(), label=True, variable="theorem-labs/private", visibility="private",
-                 header=None):
-        """bodies_on_github: the bodies of the label's issues already there, open or closed. held follows the six
-        lines the review job writes (header, by default HEADER)."""
+                 header=None, comments=()):
+        """bodies_on_github: the bodies of the label's issues already there, open or closed, numbered from 1. comments:
+        the bodies of comments already on issue 1. held follows the six lines the review job writes (header, by default
+        HEADER)."""
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "bin").mkdir()
             (root / "review").mkdir()
             (root / "review" / "object").write_text((self.HEADER if header is None else header) + held)
             (root / "issues.json").write_text(json.dumps(list(bodies_on_github)))
+            (root / "comments.json").write_text(json.dumps(list(comments)))
             gh = root / "bin" / "gh"
-            # gh api: the repository's visibility, the key lines of the label's issues (as --jq selects them), or the
-            # new issue's address; it records its arguments and each body it is sent.
+            # gh api: the repository's visibility; the number and fifth body line of the label's issues, as --jq
+            # selects them; the first lines of issue 1's comments; or a new issue's number. It records its arguments
+            # and each body it is sent.
             gh.write_text(f"#!{sys.executable}\nimport json, pathlib, sys\nroot = pathlib.Path({str(root)!r})\n"
                           "a = sys.argv[1:]\n"
                           "with open(root / 'calls', 'a') as f: f.write(json.dumps(a) + '\\n')\n"
@@ -2027,9 +2035,13 @@ class ReviewHeld(unittest.TestCase):
                           f"if path.endswith('/labels/held-finding'): sys.exit(0 if {label} else 1)\n"
                           f"if path == 'repos/{variable}': print({visibility!r})\n"
                           "elif '/issues?' in path:\n"
-                          "    for b in json.loads((root / 'issues.json').read_text()):\n"
-                          "        print('\\n'.join(l for l in b.split('\\n') if l.startswith('held finding key: ')))\n"
-                          "elif path.endswith('/issues'): print('https://example.test/issue')\n"
+                          "    for i, b in enumerate(json.loads((root / 'issues.json').read_text()), 1):\n"
+                          "        lines = b.split('\\n')\n"
+                          "        if len(lines) > 4 and lines[4].startswith('held finding key: '):\n"
+                          "            print(f'{i}\\t{lines[4]}')\n"
+                          "elif path.endswith('/comments') and '--paginate' in a:\n"
+                          "    for c in json.loads((root / 'comments.json').read_text()): print(c.split('\\n')[0])\n"
+                          "elif path.endswith('/issues'): print(42)\n"
                           "for x in a:\n"
                           "    if x.startswith('body=@'):\n"
                           "        with open(root / 'bodies', 'a') as f: f.write(open(x[6:]).read() + '\\0')\n")
@@ -2071,7 +2083,9 @@ class ReviewHeld(unittest.TestCase):
         # issue with the same title does not stop either.
         two = "<!-- held finding -->\nproject: libreac\n<!-- held finding -->\nproject: libreac\nsecond\n"
         run, calls, bodies = self.run_held(two, bodies_on_github=[
-            f"review run: {self.RUN}\nheld finding key: {self.OBJECT} 1\n", f"held finding key: held/1/{'b' * 32} 2\n"])
+            self.body(f"held finding key: {self.OBJECT} 1"), self.body(f"held finding key: held/1/{'b' * 32} 2"),
+            # A key anywhere but the fifth line is no key.
+            f"held finding key: {self.OBJECT} 2\n"])
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn(f"1 of {self.OBJECT} was already sent", run.stdout)
         self.assertEqual(len(bodies), 1)
@@ -2096,11 +2110,28 @@ class ReviewHeld(unittest.TestCase):
         self.assertEqual(len(bodies), 1)
         self.assertIn(f"held finding key: {self.OBJECT} all\n", bodies[0])
         self.assertIn("SECRET10", bodies[0])
-        # A body over what GitHub takes is cut, and says so.
-        run, _, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + "x" * 70000 + "\n")
+
+    def test_a_long_finding_goes_whole_in_parts_and_a_re_run_posts_only_the_missing_ones(self):
+        # 130,000 bytes in lines of 1,000: the issue and two comments, each at most 60,000 bytes, which hold it all.
+        long = "".join(f"{i:05d}" + "x" * 994 + "\n" for i in range(130))
+        run, calls, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + long + "END-OF-FINDING\n")
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertLess(len(bodies[0]), 60200)
-        self.assertIn("Cut at 60,000 bytes", bodies[0])
+        self.assertEqual(len(bodies), 3)
+        self.assertTrue(all(len(b.encode()) <= 60200 for b in bodies))
+        self.assertIn("(Part 1 of 3: the rest follows in the comments.)", bodies[0])
+        self.assertTrue(bodies[1].startswith(f"held finding part: {self.OBJECT} 1 2/3\n"))
+        self.assertIn("END-OF-FINDING", bodies[2])
+        joined = "".join(bodies)
+        self.assertTrue(all(f"{i:05d}" in joined for i in range(130)))
+        self.assertEqual([c[1] for c in calls if "-F" in c][1:], ["repos/theorem-labs/private/issues/42/comments"] * 2)
+        # A run that stopped after part 2: the next posts only part 3, on the issue that is there.
+        run, calls, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + long + "END-OF-FINDING\n",
+                                           bodies_on_github=[self.body(f"held finding key: {self.OBJECT} 1")],
+                                           comments=[f"held finding part: {self.OBJECT} 1 2/3\n\n..."])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(bodies), 1)
+        self.assertTrue(bodies[0].startswith(f"held finding part: {self.OBJECT} 1 3/3\n"))
+        self.assertEqual([c[1] for c in calls if "-F" in c], ["repos/theorem-labs/private/issues/1/comments"])
 
     def test_a_loose_marker_splits_findings_as_review_run_cuts_them(self):
         run, _, bodies = self.run_held("  - <!--Held Finding-->\nproject: a\n> <!-- held_finding -->\nproject: b\n")
@@ -2154,8 +2185,8 @@ class ReviewHeld(unittest.TestCase):
         self.assertEqual(hold["needs"], ["project-builds", "review"])
         # Every run that reviewed anything sweeps the bucket, so a cancelled run's finding goes with the next run.
         self.assertEqual(hold["if"], "${{ !cancelled() && needs.review.result != 'skipped' }}")
-        # One sweep at a time in the repository, queued, never cancelled by another.
-        self.assertEqual(hold["concurrency"], {"group": "build-hold", "cancel-in-progress": False})
+        # One sweep at a time in the repository; every waiting one keeps its place, so none is cancelled by another.
+        self.assertEqual(hold["concurrency"], {"group": "build-hold", "cancel-in-progress": False, "queue": "max"})
         steps = {s.get("name"): s for s in hold["steps"]}
         where = steps["Where the held findings go"]["run"]
         self.assertIn("secrets/oss-verify-held-findings-repo/versions/latest:access", where)
@@ -2177,9 +2208,10 @@ class ReviewHold(unittest.TestCase):
     """review-hold sends every stored finding in the bucket, its own run's and a cancelled run's, through a fake curl for
     the bucket and a stand-in review-held, and deletes each object once it is sent."""
 
-    def sweep(self, objects, held_fails=(), delete_fails=False, current="", gone=(), sizes=None):
+    def sweep(self, objects, held_fails=(), delete_fails=False, current="", gone=(), sizes=None, cut=()):
         """objects: name -> stored bytes. held_fails: names whose review-held fails. current: this run's object. gone:
-        names another hold job deleted (404). sizes: name -> the size the listing reports."""
+        names another hold job deleted (404). sizes: name -> the size the listing reports. cut: names whose download
+        the connection cuts after the 200 line (half the bytes, curl exit 18)."""
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             scripts = root / "scripts"
@@ -2207,7 +2239,11 @@ class ReviewHold(unittest.TestCase):
                 "if '?prefix=' in url: print((root / 'listing.json').read_text()); sys.exit(0)\n"
                 "name = url.split('/o/')[1].split('?')[0]\n"
                 f"if urllib.parse.unquote(name) in {list(gone)!r}: print('404', end=''); sys.exit(0)\n"
-                "pathlib.Path(a[a.index('-o') + 1]).write_bytes((root / 'store' / name).read_bytes())\n"
+                "data = (root / 'store' / name).read_bytes()\n"
+                f"if urllib.parse.unquote(name) in {list(cut)!r}:\n"
+                "    pathlib.Path(a[a.index('-o') + 1]).write_bytes(data[:len(data) // 2]); print('200', end='')\n"
+                "    sys.exit(18)\n"
+                "pathlib.Path(a[a.index('-o') + 1]).write_bytes(data)\n"
                 "print('200', end='')\n")
             (bin / "curl").chmod(0o755)
             run = subprocess.run([str(scripts / "review-hold"), str(root / "work")],
@@ -2253,7 +2289,18 @@ class ReviewHold(unittest.TestCase):
         run, sent, curl = self.sweep({mine: b"x"}, current=mine, gone=(mine,))
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(sent, [])
-        self.assertIn(f"{mine} is gone: another hold job sent it", run.stdout)
+        self.assertIn(f"{mine} is no longer in the bucket", run.stdout)
+
+    def test_a_cut_download_is_not_sent_or_deleted(self):
+        # curl exit 18 after the 200 line, and a download shorter than the listing's size with exit 0.
+        mine = "held/9/" + "a" * 32
+        for kwargs in ({"cut": (mine,)}, {"sizes": {mine: 40}}):
+            with self.subTest(kwargs=kwargs):
+                run, sent, curl = self.sweep({mine: b"oss-verify held finding v1\n" + b"y" * 20}, current=mine,
+                                             **kwargs)
+                self.assertEqual(run.returncode, 1)
+                self.assertEqual(sent, [])
+                self.assertNotIn("-X DELETE", curl)
 
     def test_a_sent_object_that_cannot_be_deleted_does_not_fail_the_job(self):
         run, sent, curl = self.sweep({"held/9/" + "a" * 32: b"x"}, delete_fails=True)

@@ -45,20 +45,20 @@ if ! gh api "repos/$HELD_FINDINGS_REPO/labels/$label" > /dev/null 2>&1; then
   gh api "repos/$HELD_FINDINGS_REPO/labels" -f name="$label" -f color=b60205 \
     -f description="A finding held back from a public review, for the disclosure route" > /dev/null
 fi
-# The keys of the findings already sent, from every issue of the label, open or closed.
+# The findings already sent: each issue of the label, open or closed, with its key, read only from the fifth line of
+# its body, the line this script writes there.
 sent_keys=$(gh api "repos/$HELD_FINDINGS_REPO/issues?labels=$label&state=all&per_page=100" --paginate \
-  --jq '.[] | (.body // "") | split("\n")[] | select(startswith("held finding key: "))')
+  --jq '.[] | [.number, ((.body // "") | split("\n") | .[4] // "")] | select(.[1] | startswith("held finding key: "))
+        | @tsv')
 parts="$in/held-findings"
 rm -rf "$parts" && mkdir -p "$parts"
 sent=0
 #   send <key> <title> <file whose text is the issue's body after the lines this script writes>
-# One issue, unless one with that key exists. A body over what GitHub takes is cut, and says so.
+# One issue, unless one with that key exists. A body over what GitHub takes (65,536 characters) goes in parts of at most
+# 60,000 bytes: the first is the issue, each other one a comment on it that starts `held finding part: <key> k/n`.
+# Run again, it posts only the parts that are not there yet, so a finding is whole once any run finishes it.
 send() {
-  local key="held finding key: $HELD_OBJECT $1" body="$parts/body"
-  if grep -qxF "$key" <<< "$sent_keys"; then
-    echo "review-held: $1 of $HELD_OBJECT was already sent"
-    return 0
-  fi
+  local id="$HELD_OBJECT $1" key="held finding key: $HELD_OBJECT $1" body="$parts/body" number chunks total k posted
   {
     echo "enrollment PR: $REPO#${PR:-not known}"
     echo "enrollment PR head: ${HEAD_SHA:-not known}"
@@ -67,14 +67,30 @@ send() {
     echo "$key"
     cat "$3"
   } > "$body"
-  if [ "$(wc -c < "$body")" -gt 60000 ]; then
-    head -c 60000 "$body" > "$body.cut"
-    printf '\n\n(Cut at 60,000 bytes; the stored object %s holds the rest for 7 days.)\n' "$HELD_OBJECT" >> "$body.cut"
-    mv "$body.cut" "$body"
+  rm -f "$parts"/chunk.*
+  split -C 60000 -d -a 3 "$body" "$parts/chunk."
+  mapfile -t chunks < <(find "$parts" -name 'chunk.*' | sort)
+  total=${#chunks[@]}
+  number=$(awk -F '\t' -v k="$key" '$2 == k { print $1; exit }' <<< "$sent_keys")
+  if [ -z "$number" ]; then
+    if [ "$total" -gt 1 ]; then
+      printf '\n\n(Part 1 of %s: the rest follows in the comments.)\n' "$total" >> "${chunks[0]}"
+    fi
+    number=$(gh api "repos/$HELD_FINDINGS_REPO/issues" -f title="$(tr -d '[:cntrl:]' <<< "$2" | cut -c1-200)" \
+      -F body=@"${chunks[0]}" -f "labels[]=$label" --jq .number)
+    sent=$((sent + 1))
+    posted=""
+  else
+    echo "review-held: $1 of $HELD_OBJECT was already sent"
+    [ "$total" -gt 1 ] || return 0
+    posted=$(gh api "repos/$HELD_FINDINGS_REPO/issues/$number/comments" --paginate \
+      --jq '.[] | (.body // "") | split("\n") | .[0]')
   fi
-  gh api "repos/$HELD_FINDINGS_REPO/issues" -f title="$(tr -d '[:cntrl:]' <<< "$2" | cut -c1-200)" -F body=@"$body" \
-    -f "labels[]=$label" > /dev/null
-  sent=$((sent + 1))
+  for ((k = 2; k <= total; k++)); do
+    if grep -qxF "held finding part: $id $k/$total" <<< "$posted"; then continue; fi
+    { echo "held finding part: $id $k/$total"; echo; cat "${chunks[k - 1]}"; } > "$parts/part"
+    gh api "repos/$HELD_FINDINGS_REPO/issues/$number/comments" -F body=@"$parts/part" > /dev/null
+  done
 }
 
 # The object's six lines of the workflow's own, each checked, and the run it names is the run in its name. An object
@@ -121,7 +137,7 @@ n=0
 for part in $findings; do
   n=$((n + 1))
   title=$(sed -n 's/^title:[[:space:]]*//p' "$parts/$part" | head -n 1)
-  { grep -v '^title:' "$parts/$part" || true; } > "$parts/$part.text"
+  awk '!t && /^title:/ { t = 1; next } { print }' "$parts/$part" > "$parts/$part.text"
   send "$n" "${title:-[held] $NAME/not known: a finding of the enrollment review of pull request #$PR}" "$parts/$part.text"
 done
 echo "review-held: sent $sent of $n findings for private review"
