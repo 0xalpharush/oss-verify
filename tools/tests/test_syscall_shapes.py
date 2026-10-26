@@ -7,7 +7,7 @@ theories/) at syscall_shapes.MODEL_COMMIT. Without it they are skipped, and say 
 log reader, the image reader and the 32-bit argument reader are tested either way.
 
 The planted traces are what qemu-riscv64 10.0 -strace prints: the formats of linux-user/strace.list and strace.c at
-v10.0.0, the release the runs are recorded with (rt_sigaction prints three arguments, mmap's length through `%d`,
+v10.0.11, the release the runs are recorded with (rt_sigaction prints three arguments, mmap's length through `%d`,
 connect's address as a 32-bit pointer, a record with no printer prints six 64-bit decimals, and so on). Each one names
 the condition it is about, and is a trace the checker must accept or one it must refuse: a checker that cannot refuse
 tests nothing. Each run also needs its host-call log; faithful_log() writes the log of a run whose printed arguments
@@ -42,7 +42,7 @@ def elf_bytes(loads, machine=S.EM_RISCV):
     return bytes(header) + phdrs
 
 
-# The calls whose length qemu rounds up to a page before its host call (linux-user/mmap.c at v10.0.0: target_mmap,
+# The calls whose length qemu rounds up to a page before its host call (linux-user/mmap.c at v10.0.11: target_mmap,
 # target_munmap, target_mprotect and target_madvise apply TARGET_PAGE_ALIGN).
 PAGED = ("mmap", "munmap", "mprotect", "madvise")
 
@@ -59,6 +59,12 @@ def host_values(name, args, result):
         if rounded % (1 << 64) == 0 or (fixed and addr % S.PAGE_SIZE) or (name == "mmap" and values[5] % S.PAGE_SIZE):
             return None
         values[1] = rounded
+        if name == "madvise":
+            # qemu passes the guest's advice through (the MADV_* numbers agree), and answers every advice but
+            # MADV_DONTNEED, MADV_WIPEONFORK and MADV_KEEPONFORK itself (target_madvise).
+            values[2] = S.sym(args[2], S.MADVISE_ADVICE) if len(args) > 2 else 0
+            if values[2] not in (4, 18, 19):
+                return None
     if name == "connect" and result == -S.EFAULT:
         return None             # qemu could not read the address (target_to_host_sockaddr), so it made no host call
     return values
@@ -780,8 +786,8 @@ def test_a_missing_host_log_decides_nothing(model, image):
 @needs_model
 @pytest.mark.parametrize("line,wanted", [
     # Each of these is a call the model refuses at a larger register, and accepts at the printed value.
-    ("1 write(1,0x1000,-1) = -1 errno=14", "the write's buffer and count"),
-    ("1 read(0,0x1000,8) = 8", "the read's buffer and count"),
+    ("1 write(1,0x1000,-1) = -1 errno=14", "the write's count"),
+    ("1 read(0,0x1000,8) = 8", "the read's count"),
     ("1 getcwd(0x40007ff8b0,1) = -1 errno=34", "the getcwd size"),
     ("1 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x100000", "the mmap length"),
     ("1 munmap(0x8000000000,4096) = 0", "the munmap length"),
@@ -1713,7 +1719,7 @@ def test_the_real_runs_ledgers(model, giflib_image, line, verdict, needle):
     ('1 openat(AT_FDCWD,"f",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n1 ftruncate(3,1099511627776) = 0\n' + EXIT,
      "ftruncate", "modeled_truncate_gap"),
     ("1 madvise(0x100000,4096,MADV_HWPOISON) = 0\n" + EXIT, "madvise", "unparseable advice"),
-    # qemu answers a zero length itself, with no host call (linux-user/mmap.c at v10.0.0), so no line pins the printed
+    # qemu answers a zero length itself, with no host call (linux-user/mmap.c at v10.0.11), so no line pins the printed
     # 0, which may be a multiple of 2^32.
     ("1 mmap(NULL,0,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = -1 errno=22\n" + EXIT, "mmap",
      "the mmap length"),
@@ -2103,6 +2109,9 @@ INPUT_CASES = [
      "pass"),
     ("a read past the end that delivered a byte", ["read(3,0x1000,64) = 10", "read(3,0x1000,64) = 1"], "fail"),
     ("a read answered -EFAULT", ["read(3,0x1000,64) = -1 errno=14"], "pass"),
+    # At the end of the file the delivery is empty, and an empty delivery always lands: never -EFAULT.
+    ("a read at the end of the file answered -EFAULT", ["lseek(3,0,SEEK_END) = 10", "read(3,0x1000,64) = -1 errno=14"],
+     "fail"),
     # lseek_spec: SEEK_END's base is the file's length, SEEK_CUR's the descriptor's offset.
     ("lseek SEEK_END to the length", ["lseek(3,0,SEEK_END) = 10"], "pass"),
     ("lseek SEEK_END elsewhere", ["lseek(3,0,SEEK_END) = 4096"], "fail"),
@@ -2149,6 +2158,76 @@ def test_input_bin_is_found(model, image):
     # Once the run removes it, a later open of the name may answer -ENOENT.
     removed = '1 unlinkat(AT_FDCWD,"input.bin",0) = 0\n' + absent
     assert check(model, image, removed, inputs={"input.bin": INPUT})["verdict"] == "pass"
+
+
+@needs_model
+@pytest.mark.parametrize("line,needle", [
+    # Sys/Fs/Stat.v newfstatat_core_spec: a path that fs_lookup finds is unmodeled, whatever it answered.
+    ('1 newfstatat(AT_FDCWD,"input.bin",0x7ffd00001000,0) = -1 errno=2', "newfstatat_core_spec"),
+    ('1 newfstatat(AT_FDCWD,"input.bin",0x7ffd00001000,0) = 0', "newfstatat_core_spec"),
+    # Sys/Fs/Open.v faccessat_body_spec: a found name answers access_exists_spec, never -ENOENT.
+    ('1 faccessat(AT_FDCWD,"input.bin",F_OK) = -1 errno=2', "faccessat_body_spec"),
+    # Sys/Fs/Open.v openat_dir_spec: a found key is never a directory, so -ENOTDIR, never -ENOENT.
+    ('1 openat(AT_FDCWD,"input.bin",O_RDONLY|O_DIRECTORY|O_LARGEFILE) = -1 errno=2', "openat_dir_spec"),
+])
+def test_input_bin_is_found_by_every_arm_that_looks_it_up(model, image, line, needle):
+    text = line + "\n" + EXIT
+    assert needle in one_why(check(model, image, text, inputs={"input.bin": INPUT}))
+    # Without input.bin in the environment, -ENOENT is the answer of an absent name.
+    if "errno=2" in line:
+        assert check(model, image, text)["verdict"] == "pass"
+    for found in ('1 faccessat(AT_FDCWD,"input.bin",F_OK) = 0',
+                  '1 openat(AT_FDCWD,"input.bin",O_RDONLY|O_DIRECTORY|O_LARGEFILE) = -1 errno=20'):
+        assert check(model, image, found + "\n" + EXIT, inputs={"input.bin": INPUT})["verdict"] == "pass"
+
+
+# The start-up mappings of qemu 10.0.11 itself, in every run's host-call log; they are no guest call.
+QEMU_OWN_MMAP = "mmap 129731284434944 0 8000000 0 22 ffffffff 0"
+
+
+@needs_model
+def test_a_call_qemu_answered_itself_takes_none_of_qemus_own_lines(model, image):
+    # qemu answers MAP_FIXED at an unaligned address with -EINVAL and no host call (target_mmap). Its own start-up
+    # mapping agrees with the print (length 0x8000000, offset 0, fd -1), but succeeded: the guest call's result must
+    # match too, so the length and the offset, which may be 2^32 (unmodeled: Sys/Mm/Mmap.v w_is0 off), stay unpinned.
+    call = ("1 mmap(0x0000000010000001,134217728,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0)"
+            " = -1 errno=22\n")
+    for log in (f"exec\n{QEMU_OWN_MMAP}\n", "exec\n"):
+        assert "not pinned" in one_undecided(check(model, image, call + EXIT, lengths=log), "mmap"), log
+    # A guest mmap qemu passed to the host agrees with its own line, result and all, and is decided.
+    granted = "1 mmap(NULL,134217728,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x75fd70000000\n"
+    log = f"exec\n{QEMU_OWN_MMAP}\nmmap {0x75fd70000000} 0 8000000 3 22 ffffffff 0\n"
+    assert check(model, image, granted + EXIT, lengths=log)["verdict"] == "pass"
+
+
+@needs_model
+def test_munmap_mprotect_and_madvise_take_a_line_with_their_result(model, image):
+    # The guest's printed length is cut; only a host line with the guest's own result (and, for madvise, its advice)
+    # gives it back. A line of the same address and length with another result is another call.
+    grant = "1 mmap(NULL,8192,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x100000\n"
+    mmap_line = "mmap 1048576 0 2000 3 22 ffffffff 0"
+    for call, own, other in (
+            ("munmap(0x100000,8192) = 0", "munmap 0 100000 2000 0 0 0 0", "munmap -22 100000 2000 0 0 0 0"),
+            ("mprotect(0x100000,4096,PROT_READ|PROT_WRITE) = 0", "mprotect 0 100000 1000 3 0 0 0",
+             "mprotect -12 100000 1000 3 0 0 0"),
+            ("madvise(0x100000,4096,MADV_DONTNEED) = 0", "madvise 0 100000 1000 4 0 0 0",
+             "madvise 0 100000 1000 18 0 0 0")):
+        text = grant + f"1 {call}\n" + EXIT
+        result = check(model, image, text, lengths=f"exec\n{mmap_line}\n{own}\n")
+        assert result["verdict"] == "pass", (call, result["unmodeled"], result["undecided"])
+        result = check(model, image, text, lengths=f"exec\n{mmap_line}\n{other}\n")
+        assert result["verdict"] == "undecided", (call, result)
+
+
+@needs_model
+def test_a_read_buffer_is_printed_whole(model, image):
+    # qemu 10.0.11 prints read's and write's buffer through %p (strace.list), so a host line must agree with all of it.
+    # A read of 65 bytes for a printed count of 64 is refused once a line pins the count; a line at another buffer
+    # with the same low 32 bits is another call, and the cut count leaves the read undecided.
+    text = OPEN3 + "1 read(3,0x7fff00001000,64) = 65\n" + EXIT
+    assert check(model, image, text)["verdict"] == "fail"
+    other = f"exec\nread 65 3 {0x6fff00001000:x} 40 0 0 0\n"
+    assert "the read's count" in one_undecided(check(model, image, text, lengths=other), "read")
 
 
 @needs_model

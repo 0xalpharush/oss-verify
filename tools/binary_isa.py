@@ -798,25 +798,30 @@ BUILD_ID_NOTES = {(b"Go\0\0", 4), (b"GNU\0", 3)}
 BUILD_ID_MAX = 128
 
 
-def whole_notes(data, off, size):
+def whole_notes(data, off, size, seen=None):
     """True when the bytes [off, off + size) are exactly a sequence of build-id notes (BUILD_ID_NOTES): each a 12-byte
     header (namesz, descsz, type), the name and a descriptor of at most BUILD_ID_MAX bytes, each padded to 4 bytes,
-    the last ending at the end, and each of the two notes at most once (so they wrap no more than their own few bytes).
-    Any other bytes are not taken for notes."""
+    the last ending at the end, and each of the two notes at most once in the whole binary (so they wrap no more than
+    their own few bytes): `seen` holds the notes earlier sections of the binary were taken for, and gets this
+    section's when it is taken. Any other bytes are not taken for notes."""
     end = off + size
     if off % 4 or size % 4 or end > len(data) or size == 0:
         return False
-    at, seen = off, set()
+    seen = set() if seen is None else seen
+    at, here = off, set()
     while at < end:
         if at + 12 > end:
             return False
         namesz, descsz, kind = struct.unpack_from("<III", data, at)
         name = data[at + 12:at + 12 + (namesz + 3) // 4 * 4]
-        if (name, kind) not in BUILD_ID_NOTES or descsz > BUILD_ID_MAX or (name, kind) in seen:
+        if (name, kind) not in BUILD_ID_NOTES or descsz > BUILD_ID_MAX or (name, kind) in seen | here:
             return False
-        seen.add((name, kind))
+        here.add((name, kind))
         at += 12 + len(name) + (descsz + 3) // 4 * 4
-    return at == end
+    if at != end:
+        return False
+    seen |= here
+    return True
 
 
 def regions(data, e, secs, segs):
@@ -824,6 +829,7 @@ def regions(data, e, secs, segs):
     the PF_X segments map besides executable sections}). An executable section inside a PF_X segment must say it is
     at the address the segment maps its bytes at, or alignment cannot be checked."""
     regs, notes = [], {"data_in_x": [], "gap_zero": 0, "gap_nonzero": 0, "header_in_x": 0}
+    seen_notes = set()  # the build-id notes taken so far, in any section of any PF_X segment
     xsegs = [g for g in segs if g["type"] == PT_LOAD and g["flags"] & PF_X and g["filesz"]]
     filled = [s for s in secs if s["type"] != SHT_NOBITS and s["size"] and s["type"] != 0]
     if secs:
@@ -851,7 +857,7 @@ def regions(data, e, secs, segs):
                 if s["flags"] & SHF_EXECINSTR:
                     cover.append((a, b))
                 elif s["type"] == SHT_NOTE and (a, b) == (s["off"], s["off"] + s["size"]) and \
-                        whole_notes(data, a, b - a):
+                        whole_notes(data, a, b - a, seen_notes):
                     # A note section (Go's linker puts .note.go.buildid and .note.gnu.build-id in front of .text) is
                     # data only when its bytes are well-formed notes, whole; it is named, and not decoded.
                     cover.append((a, b))

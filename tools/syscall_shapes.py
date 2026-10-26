@@ -20,7 +20,7 @@ them:
 
 qemu -strace prints some arguments through a 32-bit format, so a larger value reaches the trace as its low 32 bits
 (read signed for `%d`, unsigned for `%#x` and `%u`): the length of mmap, munmap, mprotect and madvise, the offset of
-mmap, the buffer and count of read and write, the count of pread64 and pwrite64, the size of getrandom and getcwd.
+mmap, the count of read and write, the count of pread64 and pwrite64, the size of getrandom and getcwd.
 The same run's host-call log (`lengths`, written by tools/checks/host-calls.c) gives those arguments back in full,
 because qemu hands them to the host unchanged, or rounded up to a page (see HostLog). Where it does not, the checker
 takes the printed value as the low 32 bits of an unknown register and does not decide an answer that a larger value
@@ -696,7 +696,7 @@ class Arg:
     def paged(self):
         """The length as qemu hands it to the host: rounded up to a whole page (TARGET_PAGE_ALIGN, which target_mmap,
         target_munmap, target_mprotect and target_madvise apply before their host call, linux-user/mmap.c at
-        v10.0.0), pinned as this one is. A cut print pins the rounded value's low 32 bits too, since 2**32 is a
+        v10.0.11), pinned as this one is. A cut print pins the rounded value's low 32 bits too, since 2**32 is a
         multiple of the page. None for a whole register within a page of 2**64: its rounding wraps to 0, and qemu
         answers the call itself, with no host call."""
         rounded = page_round_up(self.v)
@@ -723,7 +723,7 @@ class Arg:
 # traced program started. qemu hands most of the guest's arguments to the host unchanged (with no -R, a guest address
 # is the host address), so a host line gives back what qemu's 32-bit -strace format cut. Two cases differ:
 #   - the length of mmap, munmap, mprotect and madvise, which qemu rounds up to a whole page first (TARGET_PAGE_ALIGN in
-#     target_mmap, target_munmap, target_mprotect and target_madvise, linux-user/mmap.c at v10.0.0). The guest's
+#     target_mmap, target_munmap, target_mprotect and target_madvise, linux-user/mmap.c at v10.0.11). The guest's
 #     length is keyed by its rounding, and recovered from the host's (Arg.paged, Arg.unpaged): the Go runtime maps
 #     lengths that are not whole pages;
 #   - connect's address, which qemu copies into its own buffer (target_to_host_sockaddr), so its line is keyed by the
@@ -731,10 +731,12 @@ class Arg:
 # (qemu 8.2 also hands the host 0 and -1 for the offset and descriptor of every anonymous mmap, so its log cannot show
 # an offset's top half: no 8.2 run is read.)
 # A guest call takes the first unused line of the same name that agrees with every printed argument it can be keyed on
-# (in the low 32 bits for a cut print, in full for the rest). qemu's own calls are in the log too: its loading of the
-# program and its log. A call of qemu's own can agree with a guest call's print, so lines are not dropped; instead, a
-# guest call takes a value only when EVERY unused line that agrees with the print gives the same value. Where they
-# disagree, the argument stays unpinned, and the rules decline what it would decide.
+# (in the low 32 bits for a cut print, in full for the rest), and for mmap, munmap, mprotect, madvise and connect with
+# the guest's result too: qemu answers some of those calls itself, with no host call, and its own calls (its loading
+# of the program, its start-up mappings, its log) are in the log too. A call of qemu's own can still agree with a guest
+# call's print, so lines are not dropped; instead, a guest call takes a value only when EVERY unused line that agrees
+# with the print gives the same value. Where they disagree, the argument stays unpinned, and the rules decline what it
+# would decide.
 HOST_NAMES = ("mmap", "munmap", "mprotect", "madvise", "mremap", "read", "write", "pread64", "pwrite64", "getrandom",
               "getcwd", "sendto", "connect")
 HOST_LINE = re.compile(r"(" + "|".join(HOST_NAMES) + r") (-?\d+)((?: [0-9a-fA-F]+){6})(?: ([0-9a-fA-F]{1,4}|-))?\s*$")
@@ -1063,11 +1065,21 @@ NOREPLACE_FLAG_WORDS = [
 NOREPLACE_PROTS = [{"PROT_READ", "PROT_WRITE"}, {"PROT_NONE"}]
 
 
-def host_length(run, name, addr, length):
+def host_result(ret, errno):
+    """The key on a host line's result for a guest call that returned `ret` (None when the trace shows no return).
+    qemu gives the guest the host's result unchanged when it makes the host call (with no -R a guest address is the
+    host address; linux-user/mmap.c mmap_h_eq_g), so a call that qemu answered itself, with no host call, cannot take
+    one of qemu's own lines that happens to agree with its print: those succeed, or fail with their own errno."""
+    return {} if ret is None else {HOST_RESULT: Arg.full((ret if ret >= 0 else -(errno or 0)) % TWO_POW_64)}
+
+
+def host_length(run, name, addr, length, ret, errno, extra=None):
     """The length of a munmap, mprotect or madvise at `addr`, recovered from its host call, which has the guest's
-    address and the guest's length rounded up to a page (Arg.paged); `length` as printed when no host line pins it."""
+    address and the guest's length rounded up to a page (Arg.paged), and the guest's result (host_result); `extra`
+    are more {index: Arg} keys (madvise's advice). `length` as printed when no host line pins it."""
     paged = length.paged()
-    full = run.host.take(name, {0: Arg.full(addr), 1: paged}, (1,)) if paged is not None else None
+    keys = {0: Arg.full(addr), 1: paged, **(extra or {}), **host_result(ret, errno)}
+    full = run.host.take(name, keys, (1,)) if paged is not None else None
     return (length.unpaged(full[1]) or length) if full else length
 
 
@@ -1086,7 +1098,7 @@ def _mmap(run, args, ret, errno, tid):
     fd = num(args[4])
     fbits = bits(flags)
     # The host call's length is the guest's rounded up to a page; its offset and descriptor are the guest's.
-    keys = {1: length.paged(), 5: off, **({4: Arg.cut(fd)} if fd is not None else {})}
+    keys = {1: length.paged(), 5: off, **({4: Arg.cut(fd)} if fd is not None else {}), **host_result(ret, errno)}
     full = run.host.take("mmap", keys, (1, 5))
     if full:
         length, off = length.unpaged(full[1]) or length, Arg.full(full[5])
@@ -1260,7 +1272,7 @@ def _munmap(run, args, ret, errno, tid):
     addr, length = num(args[0]), Arg.cut(num(args[1]))
     if addr is None or length is None:
         return und("unparseable argument list")
-    length = host_length(run, "munmap", addr, length)
+    length = host_length(run, "munmap", addr, length, ret, errno)
     cite = "Sys/Mm/Mmap.v munmap_spec"
     zero = length.is_zero()
     if zero is None:
@@ -1311,7 +1323,7 @@ def _mprotect(run, args, ret, errno, tid):
     addr, length, prot = num(args[0]), Arg.cut(num(args[1])), flagword(args[2], PROT_BITS)
     if addr is None or length is None or prot is None:
         return und("unparseable argument list")
-    length = host_length(run, "mprotect", addr, length)
+    length = host_length(run, "mprotect", addr, length, ret, errno)
     cite = "Sys/Mm/Mprotect.v mprotect_spec"
     if prot & PROT_BITS["PROT_GROWSDOWN"] and prot & PROT_BITS["PROT_GROWSUP"]:
         return errno_only(ret, errno, {EINVAL}, "mprotect with PROT_GROWSDOWN and PROT_GROWSUP",
@@ -1377,7 +1389,9 @@ def _madvise(run, args, ret, errno, tid):
         return und(f"unparseable advice {args[2]}")
     if length is None:
         return und(f"unparseable length {args[1]}")
-    length = host_length(run, "madvise", addr, length)
+    # The host's advice is the guest's, an int (riscv64 and x86-64 share the MADV_* numbers that qemu passes through),
+    # so its low 32 bits are keyed.
+    length = host_length(run, "madvise", addr, length, ret, errno, {2: Arg.cut(advice)})
     einval = ret is None or (ret < 0 and errno == EINVAL)
     if addr % PAGE_SIZE:
         if einval:
@@ -1733,7 +1747,9 @@ def _openat(run, args, ret, errno, tid):
         if fl == OPEN_DIR and path not in (".", ".."):
             if len(path) > NAME_MAX:
                 return "a directory open of a name over NAME_MAX (Sys/Fs/Open.v openat_dir_spec)"
-            return errno_only(ret, errno, {ENOENT, ENOTDIR, ENAMETOOLONG, EFAULT}, f"openat(O_DIRECTORY) of {path!r}",
+            # fs_lookup finds a file the run's environment holds (input.bin): a key is never a directory.
+            dir_errnos = {ENOTDIR} if path in run.inputs else {ENOENT, ENOTDIR}
+            return errno_only(ret, errno, dir_errnos | {ENAMETOOLONG, EFAULT}, f"openat(O_DIRECTORY) of {path!r}",
                               "Sys/Fs/Open.v openat_dir_spec: a name, not a directory the file system only implies")
         if fl == OPEN_WR_CREATE:
             why = create_answer(path, ret, errno)
@@ -1949,12 +1965,12 @@ def modeled_rw_range(buf, count):
     return False if (small is False and ok is False) else None
 
 
-def rw_args(run, name, args, ret, fd_index=0, buf_index=1, count_index=2, buf_full=False):
-    """(fd, buf, count) of a read-like record, with the host-call log's full values where it has them. qemu 10.0
-    prints the buffer of read and write through `%#x` and their count through `%d` (strace.list), so both are cut;
-    pread64 and pwrite64 print the buffer in full (`buf_full`)."""
+def rw_args(run, name, args, ret, fd_index=0, buf_index=1, count_index=2):
+    """(fd, buf, count) of a read-like record, with the host-call log's full values where it has them. qemu 10.0.11
+    prints the buffer of read and write through `%p` and their count through `%d` (strace.list), and the buffer of
+    pread64 and pwrite64 through print_pointer (strace.c print_pread64): the buffer is whole, the count is cut."""
     fd = num(args[fd_index])
-    buf = (Arg.full if buf_full else Arg.cut)(num(args[buf_index]))
+    buf = Arg.full(num(args[buf_index]))
     count = Arg.cut(num(args[count_index]))
     if fd is None or buf is None or count is None:
         return None, None, None
@@ -2018,7 +2034,7 @@ def _read(run, args, ret, errno, tid):
             return (f"a read on a {kind_name(kind)}: Sys/Uaccess.v modeled_rw_range does not hold, so the model "
                     f"declines ({cite})")
         if gate is None:
-            return undecided(f"the read's buffer and count on a {kind_name(kind)}")
+            return undecided(f"the read's count on a {kind_name(kind)}")
         if kind[0] == "pipe":
             return counted(ret, errno, count, {EFAULT}, what, cite)
         state = sock_state(kind)
@@ -2029,7 +2045,7 @@ def _read(run, args, ret, errno, tid):
                 return errno_only(ret, errno, {EFAULT}, f"{what} whose range runs past TASK_SIZE",
                                   f"{cite}: access_ok_zero")
             if ok is None:
-                return undecided(f"the read's buffer and count on a {kind_name(kind)}")
+                return undecided(f"the read's count on a {kind_name(kind)}")
         if state == "reset":
             # SkReset: the peer's error was reported once; every later read is end-of-stream (0).
             return answered(ret, errno, {0}, set(), "a read on a socket whose peer error was reported",
@@ -2056,7 +2072,7 @@ def _read(run, args, ret, errno, tid):
         return errno_only(ret, errno, {EFAULT}, "a read whose range runs past TASK_SIZE",
                           f"{cite}: State.v access_okb")
     if ok is None and not (ret is not None and ret < 0 and errno == EFAULT):
-        return undecided("the read's buffer and count")
+        return undecided("the read's count")
     if kind[0] == "dir":
         return errno_only(ret, errno, {EISDIR, EFAULT}, "a read on a directory descriptor", cite)
     if kind[0] == "devnull":
@@ -2126,7 +2142,7 @@ def _write(run, args, ret, errno, tid):
         return (f"a write of {count.v} bytes from {buf.v:#x}: Sys/Uaccess.v modeled_rw_range does not hold, so the "
                 f"model declines ({cite}: write_range_gate)")
     if gate is None:
-        return undecided("the write's buffer and count")
+        return undecided("the write's count")
     what = f"a write on a {kind_name(kind)}"
     if kind[0] == "devnull":
         return counted(ret, errno, count, {EFAULT}, what, cite, shape="exact")
@@ -2266,7 +2282,7 @@ def _pread64(run, args, ret, errno, tid):
         return und(f"unparseable position {args[3]}")
     if neg:
         return errno_only(ret, errno, {EINVAL}, "pread64 at a negative position", "Sys/Fs/ReadWrite.v ppos_einvalb")
-    fd, buf, count = rw_args(run, "pread64", args, ret, buf_full=True)
+    fd, buf, count = rw_args(run, "pread64", args, ret)
     if fd is None:
         return und("unparseable argument list")
     why = bad_fd_only(run, fd, ret, errno, "pread64", cite)
@@ -2525,6 +2541,10 @@ def _newfstatat(run, args, ret, errno, tid):
         return f"dirfd {args[0]} is not AT_FDCWD (Sys/Fs/Stat.v newfstatat_core_spec)"
     if q[0] == ".":
         return 'newfstatat of "." is unmodeled (Sys/Fs/Stat.v newfstatat_core_spec)'
+    if q[0] in run.inputs and not q[1]:
+        # The run's environment holds this file, so fs_lookup finds it, and a path that resolves is unmodeled.
+        return f"newfstatat of {args[1]}, a file the run's environment holds, is unmodeled (Sys/Fs/Stat.v " \
+               "newfstatat_core_spec: a path that resolves)"
     return errno_only(ret, errno, {ENOENT}, f"newfstatat of {args[1]}",
                       "Sys/Fs/Stat.v newfstatat_core_spec: every path that resolves is unmodeled")
 
@@ -3224,7 +3244,9 @@ def _faccessat(run, args, ret, errno, tid, name="faccessat"):
         return f"the path {path!r} has a separator: unmodeled ({cite})"
     if len(path) > NAME_MAX:
         return f"a path longer than NAME_MAX ({cite})"
-    return answered(ret, errno, exists[0], exists[1] | {ENOENT}, f"{name} of {path!r}",
+    # A file the run's environment holds (input.bin) is found by fs_lookup: never -ENOENT.
+    absent = set() if path in run.inputs else {ENOENT}
+    return answered(ret, errno, exists[0], exists[1] | absent, f"{name} of {path!r}",
                     "Sys/Fs/Open.v faccessat_body_spec, access_exists_spec")
 
 
@@ -3598,7 +3620,7 @@ def _connect(run, args, ret, errno, tid):
     socket, and on a fresh or bound one -EINVAL below SOCKADDR_IN_SIZE, -EAFNOSUPPORT for a family other than AF_INET,
     and unmodeled for AF_INET (the attempt itself is the environment's).
 
-    qemu prints connect's address as a 32-bit pointer (strace.list `%s(%d,%#x,%d)` at v10.0.0), so the
+    qemu prints connect's address as a 32-bit pointer (strace.list `%s(%d,%#x,%d)` at v10.0.11), so the
     trace never shows the family. qemu copies the address into its own buffer and makes the host call with it
     (do_connect, target_to_host_sockaddr), and the host-call log gives that buffer's family. When qemu cannot read the
     address it answers -EFAULT itself, with no host call: that is the model's -EFAULT."""
@@ -3830,7 +3852,7 @@ def _sendmsg(run, args, ret, errno, tid):
 def _recvfrom(run, args, ret, errno, tid):
     """Sys/Net/Socket.v recvfrom_spec: a size above rw_bytes_max is unmodeled (modeled_rw_count); an unreadable range
     is -EFAULT (access_ok_zero), before the descriptor: -EBADF, -ENOTSOCK, and on a socket unmodeled. qemu prints the
-    size in full (print_recvfrom: TARGET_ABI_FMT_ld at v10.0.0)."""
+    size in full (print_recvfrom: TARGET_ABI_FMT_ld at v10.0.11)."""
     if len(args) < 3:
         return und("unparseable argument list")
     cite = "Sys/Net/Socket.v recvfrom_spec"
@@ -3909,7 +3931,7 @@ def _ftruncate(run, args, ret, errno, tid):
     return errno_only(ret, errno, {EINVAL}, f"ftruncate of a {kind_name(kind)}", cite)
 
 
-# The address structs qemu's print_sockaddr writes (linux-user/strace.c at v10.0.0), one per family it
+# The address structs qemu's print_sockaddr writes (linux-user/strace.c at v10.0.11), one per family it
 # names; any other family prints as `{sa_family=N, sa_data={14 bytes}}`. Each is matched whole from the struct's first
 # byte: an AF_UNIX path is guest text and can hold anything, so nothing is searched for inside a struct.
 SOCKADDR_NAMED = re.compile(r"\{(?:sin|sun|sll|nl)_family=(AF_INET|AF_UNIX|AF_PACKET|AF_NETLINK)[,}]")

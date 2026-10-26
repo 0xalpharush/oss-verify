@@ -246,7 +246,8 @@ def system_calls(model, stale, qemu, binary, inputs, results):
         return {"result": "error", "detail": f"{qemu or 'no qemu version'}: check 2 reads the runs of qemu 10.0 only "
                                              "(tools/syscall_shapes.py reads its -strace formats and host calls; qemu "
                                              "8.2 hands the host 0 for every anonymous mmap's offset, so its runs "
-                                             "cannot show one)"}
+                                             "cannot show one). docs/build-contract.md, \"The checks of a fuzz "
+                                             "target\", says how to get qemu-user 10.0.11"}
     statuses, unmodeled, undecided, calls, whole = {}, {}, [], 0, set()
     for n, (name, data) in enumerate(inputs):
         status = read_number(results, f"l{n}.status")

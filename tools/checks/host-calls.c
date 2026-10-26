@@ -8,7 +8,8 @@
  *     host-calls <log> <uid> <program> [<argument>...]
  *
  * qemu-riscv64's -strace log prints some arguments of a guest call as 32-bit numbers: the length of mmap, munmap,
- * mprotect and madvise, the offset of mmap, the buffer and count of read and write, the size of getrandom and getcwd.
+ * mprotect and madvise, the offset of mmap, the count of read and write, the size of getrandom and getcwd. qemu
+ * answers some calls itself, with no host call; the result on each line lets a guest call take only its own line.
  * qemu makes the guest's call on the host with the same numbers (with no -R, a guest address is the host address),
  * except that it rounds those four lengths up to a page, so the host call shows them in full. Each call of the list
  * below, whether it succeeds or fails, gives one line:
