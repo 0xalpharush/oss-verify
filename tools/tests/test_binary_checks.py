@@ -73,8 +73,14 @@ GO_SETTINGS = {"-buildmode": "exe", "-compiler": "gc", "-trimpath": "true", "CGO
 # The functions of a minimal Go program: Go's runtime's unqualified assembly, and package-qualified code.
 GO_FUNCTIONS = ("_rt0_riscv64_linux", "runtime.rt0_go", "compare", "main.main", "main")
 NOP16 = struct.pack("<I", 0x00000013) * 4
-# A trampoline Go's linker makes: auipc x31, 0; jalr x0, 0(x31); zero padding.
-TRAMPOLINE = struct.pack("<II", 0x00000F97, 0x000F8067) + bytes(8)
+
+
+def trampoline(offset, size=16):
+    """A trampoline as Go's linker makes it: auipc x31, hi; jalr x0, lo(x31), a jump of `offset` bytes from its own
+    start; then zero padding to `size` bytes."""
+    high = (offset + 0x800) >> 12
+    low = offset - (high << 12)
+    return struct.pack("<II", ((high << 12) & 0xFFFFF000) | 0xF97, ((low & 0xFFF) << 20) | 0xF8067) + bytes(size - 8)
 
 
 def go_function(item):
@@ -82,16 +88,16 @@ def go_function(item):
     return (item, NOP16, True) if isinstance(item, str) else item
 
 
-def gopclntab(functions, skip=0, entries=None, shared_name=False):
+def gopclntab(functions, skip=0, entries=None, shared_name=False, name_offset=None):
     """Go 1.27.1's function table (src/runtime/symtab.go pcHeader, runtime/runtime2.go _func) for `functions`
     ([go_function items]), laid out in order from .text's start plus `skip` bytes. A function with a line table gets
     pcfile, pcln and a compilation unit; one without gets 0, 0 and no unit, as a host object's code does. `entries`
     ({index: entry offset}) overrides entries of the function table; with `shared_name`, every function's name is the
-    first function's."""
+    first function's; `name_offset` replaces every function's name offset."""
     names = b"".join(name.encode() + b"\0" for name, _, _ in (functions[:1] if shared_name else functions))
     name_offsets, at = [], 0
     for name, _, _ in functions:
-        name_offsets.append(0 if shared_name else at)
+        name_offsets.append(name_offset if name_offset is not None else 0 if shared_name else at)
         at += len(name) + 1
     names_at = 72
     pcln_at = names_at + len(names)
@@ -112,7 +118,7 @@ def gopclntab(functions, skip=0, entries=None, shared_name=False):
 
 
 def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=GO_FUNCTIONS, text_size=None,
-                  skip=0, entries=None, shared_name=False, **settings):
+                  skip=0, entries=None, shared_name=False, name_offset=None, **settings):
     """A minimal riscv64 executable with a .text section of `skip` bytes of code that no function covers, then
     `functions` (go_function items; then zero padding up to `text_size`), their .gopclntab (gopclntab: `skip`,
     `entries`, `shared_name`), and the section `section` that holds Go's build information as Go 1.27.1 writes it
@@ -131,7 +137,7 @@ def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=G
     body += bytes([0x80 | (size & 0x7F), size >> 7]) + module
     text = NOP16[:skip] + bytes(max(0, skip - 16)) + b"".join(code for _, code, _ in functions)
     text += bytes((text_size or len(text)) - len(text))
-    pcln = gopclntab(functions, skip, entries, shared_name)
+    pcln = gopclntab(functions, skip, entries, shared_name, name_offset)
     blobs = [(b".text", 1, 0x6, 0x11000, text), (section, 1, 0x3, 0x100000, body),
              (b".gopclntab", 1, 0x2, 0x200000, pcln)]
     shstrtab = b"\0" + b"".join(name + b"\0" for name, *_ in blobs) + b".shstrtab\0"
@@ -603,13 +609,22 @@ class Analyse(unittest.TestCase):
         self.assertIn("not zero padding", check_links.go_program(bytes(code)))
         # Go's own unqualified assembly (crypto/internal/fips140/bigmod's addMulVVWx) has a line table like any Go
         # code; the linker's trampolines and FIPS markers have none, and are recognised by their bytes.
+        # Laid out after GO_FUNCTIONS (5 x 16 bytes): addMulVVWx at 80, its trampoline at 96, a 24-byte trampoline to
+        # main.main (at 48) at 112, the FIPS markers at 136, and a trampoline to the first function at 144.
         stdlib = go_executable(functions=GO_FUNCTIONS + (
-            "addMulVVWx", ("addMulVVWx-tramp0", TRAMPOLINE, False),
-            ("crypto/rsa.f-tramp1", TRAMPOLINE + bytes(8), False),
+            "addMulVVWx", ("addMulVVWx-tramp0", trampoline(-16), False),
+            ("crypto/rsa.f-tramp1", trampoline(48 - 112, 24), False),
             ("go:textfipsstart", bytes(0), False), ("go:textfipsend", bytes(8), False),
             # A trampoline to a generic function: its name is longer than the bytes of a name that are read.
-            ("crypto/internal/fips140/hmac.New[go.shape." + "x" * 300 + "]-tramp2", TRAMPOLINE, False)))
+            ("crypto/internal/fips140/hmac.New[go.shape." + "x" * 300 + "]-tramp2", trampoline(-144), False)))
         self.assertIsInstance(check_links.go_program(stdlib), check_links.GoProgram)
+        # A stub of the trampoline's shape that jumps anywhere but a function's entry is not the linker's: entered at
+        # +2, the other stub's auipc word decodes as a compressed instruction of the author's choice. Two stubs at 80
+        # and 96, each jumping 2 bytes into the other; and one that jumps past every function.
+        for stubs in ((18, -14), (0x1000,)):
+            gadget = go_executable(functions=GO_FUNCTIONS + tuple(
+                (f"q_tramp{n}", trampoline(jump), False) for n, jump in enumerate(stubs)))
+            self.assertIn("no line table, so code that Go did not compile", check_links.go_program(gadget), stubs)
 
     def test_code_outside_the_function_table_is_not_go_code(self):
         # Go's linker lists no .L label or section container of a .syso file on riscv64, and lays host code out first:
@@ -620,6 +635,10 @@ class Analyse(unittest.TestCase):
         why = check_links.go_program(go_executable(entries={2: 8}))
         self.assertIn("not in address order", why)
         self.assertNotIn("runs past the end", why)
+        # The last entry is the end of the code: one below the last function names no function past it.
+        self.assertIn("the code ends before function 4", check_links.go_program(go_executable(entries={5: 0})))
+        # A function's name must lie in funcnametab, also for a function with a line table, whose name is not read.
+        self.assertIn("function 0 has no name", check_links.go_program(go_executable(name_offset=1 << 20)))
 
     def test_a_crafted_function_table_is_read_in_linear_time(self):
         # Thousands of functions with no line table, all named by one long run of bytes: each name is read for at

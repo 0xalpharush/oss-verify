@@ -214,7 +214,7 @@ def _uvarint(data, at):
 GO_PCLNTAB_MAGICS = (0xFFFFFFF0, 0xFFFFFFF1)
 GO_FUNC = struct.Struct("<IiiIIIIII")
 NO_CU = 0xFFFFFFFF
-NAME_MAX_GO = 120  # the most bytes of a function's name read: as many as NAME (above) allows in an entry's name
+NAME_MAX_GO = 120  # the most bytes of a function's name read: the name only names the function in a message
 
 
 def go_functions(data, sections):
@@ -247,38 +247,46 @@ def go_functions(data, sections):
         entry, func = struct.unpack_from("<II", tab, pcln_at + i * 8)
         end = struct.unpack_from("<I", tab, pcln_at + (i + 1) * 8)[0]
         if end < entry:
-            return f"its .gopclntab's functions are not in address order (function {i + 1} starts before {i})"
+            where = f"the code ends before function {i}" if i + 1 == nfunc else f"function {i + 1} starts before {i}"
+            return f"its .gopclntab's functions are not in address order ({where})"
         if pcln_at + func + GO_FUNC.size > len(tab):
             return f"its .gopclntab's function {i} runs past the end of the section"
         _, name_off, _, _, _, pcfile, pcln, _, cu = GO_FUNC.unpack_from(tab, pcln_at + func)
+        at = names_at + name_off
+        if name_off < 0 or at >= cu_at:
+            return f"its .gopclntab's function {i} has no name in funcnametab"
         lines = bool(pcfile and pcln and cu != NO_CU)
         name = None
         if not lines:
-            at = names_at + name_off
-            if name_off < 0 or at >= cu_at:
-                name = f"(function {i}, whose name is outside funcnametab)"
-            else:
-                limit = min(cu_at, at + NAME_MAX_GO)
-                stop = tab.find(b"\0", at, limit)
-                name = (tab[at:stop] if stop >= 0 else tab[at:limit] + b"...").decode("latin1")
+            limit = min(cu_at, at + NAME_MAX_GO)
+            stop = tab.find(b"\0", at, limit)
+            name = (tab[at:stop] if stop >= 0 else tab[at:limit] + b"...").decode("latin1")
         functions.append((entry, end, name, lines))
     return functions
 
 
 # The functions Go's linker makes itself, which have no line table: a trampoline `<target>-tramp<N>` to a function
-# too far for a direct jump, which is `auipc x31, hi` and `jalr x0, lo(x31)` and zero padding; and the FIPS markers
-# `go:textfipsstart` and `go:textfipsend`, which are zero bytes. They are told by their bytes alone: a name can be
-# longer than the bytes read of it (a trampoline to a generic function), and these bytes compute nothing (a jump to
-# a function that the table lists and judges on its own, or bytes that trap).
+# too far for a direct jump, which is `auipc x31, hi` and `jalr x0, lo(x31)` to the entry of that function, then zero
+# padding (cmd/link/internal/riscv64/asm.go genCallTramp); and the FIPS markers `go:textfipsstart` and
+# `go:textfipsend`, which are zero bytes. They are told by their bytes, not their names: the author of a .syso picks
+# its symbols' names, and a name can be longer than the bytes read of it (a trampoline to a generic function). A
+# trampoline must jump to the entry of a listed function, which the table judges on its own: one that jumps anywhere
+# else (into the middle of another stub, where its bytes decode as a compressed instruction of the author's choice)
+# is not the linker's.
 
 
-def linker_function(body):
-    """Whether a function with no line table, of these bytes, is one that Go's linker makes itself."""
+def linker_function(body, start, entries):
+    """Whether a function with no line table, of these bytes, at offset `start` of .text, is one that Go's linker
+    makes itself; `entries` is the set of the table's function entries."""
     if not any(body):
         return True
     if len(body) >= 8:
         auipc, jalr = struct.unpack_from("<II", body, 0)
-        return auipc & 0xFFF == 0xF97 and jalr & 0xFFFFF == 0xF8067 and not any(body[8:])
+        if auipc & 0xFFF != 0xF97 or jalr & 0xFFFFF != 0xF8067 or any(body[8:]):
+            return False
+        high = (auipc & 0xFFFFF000) - ((auipc & 0x80000000) << 1)      # sign-extended U-immediate
+        low = (jalr >> 20) - ((jalr & 0x80000000) >> 19)                 # sign-extended I-immediate
+        return start + high + low in entries
     return False
 
 
@@ -300,8 +308,9 @@ def foreign_code(data, sections):
     end = functions[-1][1]
     if end > size or any(data[base + end:base + size]):
         return f"its function table ends at {end:#x} of .text's {size:#x} bytes, and the rest is not zero padding"
+    entries = {start for start, _, _, _ in functions}
     foreign = [name for start, stop, name, lines in functions
-               if not lines and not linker_function(data[base + start:base + stop])]
+               if not lines and not linker_function(data[base + start:base + stop], start, entries)]
     if foreign:
         return ("functions with no line table, so code that Go did not compile (a .syso file, for one): "
                 + ", ".join(listed(sorted(set(foreign)))))
