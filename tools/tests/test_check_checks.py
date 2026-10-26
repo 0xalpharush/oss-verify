@@ -1201,10 +1201,14 @@ class ReviewRun(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 401", out.stderr)
         self.assertIn("this review's usage is not exported", out.stderr)
-        self.assertIn("review-run: usage is not exported", out.stdout)
         self.assertNotIn("wrong-token-not-a-secret", out.stdout + out.stderr)
         self.assertFalse((self.directory / "review" / "failure.txt").exists())
         self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+        self.assertEqual((self.directory / "review" / "export-lost.txt").read_text(),
+                         "the cost collector answered 401, not 200, before the review, so its usage is not exported\n")
+        self.assertNoTelemetry()
+
+    def assertNoTelemetry(self):
         for name in self.child():
             self.assertFalse(name.startswith("OTEL_") or name.startswith("CLAUDE_CODE_ENABLE"), name)
 
@@ -1224,6 +1228,8 @@ class ReviewRun(unittest.TestCase):
         self.assertIn("usage is likely lost", out.stderr)
         self.assertNotIn(self.TOKEN, out.stdout + out.stderr)
         self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+        self.assertEqual((self.directory / "review" / "export-lost.txt").read_text(),
+                         "the cost collector answered 401, not 200, after the review, so its usage is likely lost\n")
 
     def test_a_collector_that_does_not_answer_does_not_stop_the_review(self):
         with socket.socket() as closed:
@@ -1233,8 +1239,8 @@ class ReviewRun(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 000", out.stderr)
         self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
-        for name in self.child():
-            self.assertFalse(name.startswith("OTEL_"), name)
+        self.assertIn("answered 000", (self.directory / "review" / "export-lost.txt").read_text())
+        self.assertNoTelemetry()
 
     def test_without_the_collector_nothing_is_exported(self):
         out = self.run_review()
@@ -1873,17 +1879,21 @@ class ReviewSession(unittest.TestCase):
 class ReviewStep(unittest.TestCase):
     """build.yaml's own Review step, over a stand-in review-run that fails: what the run's page and summary say."""
 
-    def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None, collector=True):
+    def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None, collector=True,
+                 lost=None):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / ".github" / "scripts").mkdir(parents=True)
             if scan:
                 shutil.copy(REVIEW_COMMENT, directory / ".github" / "scripts" / "review-comment")
             (directory / ".review").mkdir()
-            # What review-run leaves after exit status 3: the review is written.
+            # What review-run leaves when the review is written.
             (directory / ".review" / "comment.md").write_text("Thanks.\n")
+            if lost is not None:
+                (directory / ".review" / "export-lost.txt").write_text(lost)
             script = directory / ".github" / "scripts" / "review-run"
-            script.write_text(f"#!/bin/bash\nexit {code}\n")
+            # It announces itself, so a test can tell that the review ran.
+            script.write_text(f"#!/bin/bash\necho review-run: ran\nexit {code}\n")
             script.chmod(0o755)
             for name, text in (("failure.txt", failure), ("failure-detail.txt", detail), ("served", served)):
                 if text is not None:
@@ -1907,10 +1917,25 @@ class ReviewStep(unittest.TestCase):
         # stops an enrollment's review. The negative control is the step's own exit status: it is the review's.
         code, out, summary = self.run_step(0, collector=False)
         self.assertEqual(code, 0, out)
+        self.assertIn("review-run: ran\n", out)
         self.assertIn("::warning::The repository variable OTEL_EXPORTER_OTLP_ENDPOINT or the repository secret "
                       "OTEL_COLLECTOR_TOKEN is not set", out)
         self.assertNotIn("::error::", out)
         self.assertEqual(summary, "")
+
+    def test_a_lost_export_is_a_warning_on_the_run_page_and_changes_nothing(self):
+        lost = "the cost collector answered 401, not 200, before the review, so its usage is not exported\n"
+        for code in (0, 1):
+            with self.subTest(code=code):
+                status, out, _ = self.run_step(code, "plain words\n", lost=lost)
+                self.assertEqual(status, code)
+                self.assertIn(f"::warning::Usage export: {lost.strip()}. The review ran.\n", out)
+        # A line that is not plain words is never shown, so review-run's file cannot carry a workflow command.
+        _, out, _ = self.run_step(0, lost="::error::x\n")
+        self.assertNotIn("Usage export", out)
+        self.assertNotIn("::error::x", out)
+        _, out, _ = self.run_step(0)
+        self.assertNotIn("Usage export", out)
 
     def test_a_review_that_did_not_finish_says_why_in_the_summary(self):
         code, out, summary = self.run_step(1, WHY_401 + ", on both tries\n", API_401[0]["result"] + "\n")

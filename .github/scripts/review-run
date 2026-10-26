@@ -26,10 +26,11 @@
 # Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name> and
 # theorem.lane=enroll-review-ci, and theorem.credential=oss-verify-ci when the run trades an identity token for that
 # service account (build.yaml's review job does; a person's own login does not). Before the review it sends the
-# collector an export of no records with the token. If the collector does not answer 200, it says so in one line and
-# runs the review with no export: the export is a measurement, and a wrong or revoked token must never decide whether
-# an enrollment gets its review. After the review it sends one again: if the collector refuses it then, it says that
-# the usage is likely lost, and the review's result stands. Without the two variables it exports nothing.
+# collector an export of no records with the token. If the collector does not answer 200, it says so, writes the
+# reason to export-lost.txt (build.yaml shows it as a warning on the run's page), and runs the review with no export:
+# the export is a measurement, and a wrong or revoked token must never decide whether an enrollment gets its review.
+# After the review it sends one again: if the collector refuses it then, it writes the same file, and the review's
+# result stands. Without the two variables it exports nothing.
 # No value of that environment is ever an argument of a process: another user on the machine can read a process's
 # arguments, but not its environment.
 # In CI it keeps Claude Code's workload identity usable for a review of any length, and runs Claude Code once more when
@@ -109,14 +110,12 @@ telemetry=()
 if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
   answer=$(collector)
   if [ "$answer" != 200 ]; then
-    # Fail-soft: the export is a measurement, so it never decides whether an enrollment gets its review. The line
-    # below is the record that this run's usage is lost, and the review runs with no export.
+    # Fail-soft: the export is a measurement, so it never decides whether an enrollment gets its review. The review
+    # runs with no export, and export-lost.txt is the line build.yaml shows as a warning on the run's page.
     echo "review-run: the collector at $OTEL_EXPORTER_OTLP_ENDPOINT answered ${answer:-nothing} to an empty export" \
       "with OTEL_COLLECTOR_TOKEN, not 200: this review's usage is not exported. Check the token and the endpoint." >&2
-    export_refused=yes
-  fi
-  if [ -n "${export_refused:-}" ]; then
-    echo "review-run: usage is not exported; the review runs as it would without a collector"
+    echo "the cost collector answered ${answer:-nothing}, not 200, before the review, so its usage is not exported" \
+      > "$in/export-lost.txt"
   else
     # The CI service account's label only on the identity that build.yaml's review job gets for it.
     credential=""
@@ -158,7 +157,7 @@ new_identity_token() {
 }
 rotating=""
 # The loop is stopped and waited for, so that no new token is written once this script has ended. Nothing here may
-# change the exit status: it runs as the EXIT trap, after exit 3 too.
+# change the exit status: it runs as the EXIT trap, whatever the status.
 stop_rotating() {
   [ -z "$rotating" ] || { kill "$rotating" && wait "$rotating"; } 2> /dev/null || true
   rm -f "$token_file".new.* || true
@@ -355,9 +354,11 @@ fi
 if [ ${#telemetry[@]} != 0 ]; then
   answer=$(collector)
   if [ "$answer" != 200 ]; then
-    # Fail-soft again: the review is written, so the job keeps its result and this line is the record.
+    # Fail-soft again: the review is written, so the job keeps its result, and export-lost.txt is the warning.
     echo "review-run: the review is in $in/comment.md, but the collector at $OTEL_EXPORTER_OTLP_ENDPOINT answered" \
       "${answer:-nothing}, not 200, to an empty export with OTEL_COLLECTOR_TOKEN after it: the token was refused or" \
       "the collector went away during the review, so its usage is likely lost." >&2
+    echo "the cost collector answered ${answer:-nothing}, not 200, after the review, so its usage is likely lost" \
+      > "$in/export-lost.txt"
   fi
 fi
