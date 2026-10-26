@@ -20,7 +20,7 @@ where it had them, and says what was changed:
   README.md, CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md
   templates/project.yaml, templates/Dockerfile, templates/patch_style.md (from its templates/threat_model.md)
   tools/validate.py, tools/check, tools/check_build.py
-  .github/PULL_REQUEST_TEMPLATE.md, .github/CODEOWNERS, .github/dependabot.yml
+  .github/PULL_REQUEST_TEMPLATE.md, .github/dependabot.yml
   .github/workflows/validate.yaml, .github/workflows/build.yaml, .github/workflows/triage.yaml,
   .github/workflows/terms.yaml, .github/scripts/triage.py, .github/scripts/take-project
 

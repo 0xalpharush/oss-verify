@@ -10,11 +10,13 @@ name: "Build"
 # its system calls against the process model of the published proofs, its quiet twin, and the code it links
 # uninstrumented (docs/build-contract.md, "The checks of the binaries"). The step summary has both reports too.
 #
-# Then two more jobs:
-#   review   Claude Code follows .claude/skills/review-enrollment/SKILL.md on what the workflow gathered: the pull
-#            request, the project's source at the built commit, and the build's results. It writes a comment that asks
-#            the maintainer for each fix. On a later push it resumes the conversation of the last review, so it knows
-#            what it asked for and why, and checks those requests against the changes since then.
+# Then three more jobs:
+#   review   Claude Code checks what review.md says (main's copy, at the root of the checkout) on what the workflow
+#            gathered: the pull request, the project's source at the built commit, and the build's results, with
+#            .claude/skills/review-enrollment/SKILL.md for where those are. It writes a comment that asks the
+#            maintainer for each fix. On a later push it resumes the same Claude Code session as the last review, so it
+#            knows what it asked for and why, and reviews only the diff since the commit it reviewed then.
+#   keep     saves that review's session in the Actions cache, for the next push's review.
 #   comment  posts that comment, with the checks' report folded under it, or replaces the one already there. The
 #            comment starts with <!-- oss-verify-review -->, as the triage comment starts with its own marker.
 #
@@ -100,27 +102,22 @@ name: "Build"
 # not exported, and the review runs to its end and its comment is posted. A lost export is read from that warning,
 # never from a red check.
 #
-# The review's conversation goes from one push to the next as an artifact of the review's run, named
-# enroll-review-<pull request>-<project>, sealed (AES-256-GCM) by .github/scripts/review-session under a key derived
-# from REVIEW_CONVERSATION_KEY (32 random bytes, base64), a secret of the environment enroll-review. The review job
-# restores the newest one of the pull request and project that build.yaml uploaded, that opens with the key, and whose
-# review is the one the review comment shows; review-run resumes it in a fork (claude --resume <id> --fork-session) and
-# keeps the new conversation, and the review job seals and uploads that once the review has written a comment. The logs
-# of the Restore and Review steps say which it did: "review-run: resuming the conversation <id> of the review of
-# <commit>", or "a fresh review". A conversation holds the public inputs the review read and the review's own
-# reasoning, which no log or comment shows, and no token: review-run keeps none that looks like a credential. It is
-# sealed because anyone signed in to GitHub can download this repository's artifacts, and it is not in the Actions
-# cache because every pull request's own run, a fork's too, can read main's caches (the header of
-# .github/scripts/review-session has the measurement).
-# Only the review job holds the key: the environment's deployment branch rule allows main alone, and GitHub checks it
-# against the run's ref, which is main for pull_request_target and refs/pull/<n>/merge for a pull request's own run
-# (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
-# A run on a ci-test/ branch uses the environment enroll-review-test instead, which holds no key unless someone gives it
-# one, so it reviews fresh. Without the key the review runs fresh on each push, with a warning. An artifact lasts as
-# long as the repository's artifact retention (90 days by default). The environments, their deployment branch rule and
-# the key are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand, which
-# the next apply would undo or fail on. A new key, or a new seal version in review-session, discards every kept
-# conversation.
+# The review's session goes from one push to the next in the Actions cache, under the key
+# enroll-review/<pull request>/<project>/<run id>-<attempt>. The review job restores the newest entry of the pull
+# request and project, review-run resumes that session (claude --resume <id>, which keeps its id) and tells the model
+# to review only the diff since the commit that session reviewed, and the keep job saves the session once the review
+# has written a comment. The log of the Review step says which it did: "review-run: resuming the session <id> (the
+# review of <commit>), to review only <commit>..<commit>", or "a fresh review".
+# Which run writes an entry, and which reads it: the keep job of this workflow's run for the pull request writes it
+# (cache-mode: write-only; it has no permissions, checks out nothing and runs no script: it saves the directory that
+# the review job handed it as an artifact), and the review job of the next run for that pull request reads it
+# (cache-mode: read). Both are main's copy of this file, whatever the pull request changes. A run on main restores
+# only entries that a run on main saved: a pull request's own runs (pull_request, or a push to its branch) save only
+# in the scope of refs/pull/<n>/merge or of their branch, which a run on main does not restore. So the code of a pull
+# request cannot write the session that its review resumes. Every other job has cache-mode: none (below).
+# A session holds the public inputs the review read and the review's own reasoning, and no token: review-run keeps
+# none that looks like a credential. As with every cache entry of main, a pull request's own run can read it. GitHub
+# drops an entry that no run has read for 7 days, and the next review is then fresh.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -140,6 +137,8 @@ on:
         type: number
 
 permissions: {}
+# No job reads or writes the Actions cache unless it says so: only the review job reads it and the keep job writes it.
+cache-mode: none
 
 concurrency:
   # By event too, so that a run started by hand never cancels the pull request's own run of the required check.
@@ -286,14 +285,16 @@ jobs:
           exit "$code"
 
   review:
-    # Claude reviews the enrollment with .claude/skills/review-enrollment/SKILL.md. It runs after the build, whatever
-    # its result, so that the review can ask for the build's fixes too. It runs no code of the pull request.
+    # Claude reviews the enrollment against review.md, main's copy. It runs after the build, whatever its result, so
+    # that the review can ask for the build's fixes too. It runs no code of the pull request.
     needs: project-builds
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # For the key that seals the review's conversation, which only a run on main gets (the top of this file). No
-    # deployment: the environment holds a secret, and the pull request shows no deployment.
+    # Restores the last review's session; the keep job saves this one (the top of this file).
+    cache-mode: read
+    # enroll-review, or enroll-review-test on a ci-test/ branch, which the test federation rule above names. No
+    # deployment: the pull request shows none.
     environment:
       name: ${{ startsWith(github.ref, 'refs/heads/ci-test/') && 'enroll-review-test' || 'enroll-review' }}
       deployment: false
@@ -303,8 +304,6 @@ jobs:
       # For the pull request's checks, which the review reads.
       checks: read
       statuses: read
-      # Also for the artifacts of the review's earlier runs (the conversation).
-      actions: read
       # Only for the GitHub identity token that workload identity federation trades for an Anthropic token.
       id-token: write
     outputs:
@@ -313,6 +312,10 @@ jobs:
       served: ${{ steps.review.outputs.served }}
       # true when review-run refused the review (exit 4): another provider or model answered, or nothing shows which.
       refused: ${{ steps.review.outputs.refused }}
+      # kept when the review kept its session, which the keep job saves; the artifact it is in, from this attempt, so
+      # that a re-run of the keep job alone reads it.
+      session: ${{ steps.review.outputs.session }}
+      artifact: enroll-review-session-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
@@ -330,24 +333,15 @@ jobs:
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
         run: GITHUB_STEP_SUMMARY=/dev/null .github/scripts/take-project build
 
-      # The conversation of the last review of this pull request and project, which the review resumes (sealed, at the
-      # top of this file). None on its first review, or once its artifact has expired: a fresh review. A failure of
-      # this step (an install, a time limit) gives a fresh review too, never no review: review-run resumes only a
-      # directory whose `session` file, written last, names a whole conversation.
-      - name: Restore the last review's conversation
-        continue-on-error: true
-        timeout-minutes: 5
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number || inputs.pr }}
-          NAME: ${{ needs.project-builds.outputs.name }}
-          REVIEW_CONVERSATION_KEY: ${{ secrets.REVIEW_CONVERSATION_KEY }}
-        run: |
-          dpkg -s python3-cryptography > /dev/null 2>&1 \
-            || sudo apt-get install -y -qq python3-cryptography \
-            || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-cryptography; }
-          .github/scripts/review-session restore "$RUNNER_TEMP/review-session"
+      # The session of the last review of this pull request and project, which the review resumes (the top of this
+      # file). None on its first review, or once the cache has dropped it: a fresh review. review-run resumes only a
+      # directory whose `session` file names a whole session.
+      - name: Restore the last review's session
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 (sha-pinned)
+        with:
+          path: ${{ runner.temp }}/review-session
+          key: enroll-review/${{ github.event.pull_request.number || inputs.pr }}/${{ needs.project-builds.outputs.name }}/${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: enroll-review/${{ github.event.pull_request.number || inputs.pr }}/${{ needs.project-builds.outputs.name }}/
 
       - name: Gather what the review reads
         timeout-minutes: 15
@@ -410,8 +404,8 @@ jobs:
           # review without the export if it does not.
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_COLLECTOR_TOKEN: ${{ secrets.OTEL_COLLECTOR_TOKEN }}
-          # The conversation of the last review, which review-run resumes, and the commit this review is of. After a
-          # review, the directory holds this review's conversation, which the next step keeps for the next push.
+          # The session of the last review, which review-run resumes, and the commit this review is of. After a
+          # review, the directory holds this review's session, which the keep job saves for the next push.
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
           REVIEW_SESSION: ${{ runner.temp }}/review-session
         run: |
@@ -489,30 +483,35 @@ jobs:
           { echo "comment<<$delimiter"; head -c 60000 .review/comment.md; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
           if [ -s "$REVIEW_SESSION/session" ]; then echo "session=kept" >> "$GITHUB_OUTPUT"; fi
 
-      - name: Seal this review's conversation for the next push's review
-        id: seal
+      # For the keep job, the only job that writes the cache (the top of this file).
+      - name: Hand this review's session to the keep job
         if: ${{ steps.review.outputs.session == 'kept' }}
-        env:
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number || inputs.pr }}
-          NAME: ${{ needs.project-builds.outputs.name }}
-          REVIEW_CONVERSATION_KEY: ${{ secrets.REVIEW_CONVERSATION_KEY }}
-        run: |
-          sealed="$RUNNER_TEMP/review-sealed/conversation.sealed"
-          .github/scripts/review-session seal "$RUNNER_TEMP/review-session" "$sealed"
-          if [ -s "$sealed" ]; then echo "sealed=$sealed" >> "$GITHUB_OUTPUT"; fi
-
-      # Public, as every artifact of this repository is: it opens only with the key (the top of this file).
-      - name: Keep the sealed conversation for the next push's review
-        if: ${{ steps.seal.outputs.sealed != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (sha-pinned)
         with:
-          name: enroll-review-${{ github.event.pull_request.number || inputs.pr }}-${{ needs.project-builds.outputs.name }}
-          path: ${{ steps.seal.outputs.sealed }}
+          name: enroll-review-session-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/review-session
           if-no-files-found: error
-          # Sealed bytes do not compress. A re-run of the job replaces the artifact of its run.
-          compression-level: 0
-          overwrite: true
+          retention-days: 1
+
+  keep:
+    # Saves this review's session for the next push's review (the top of this file).
+    needs: [project-builds, review]
+    if: ${{ !cancelled() && needs.review.outputs.session == 'kept' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    cache-mode: write-only
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2 (sha-pinned)
+        with:
+          name: ${{ needs.review.outputs.artifact }}
+          path: ${{ runner.temp }}/review-session
+
+      - name: Keep this review's session for the next push's review
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 (sha-pinned)
+        with:
+          path: ${{ runner.temp }}/review-session
+          key: enroll-review/${{ github.event.pull_request.number || inputs.pr }}/${{ needs.project-builds.outputs.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 
   comment:
     needs: [project-builds, review]
