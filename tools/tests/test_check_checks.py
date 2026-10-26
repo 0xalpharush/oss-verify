@@ -697,6 +697,62 @@ class WorkflowArguments(unittest.TestCase):
         self.assertNotIn("-c http.extraheader=", take)
         self.assertIn("--config-env=http.extraheader=", take)
 
+    def test_the_credential_steps_put_no_credential_in_any_argv(self):
+        # The text test above reads the steps; this one runs them. Each step that holds a credential is run in its
+        # own shell (bash -e, as the runner does) under strace, with stand-ins for curl, base64's input and
+        # review-run, and every credential's value must be absent from every program's arguments.
+        if not shutil.which("strace"):
+            self.skipTest("strace is not installed (the tests workflow installs it)")
+        token, gcp, request = "collector-token-not-a-secret", "gcp-not-a-secret", "request-token-not-a-secret"
+        key_lines = ["-----BEGIN RSA PRIVATE KEY-----", "MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4",
+                     "KUpRKfFLfRYC9AIKjbJTWit+CqvjWYzvQwECAwEAAQ==", "-----END RSA PRIVATE KEY-----"]
+        key = "\n".join(key_lines) + "\n"
+
+        def steps(workflow, job, name):
+            found = [s for s in self.workflow(workflow)["jobs"][job]["steps"] if s.get("name") == name]
+            self.assertEqual(len(found), 1, f"{workflow} {job} {name}")
+            return found[0]["run"]
+
+        cases = [
+            ("build.yaml review Review", steps("build.yaml", "review", "Review"),
+             json.dumps({"payload": {"data": base64.b64encode(token.encode()).decode()}}),
+             {"GCP_ACCESS_TOKEN": gcp}, [token, gcp]),
+            ("build.yaml review identity token", steps("build.yaml", "review", "Get the GitHub identity token for Anthropic"),
+             json.dumps({"value": "jwt-not-a-secret"}),
+             {"ACTIONS_ID_TOKEN_REQUEST_TOKEN": request, "ACTIONS_ID_TOKEN_REQUEST_URL": "http://127.0.0.1:9/?x=1"},
+             [request]),
+        ]
+        for workflow in ("build.yaml", "triage.yaml"):
+            cases.append((f"{workflow} comment key", steps(workflow, "comment", "Read the oss-verify App's key"),
+                          json.dumps({"payload": {"data": base64.b64encode(key.encode()).decode()}}),
+                          {"GCP_ACCESS_TOKEN": gcp}, [gcp, base64.b64encode(key.encode()).decode()] + key_lines[1:3]))
+        for label, run, answer, environment, secrets in cases:
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                directory = pathlib.Path(directory)
+                bin = directory / "bin"
+                bin.mkdir()
+                (bin / "curl").write_text(f"#!/bin/bash\nprintf '%s' {shlex.quote(answer)}\n")
+                (bin / "curl").chmod(0o755)
+                (directory / ".github" / "scripts").mkdir(parents=True)
+                (directory / ".github" / "scripts" / "review-run").write_text("#!/bin/bash\nexit 0\n")
+                (directory / ".github" / "scripts" / "review-run").chmod(0o755)
+                (directory / ".review").mkdir()
+                (directory / ".review" / "comment.md").write_text("Thanks.\n")
+                trace = directory / "trace"
+                env = {**os.environ, "PATH": f"{bin}:{os.environ['PATH']}", "RUNNER_TEMP": str(directory / "tmp"),
+                       "GITHUB_OUTPUT": str(directory / "output"), "GITHUB_STEP_SUMMARY": str(directory / "summary"),
+                       "ANTHROPIC_IDENTITY_TOKEN_FILE": str(directory / "jwt"),
+                       "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:9", **environment}
+                (directory / "tmp").mkdir()
+                result = subprocess.run(["strace", "-f", "-qq", "-s", "65536", "-e", "trace=execve", "-o", str(trace),
+                                         "bash", "--noprofile", "--norc", "-e", "-c", run],
+                                        cwd=directory, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, f"{label}: {result.stderr}")
+                text = trace.read_text()
+                self.assertIn("execve(", text)
+                for secret in secrets:
+                    self.assertNotIn(secret, text, f"{label}: a credential is in a program's arguments")
+
     def test_the_helpers_production_definitions_keep_the_token_out_of_argv(self):
         # The production keep, the triage call and fetch_head, taken from the scripts and run under strace with a fake
         # python3 and git that record their arguments and environment: the token reaches the environment only.
@@ -822,7 +878,10 @@ class WorkflowArguments(unittest.TestCase):
                           if line.startswith("::add-mask::")}
                 for line in [payload] + [line for line in key.splitlines() if line.strip()]:
                     self.assertIn(line, masked, f"{workflow}: {line[:20]}… is not masked")
-                self.assertNotIn("MIIB", run.stdout.replace("::add-mask::MIIB", ""), workflow)
+                # Every line of the key, and the payload, appears only inside its own mask line.
+                for line in [payload] + [line for line in key.splitlines() if line.strip()]:
+                    outside = [o for o in run.stdout.splitlines() if line in o and o != f"::add-mask::{line}"]
+                    self.assertEqual(outside, [], f"{workflow}: {line[:20]}… is printed outside its mask")
                 self.assertIn(key.splitlines()[1], (directory / "output").read_text(), workflow)
 
     def test_every_google_sign_in_keeps_its_token_to_one_step(self):
@@ -2144,6 +2203,10 @@ class ReviewStep(unittest.TestCase):
         self.assertIn(f"::add-mask::{self.TOKEN}\n", out)
         self.assertIn("review-run: gcp=unset otel=set\n", out)
         self.assertNotIn("::warning::", out)
+        # The mask must be registered while the runner still reads commands: after ::stop-commands:: it would be
+        # plain text, and the token in it would be in the public log.
+        self.assertLess(out.index(f"::add-mask::{self.TOKEN}\n"), out.index("::stop-commands::"))
+        self.assertEqual(out.count(self.TOKEN), 1, "the token appears outside its mask line")
 
     def test_a_lost_export_is_a_warning_on_the_run_page_and_changes_nothing(self):
         lost = "the cost collector answered 401, not 200, before the review, so its usage is not exported\n"

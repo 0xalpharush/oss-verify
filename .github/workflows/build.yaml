@@ -97,9 +97,10 @@ name: "Build"
 # workflow_ref, so it signs in too). The review and comment jobs of this
 # file ask for an identity token; no other job of it does.
 # A review runs only on main: the Anthropic rule above admits refs/heads/main alone, so a run on another branch gets
-# no Anthropic token (and Google's provider, which also admits main alone, gives it no collector token). A change to
-# the review is tested by running this file on main against a test pull request: `gh workflow run build.yaml -f pr=<n>`, with a pull request opened by this
-# repository, never a maintainer's open enrollment, because the run posts its comment there.
+# no Anthropic token (and Google's provider, which also admits main alone, gives it no collector token). So a change to
+# the review is tried for real only once it is on main: run `gh workflow run build.yaml -f pr=<n>` against a pull
+# request opened by this repository, never a maintainer's open enrollment, because the run posts its comment there.
+# Before the merge, tools/tests runs the review's steps with stand-ins.
 #
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, at the public URL below
 # (a literal here because it is public), with the collector's bearer token, which the Review step reads at run time
@@ -405,7 +406,8 @@ jobs:
       # collector's token is read at run time instead of being stored here. Nothing is written to the workspace and
       # nothing is exported: the Google access token is this step's output alone, and it lives five minutes. The
       # token only feeds the usage export, so a failed sign-in must not stop the review: continue-on-error, and the
-      # Review step warns and runs without the export when the output is empty.
+      # Review step warns and runs without the export when the output is empty. The run's page then shows this
+      # step's own error annotation beside that warning; the job's result is the review's.
       - name: Sign in to Google Cloud
         id: gcp
         continue-on-error: true
@@ -452,9 +454,6 @@ jobs:
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
           REVIEW_SESSION: ${{ runner.temp }}/review-session
         run: |
-          # pipefail: the default shell of a step is `bash -e`, whose pipeline status is the last command's, so
-          # without it a curl or jq failure would be hidden by a base64 that succeeded on what it got.
-          set -o pipefail
           # The collector's bearer token: Secret Manager agent-spend-otel-token, which Theorem's infrastructure code
           # declares and grants this job's account. It stays a variable of this shell, masked in the log and no
           # process's argument. The export is a measurement and never decides whether the review runs: if the sign-in
