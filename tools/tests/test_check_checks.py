@@ -613,23 +613,33 @@ class WorkflowArguments(unittest.TestCase):
         return [step for job in self.workflow(workflow)["jobs"].values() for step in job["steps"] if "run" in step]
 
     def argument_problems(self, run, name):
-        """Where `run` gives $name to a process as an argument, as far as this test can read: [] if nowhere."""
+        """Where `run` gives $name to a process as an argument, as far as this test can read: [] if nowhere.
+
+        It removes the forms in which only the shell itself reads the value, each in the exact place it is safe, and
+        refuses any use of the name that is left. Anything new must be added here on purpose."""
         variable = re.escape(f'"${name}"')
-        # The forms a builtin reads, and only these: printf into a process substitution; printf as a statement of its
-        # own (the shell's builtin, so no process holds the value; its output goes to stdout or a redirection) or
-        # piped from a command substitution; a test; a [[ ]] pattern; a here-string into `read`. printf inside a
-        # command substitution that is itself an argument ("$(builtin printf … "$X")") is none of these.
-        rest = re.sub(rf"<\((?:builtin )?printf '[^']*' {variable}\)|\$\(builtin printf '[^']*' {variable} \|"
-                      rf"|\[ -[zn] {variable} \]|\*{variable}\*|<<< {variable}", "", run)
-        rest = re.sub(rf"(?m)(^|[;{{]|\bthen|\bdo)(\s*)builtin printf '[^']*' {variable}(?=\s*(?:$|;|>>?|\||&&))",
-                      r"\1\2", rest)
+        blank = re.escape(f'"${{{name}//[[:space:]]/}}"')
+        # Where a test or a printf statement starts a command: the builtin is read only there, never after a path
+        # (/usr/bin/[) or a wrapper (env [), which would be a process with the value in its arguments.
+        start = r"(?m)(^\s*|\bif\s+|\belif\s+|&&\s*|\|\|\s*|;\s*|\{\s*|\bthen\s+|\bdo\s+|!\s+)"
+        rest = run
+        for form in (
+                # printf into a process substitution: curl reads a pipe, never the value.
+                rf"<\((?:builtin )?printf '[^']*' {variable}\)",
+                # The decoded key, assigned to a shell variable: the value goes through a pipe into base64.
+                rf"(?m)^\s*\w+=\$\(builtin printf '[^']*' {variable} \| base64 -d\)\s*$",
+                # A here-string into a `while read` loop, and a [[ ]] pattern, both the shell's own.
+                rf"<<< {variable}", rf"== \*{variable}\*"):
+            rest = re.sub(form, "", rest)
+        for form in (rf"\[ -[zn] {variable} \]", rf"\[ -z {blank} \]",
+                     rf"builtin printf '[^']*' {variable}(?=\s*(?:$|;|>>?|\||&&|\}}))"):
+            rest = re.sub(start + form, r"\1", rest)
         problems = []
         if f"${name}" in rest:
             problems.append(f"${name} is an argument")
-        # ${NAME…} (with or without a modifier) is the same value in a spelling none of the forms above use, so it is
-        # refused outright rather than matched: a step that starts using it must be read again.
-        # The one spelling allowed is the blank test `[ -z "${NAME//[[:space:]]/}" ]`, which the builtin `[` reads.
-        if "${" + name in run.replace(f'[ -z "${{{name}//[[:space:]]/}}" ]', ""):
+        # ${NAME…} in any other spelling is refused outright rather than matched: a step that starts using it must be
+        # read again.
+        if "${" + name in rest:
             problems.append("${" + name + "…} is not one of the forms this test reads")
         return problems
 
@@ -650,18 +660,23 @@ class WorkflowArguments(unittest.TestCase):
     def test_the_argument_forms_are_refused(self):
         for run in ('curl -H "$(builtin printf \'Authorization: Bearer %s\\n\' "$X")" https://x',
                     'curl -H "Authorization: Bearer ${X:-}" https://x', 'echo "$X"',
-                    'curl -H "$(printf \'%s\' "$X")" https://x', 'f "$(builtin printf \'%s\' "$X")"'):
+                    'curl -H "$(printf \'%s\' "$X")" https://x', 'f "$(builtin printf \'%s\' "$X")"',
+                    'curl -H "$(builtin printf \'%s\' "$X" | cat)" https://x',
+                    'curl -H "$(builtin printf \'%s\' "$X" | base64 -d)" https://x',
+                    'if /usr/bin/[ -z "$X" ]; then :; fi', 'env [ -n "$X" ]',
+                    'if /usr/bin/[ -z "${X//[[:space:]]/}" ]; then :; fi', 'echo *"$X"*',
+                    'env builtin printf \'%s\' "$X"', 'k=$(builtin printf \'%s\' "$X" | base64 -d) other'):
             self.assertTrue(self.argument_problems(run, "X"), run)
         for run in ('curl -H @<(builtin printf \'Authorization: Bearer %s\\n\' "$X") https://x',
                     'builtin printf \'::add-mask::%s\\n\' "$X"', 'k=$(builtin printf \'%s\' "$X" | base64 -d)',
                     '{ echo a; builtin printf \'%s\\n\' "$X"; echo b; } >> out', 'if [ -n "$X" ]; then :; fi',
-                    'done <<< "$X"'):
+                    'done <<< "$X"', 'if [ -z "${X//[[:space:]]/}" ]; then', '[[ $s == *"$X"* ]]'):
             self.assertEqual(self.argument_problems(run, "X"), [], run)
 
     def test_only_the_jobs_that_run_no_pull_request_code_hold_an_identity_token(self):
-        # A GitHub identity token names no job, so Google's provider cannot keep ossv-ci to these jobs: these files
-        # are what does. project-builds builds the pull request's code and triage's gather reads its text, so neither
-        # may ever ask for one. A job with no permissions of its own inherits the workflow's, so the effective
+        # A GitHub identity token names no job; the GitHub Environment a job declares is what holds each Google account
+        # to its job, and these files must also keep id-token: write off every other job. project-builds builds the
+        # pull request's code and triage's gather reads its text, so neither may ever ask for one. A job with no permissions of its own inherits the workflow's, so the effective
         # permission is what is read here: a workflow-level id-token: write would reach every job.
         for workflow, want in (("build.yaml", {"review", "comment"}), ("triage.yaml", {"comment"})):
             parsed = self.workflow(workflow)
@@ -773,6 +788,38 @@ class WorkflowArguments(unittest.TestCase):
                 else:
                     self.assertNotIn(account, json.dumps(job), f"{workflow} {name} names {account}")
                     self.assertNotIn("enroll-review", environment, f"{workflow} {name} is in enroll-review")
+
+    @unittest.skipUnless(shutil.which("jq") and shutil.which("base64"), "the key step needs jq and base64")
+    def test_the_app_key_is_masked_in_both_comment_jobs(self):
+        # The key-reading step is in both files, and the runner logs the private-key input of the next step: these
+        # masks are what keep a key that does not expire out of a public log. Each copy is run with a stand-in curl
+        # for Secret Manager, and every non-blank line of the key, and its base64 form, must be masked.
+        key = "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu\n" \
+              "KUpRKfFLfRYC9AIKjbJTWit+CqvjWYzvQwECAwEAAQ==\n-----END RSA PRIVATE KEY-----\n"
+        payload = base64.b64encode(key.encode()).decode()
+        for workflow in ("build.yaml", "triage.yaml"):
+            steps = [s for s in self.workflow(workflow)["jobs"]["comment"]["steps"]
+                     if s.get("name") == "Read the oss-verify App's key"]
+            self.assertEqual(len(steps), 1, workflow)
+            with tempfile.TemporaryDirectory() as directory:
+                directory = pathlib.Path(directory)
+                bin = directory / "bin"
+                bin.mkdir()
+                (bin / "curl").write_text("#!/bin/bash\nprintf '%s' "
+                                          + shlex.quote(json.dumps({"payload": {"data": payload}})) + "\n")
+                (bin / "curl").chmod(0o755)
+                run = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-c", steps[0]["run"]], cwd=directory,
+                                     env={**os.environ, "PATH": f"{bin}:{os.environ['PATH']}",
+                                          "GCP_ACCESS_TOKEN": "gcp-not-a-secret",
+                                          "GITHUB_OUTPUT": str(directory / "output")},
+                                     capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0, f"{workflow}: {run.stderr}")
+                masked = {line[len("::add-mask::"):] for line in run.stdout.splitlines()
+                          if line.startswith("::add-mask::")}
+                for line in [payload] + [line for line in key.splitlines() if line.strip()]:
+                    self.assertIn(line, masked, f"{workflow}: {line[:20]}… is not masked")
+                self.assertNotIn("MIIB", run.stdout.replace("::add-mask::MIIB", ""), workflow)
+                self.assertIn(key.splitlines()[1], (directory / "output").read_text(), workflow)
 
     def test_another_job_in_the_comment_environment_is_refused_in_every_shape(self):
         # The shapes GitHub takes for `environment` (workflow syntax, jobs.<job_id>.environment), each put on the
@@ -1286,6 +1333,8 @@ class ReviewRun(unittest.TestCase):
     def test_no_value_is_an_argument_and_the_environment_is_the_allow_list(self):
         out = self.run_review(**self.collector(**self.identity()))
         self.assertEqual(out.returncode, 0, out.stderr)
+        # The collector took the token before and after the review, so there is no lost export to warn about.
+        self.assertFalse((self.directory / "review" / "export-lost.txt").exists())
         argv = (self.directory / "argv").read_text()
         self.assertIn("claude", argv)
         for secret in self.SECRETS:
@@ -1312,14 +1361,23 @@ class ReviewRun(unittest.TestCase):
                                          ANTHROPIC_IDENTITY_TOKEN_FILE="/x/jwt"))
         self.assertNotIn("theorem.credential", self.child()["OTEL_RESOURCE_ATTRIBUTES"])
 
-    def test_a_token_the_collector_refuses_stops_the_review(self):
+    def test_a_token_the_collector_refuses_does_not_stop_the_review(self):
+        # Fail-soft: the export is a measurement, so a refused token loses this run's usage and nothing else. The
+        # review runs, with no telemetry in the child's environment, and the run says so.
         out = self.run_review(**self.collector(OTEL_COLLECTOR_TOKEN="wrong-token-not-a-secret"))
-        self.assertEqual(out.returncode, 1)
+        self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 401", out.stderr)
+        self.assertIn("this review's usage is not exported", out.stderr)
         self.assertNotIn("wrong-token-not-a-secret", out.stdout + out.stderr)
-        self.assertFalse((self.directory / "environ").exists())
-        self.assertEqual(self.failure()[0], "the cost collector answered 401, not 200, to an empty export with "
-                                            "OTEL_COLLECTOR_TOKEN before the review\n")
+        self.assertFalse((self.directory / "review" / "failure.txt").exists())
+        self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+        self.assertEqual((self.directory / "review" / "export-lost.txt").read_text(),
+                         "the cost collector answered 401, not 200, before the review, so its usage is not exported\n")
+        self.assertNoTelemetry()
+
+    def assertNoTelemetry(self):
+        for name in self.child():
+            self.assertFalse(name.startswith("OTEL_") or name.startswith("CLAUDE_CODE_ENABLE"), name)
 
     def test_a_curlrc_never_prints_the_token(self):
         (self.directory / ".curlrc").write_text(f"verbose\ntrace-ascii {self.directory}/trace\n")
@@ -1328,24 +1386,28 @@ class ReviewRun(unittest.TestCase):
         self.assertNotIn(self.TOKEN, out.stdout + out.stderr)
         self.assertFalse((self.directory / "trace").exists())
 
-    def test_a_token_refused_after_the_review_keeps_the_review_and_fails(self):
+    def test_a_token_refused_after_the_review_keeps_the_review_and_says_so(self):
         self.answers = [200, 401]
         # With workload identity too: stopping the identity token loop at the end leaves the exit status as it is.
         out = self.run_review(**self.collector(**self.identity()))
-        self.assertEqual(out.returncode, 3, out.stderr)
+        self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 401", out.stderr)
         self.assertIn("usage is likely lost", out.stderr)
         self.assertNotIn(self.TOKEN, out.stdout + out.stderr)
         self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+        self.assertEqual((self.directory / "review" / "export-lost.txt").read_text(),
+                         "the cost collector answered 401, not 200, after the review, so its usage is likely lost\n")
 
-    def test_a_collector_that_does_not_answer_stops_the_review(self):
+    def test_a_collector_that_does_not_answer_does_not_stop_the_review(self):
         with socket.socket() as closed:
             closed.bind(("127.0.0.1", 0))
             port = closed.getsockname()[1]
         out = self.run_review(**self.collector(OTEL_EXPORTER_OTLP_ENDPOINT=f"http://127.0.0.1:{port}"))
-        self.assertEqual(out.returncode, 1)
+        self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("answered 000", out.stderr)
-        self.assertFalse((self.directory / "environ").exists())
+        self.assertEqual((self.directory / "review" / "comment.md").read_text(), "Thanks.\n")
+        self.assertIn("answered 000", (self.directory / "review" / "export-lost.txt").read_text())
+        self.assertNoTelemetry()
 
     def test_without_the_collector_nothing_is_exported(self):
         out = self.run_review()
@@ -1985,18 +2047,21 @@ class ReviewStep(unittest.TestCase):
     TOKEN = "collector-token-not-a-secret"
 
     def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None, secret_manager=True,
-                 secret=None, signed_in=True):
+                 secret=None, signed_in=True, lost=None):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / ".github" / "scripts").mkdir(parents=True)
             if scan:
                 shutil.copy(REVIEW_COMMENT, directory / ".github" / "scripts" / "review-comment")
             (directory / ".review").mkdir()
-            # What review-run leaves after exit status 3: the review is written.
+            # What review-run leaves when the review is written.
             (directory / ".review" / "comment.md").write_text("Thanks.\n")
+            if lost is not None:
+                (directory / ".review" / "export-lost.txt").write_text(lost)
             script = directory / ".github" / "scripts" / "review-run"
-            # It says what it inherited: never the Google access token, always the collector's token.
-            script.write_text("#!/bin/bash\necho \"review-run: gcp=${GCP_ACCESS_TOKEN-unset} "
+            # It announces itself and says what it inherited: never the Google access token, always the collector's
+            # token when there is one. So a test can tell that the review ran, and with what.
+            script.write_text("#!/bin/bash\necho review-run: ran\necho \"review-run: gcp=${GCP_ACCESS_TOKEN-unset} "
                               f"otel=${{OTEL_COLLECTOR_TOKEN:+set}}\"\nexit {code}\n")
             script.chmod(0o755)
             for name, text in (("failure.txt", failure), ("failure-detail.txt", detail), ("served", served)):
@@ -2038,6 +2103,7 @@ class ReviewStep(unittest.TestCase):
                 self.assertEqual(code, 0, out)
                 self.assertIn(warning, out)
                 self.assertNotIn("::error::", out)
+                self.assertIn("review-run: ran\n", out)
                 self.assertIn("review-run: gcp=unset otel=\n", out)
                 self.assertEqual(summary, "")
                 if case == {"signed_in": False}:
@@ -2056,6 +2122,42 @@ class ReviewStep(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn(f"::add-mask::{self.TOKEN}\n", out)
         self.assertIn("review-run: gcp=unset otel=set\n", out)
+        self.assertNotIn("::warning::", out)
+
+    def test_a_lost_export_is_a_warning_on_the_run_page_and_changes_nothing(self):
+        lost = "the cost collector answered 401, not 200, before the review, so its usage is not exported\n"
+        for code in (0, 1):
+            with self.subTest(code=code):
+                status, out, _ = self.run_step(code, "plain words\n", lost=lost)
+                self.assertEqual(status, code)
+                warning = f"::warning::Usage export: {lost.strip()}.\n"
+                self.assertIn(warning, out)
+                # After the runner reads commands again, or the warning would be plain text in the log.
+                resume = re.search(r"^::stop-commands::([0-9a-f]{32})$", out, re.M).group(1)
+                self.assertLess(out.index(f"::{resume}::\n"), out.index(warning))
+        # A line that is not plain words is never shown, so review-run's file cannot carry a workflow command.
+        status, out, _ = self.run_step(0, lost="::error::x\n")
+        self.assertEqual(status, 0)
+        self.assertNotIn("Usage export", out)
+        self.assertNotIn("::error::x", out)
+        status, out, _ = self.run_step(0)
+        self.assertEqual(status, 0)
+        self.assertNotIn("Usage export", out)
+
+    def test_every_line_review_run_writes_passes_the_steps_filter(self):
+        # review-run writes export-lost.txt and the Review step shows it only if it matches its filter, so the two are
+        # tied by text: a reworded line that the filter refused would drop the warning with no failing test. Each
+        # line review-run can write, with each answer the collector can give, must pass the filter as it is.
+        script = (ROOT / ".github" / "scripts" / "review-run").read_text()
+        lines = []
+        for chunk in re.findall(r'echo ("the cost collector answered.*?)\s*> "\$in/export-lost\.txt"', script, re.S):
+            lines.append(" ".join(re.findall(r'"([^"]*)"', chunk)))
+        self.assertEqual(len(lines), 2, "review-run writes export-lost.txt in two places")
+        pattern = re.search(r"grep -m1 -xE '([^']*)' \.review/export-lost\.txt", review_step()["run"]).group(1)
+        for written in lines:
+            for answer in ("401", "403", "500", "000", "nothing"):
+                line = written.replace("${answer:-nothing}", answer)
+                self.assertRegex(line, "^" + pattern + "$", line)
 
     def test_a_review_that_did_not_finish_says_why_in_the_summary(self):
         code, out, summary = self.run_step(1, WHY_401 + ", on both tries\n", API_401[0]["result"] + "\n")
@@ -2098,14 +2200,16 @@ class ReviewStep(unittest.TestCase):
         self.assertIn("::error::The review is not published: review-run gave no reason\n", out)
 
     def test_the_record_of_what_answered_reaches_the_comment_job_whatever_the_ending(self):
-        for code in (0, 1, 3):
+        for code in (0, 1, 4):
             with self.subTest(code=code):
                 output = []
                 self.run_step(code, "plain words\n", served=SERVED_OK, output=output)
                 self.assertIn(SERVED_OK, output[0])
 
     def test_a_review_that_finished_writes_no_summary(self):
-        code, out, summary = self.run_step(3)
+        # review-run returns 0 when the review is written, also when the collector refused its token: the export is
+        # fail-soft, so the step passes and the comment is posted.
+        code, out, summary = self.run_step(0)
         self.assertEqual((code, summary), (0, ""))
         self.assertNotIn("::error::", out)
 

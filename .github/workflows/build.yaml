@@ -74,8 +74,8 @@ name: "Build"
 # pull_request_target and workflow_dispatch). A token carries no job name, so what keeps each Google account to the
 # job that needs it is the job's GitHub Environment, which the token carries a claim for: `ossv-ci`, which reads the
 # cost collector's token and nothing else, can be acted as only from the environment `enroll-review`, which the
-# review job declares; `ossv-app-comment`, the one account that reads the App's key, only from `comment`, which the
-# comment job declares. A job that declares no environment, project-builds among them, reaches neither account, and
+# review job declares; `ossv-app-comment`, the account these jobs read the App's key as, only from `comment`, which
+# the comment job declares. A job that declares no environment, project-builds among them, reaches neither account, and
 # project-builds, which builds the pull request's code, must never be given id-token: write.
 # A pull request from a fork gets the same identity tokens in the review and comment jobs: pull_request_target runs
 # this file from the base branch, never the fork's, so the fork's code never holds them.
@@ -94,19 +94,20 @@ name: "Build"
 # the run is: `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So it
 # gives a token to any workflow named "Build" that runs on main, from any event. The review and comment jobs of this
 # file ask for an identity token; no other job of it does.
-# A review runs only on main: Google's provider, which the review job signs in to for the collector's token, admits
-# refs/heads/main alone, so no other branch can run one. A change to the review is tested by running this file on
-# main against a test pull request: `gh workflow run build.yaml -f pr=<n>`, with a pull request opened by this
+# A review runs only on main: the Anthropic rule above admits refs/heads/main alone, so a run on another branch gets
+# no Anthropic token (and Google's provider, which also admits main alone, gives it no collector token). A change to
+# the review is tested by running this file on main against a test pull request: `gh workflow run build.yaml -f pr=<n>`, with a pull request opened by this
 # repository, never a maintainer's open enrollment, because the run posts its comment there.
 #
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, at the public URL below
-# (a literal here because it is public), with the collector's
-# bearer token, which the Review step reads at run time from Secret Manager (agent-spend-otel-token, whose readers
-# Theorem's infrastructure code names). The export is tagged theorem.project=oss-verify,
-# theorem.subproject=<name>, theorem.lane=enroll-review-ci and theorem.credential=oss-verify-ci
-# (.github/scripts/review-run sets them). The review fails if the token cannot be read, or if the collector does not
-# answer 200 to an empty export with the token before the review starts, rather than lose the review's spend in
-# silence. If it refuses one after the review, the comment is still posted and the review job fails.
+# (a literal here because it is public), with the collector's bearer token, which the Review step reads at run time
+# from Secret Manager (agent-spend-otel-token, whose readers Theorem's infrastructure code names). The export is
+# tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
+# theorem.credential=oss-verify-ci (.github/scripts/review-run sets them). The export is a measurement and never
+# decides whether an enrollment gets its review: if the sign-in or the read fails, or the collector refuses the token
+# or does not answer (before the review, or after a review that wrote its comment), the run's page carries one warning
+# saying that this review's usage is not exported, and the review runs to its end and its comment is posted. A lost export is read from that
+# warning, never from a red check.
 #
 # The review's conversation goes from one push to the next as an artifact of the review's run, named
 # enroll-review-<pull request>-<project>, sealed (AES-256-GCM) by .github/scripts/review-session under a key derived
@@ -302,8 +303,9 @@ jobs:
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # For the key that seals the review's conversation, which only a run on main gets (the top of this file). No
-    # deployment: the environment holds a secret, and the pull request shows no deployment.
+    # enroll-review holds the key that seals the review's conversation, and it is the only environment from which a
+    # job can act as ossv-ci, the collector token's reader (the top of this file). No deployment: the pull request
+    # shows none, and the environment claim is in the token either way.
     environment:
       name: enroll-review
       deployment: false
@@ -440,8 +442,8 @@ jobs:
           ANTHROPIC_ORGANIZATION_ID: 5fd73c3e-8a2c-4166-b80d-fb5ce0c1b4a6
           ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01WdHTLcJPEfiPttcuLK1hGT
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Qr1iUVcow4jdgQM7Amfks5
-          # Usage, to Theorem's cost collector. review-run checks that the collector takes the token.
-          # The collector's public URL.
+          # Usage, to Theorem's cost collector. review-run checks that the collector takes the token, and runs the
+          # review without the export if it does not. The collector's public URL.
           OTEL_EXPORTER_OTLP_ENDPOINT: https://agent-otel-public-6acxmql5za-uw.a.run.app
           GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
           # The conversation of the last review, which review-run resumes, and the commit this review is of. After a
@@ -490,11 +492,11 @@ jobs:
             { echo "served<<$delimiter"; cat .review/served; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
           fi
           echo "::$resume::"
-          # 3: the review is written, but the collector refused the token after it. The comment is still posted, and
-          # the next step fails the job.
-          if [ "$code" = 3 ]; then
-            echo "collector=refused" >> "$GITHUB_OUTPUT"
-          elif [ "$code" = 4 ]; then
+          # A lost export, on the run's page: review-run's own line, shown only if it is plain words, so it holds no
+          # command. It never changes the step's result.
+          lost=$(grep -m1 -xE '[A-Za-z0-9 ,.()-]{1,200}' .review/export-lost.txt 2> /dev/null) || lost=""
+          if [ -n "$lost" ]; then echo "::warning::Usage export: $lost."; fi
+          if [ "$code" = 4 ]; then
             echo "refused=true" >> "$GITHUB_OUTPUT"
             # 4: another provider or model answered, or nothing shows which (review-served). The comment job posts
             # none of the review, and says what answered. review-run's line names only what review-served cleaned.
@@ -571,23 +573,14 @@ jobs:
           compression-level: 0
           overwrite: true
 
-      - name: Fail if the collector refused the token after the review
-        if: ${{ steps.review.outputs.collector == 'refused' }}
-        env:
-          OTEL_EXPORTER_OTLP_ENDPOINT: https://agent-otel-public-6acxmql5za-uw.a.run.app
-        run: |
-          echo "::error::The collector at $OTEL_EXPORTER_OTLP_ENDPOINT refused its token after the review, so the review's usage is likely lost. The comment is posted; check Secret Manager agent-spend-otel-token."
-          exit 1
-
       # Whatever happened above, the Anthropic identity token does not outlive this job: a step that exits before its
       # own `rm` (a failed `openssl rand`, for one) leaves the file, and this removes it.
       - name: Remove the Anthropic identity token
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/oidc/jwt"
-
   comment:
     needs: [project-builds, review]
-    # After a review that wrote a comment, it posts it, also when the collector refused the token after the review.
+    # After a review that wrote a comment, it posts it, whatever happened to the usage export.
     # After a review that wrote none, it marks the comment already there as not current, naming the commit it is of,
     # or posts that the review did not run if there is none.
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' && (needs.review.result != 'success' || needs.review.outputs.comment != '') }}
