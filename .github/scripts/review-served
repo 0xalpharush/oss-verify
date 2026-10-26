@@ -64,8 +64,10 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
   or XDG_CONFIG_HOME, which moves the Anthropic profile, is refused too. It reads the settings files a
   machine or a user can write, and the global config in each of the files the tool can take it from (.config.json in
   the config home, and .claude.json and its -staging-oauth, -local-oauth and -custom-oauth names), whose `env` the
-  tool also applies as it starts. Remote managed settings that the organization's admin signs (the tool applies
-  routing names only from a verified copy) are not read.
+  tool also applies as it starts, and the managed settings of the platform (/etc/claude-code, or /Library/Application
+  Support/ClaudeCode on macOS) and, under WSL, Windows' (/mnt/c/Program Files/ClaudeCode, and the ClaudeCode policy
+  keys of the Windows registry). Remote managed settings that the organization's admin signs (the tool applies routing
+  names only from a verified copy) are not read.
 """
 import collections
 import glob
@@ -99,6 +101,12 @@ ELSEWHERE = ("NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FI
 PROFILE_PLACES = ("HOME", "XDG_CONFIG_HOME")
 # The names the tool gives its global config, .claude<name>.json (its own list, 2.1.310).
 GLOBAL_CONFIG_NAMES = ("", "-staging-oauth", "-local-oauth", "-custom-oauth")
+# The folders of the tool's managed settings (managed-settings.json, managed-settings.d/*.json): the platform's, and
+# under WSL also Windows', whose registry keys (SOFTWARE\Policies\ClaudeCode, value Settings) it reads through REG.
+MANAGED = {"darwin": "/Library/Application Support/ClaudeCode", "linux": "/etc/claude-code",
+           "wsl": "/mnt/c/Program Files/ClaudeCode"}
+REG = "/mnt/c/Windows/System32/reg.exe"
+PLATFORM = sys.platform
 PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
 # Settings, outside `env`, that let another model answer part of a review, or give the tool an `env` another way.
 OTHER_MODEL_SETTINGS = ("advisorModel", "policyHelper", "policyHelpers")
@@ -114,6 +122,44 @@ def clean(value):
     if not isinstance(value, str) or not value:
         return "none"
     return value if NAME.fullmatch(value) else (re.sub(r"[^A-Za-z0-9._:@+\[\]_-]", "?", value)[:100] or "none")
+
+
+def under_wsl():
+    """Whether this runs under WSL, as the tool tells it: WSL_DISTRO_NAME, or a kernel that names Microsoft or WSL."""
+    try:
+        with open("/proc/version") as f:
+            return bool(os.environ.get("WSL_DISTRO_NAME")) or any(w in f.read().lower() for w in ("microsoft", "wsl"))
+    except OSError:
+        return bool(os.environ.get("WSL_DISTRO_NAME"))
+
+
+def registry_settings():
+    """The settings of the Windows registry's ClaudeCode policy keys, as JSON texts, under WSL; raises ValueError for
+    one it cannot read."""
+    texts = []
+    for key in ("HKLM", "HKCU") if os.path.exists(REG) else ():
+        try:
+            answer = subprocess.run([REG, "query", fr"{key}\SOFTWARE\Policies\ClaudeCode", "/v", "Settings"],
+                                    capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise ValueError(f"reg.exe: {type(e).__name__}") from e
+        if answer.returncode == 1:   # no such key or value
+            continue
+        value = re.search(r"^\s+Settings\s+REG_(?:EXPAND_)?SZ\s+(.*?)\s*$", answer.stdout, re.M)
+        if answer.returncode != 0 or value is None:
+            raise ValueError("reg.exe gave no Settings value")
+        texts.append(value.group(1))
+    return texts
+
+
+def add_settings(sources, settings):
+    """Adds a settings object's `env`, and its OTHER_MODEL_SETTINGS keys, to `sources`: False when it is no object."""
+    if not isinstance(settings, dict):
+        return False
+    env = settings.get("env", {})
+    sources.append(env if isinstance(env, dict) else {"unreadable-settings": ""})
+    sources.append({name: "" for name in OTHER_MODEL_SETTINGS if name in settings})
+    return True
 
 
 def asked_for(asked):
@@ -183,27 +229,36 @@ def endpoint(host):
     which the tool applies as it starts, and the Anthropic profile the tool reads; one it cannot read is
     `unreadable-settings` or `unreadable-profile`. The global config is whichever of these the tool takes, so all are
     read: .config.json in the config home (CLAUDE_CONFIG_DIR, else ~/.claude), and .claude<s>.json, for each <s> of
-    GLOBAL_CONFIG_NAMES, in CLAUDE_CONFIG_DIR, else the home directory. An empty file holds no `env`."""
+    GLOBAL_CONFIG_NAMES, in CLAUDE_CONFIG_DIR, else the home directory. An empty file holds no `env`. Managed settings
+    are read from the platform's folder (MANAGED), and under WSL from Windows' folder and registry keys too."""
     sources = [os.environ]
     home = os.environ.get("HOME", "")
     config = [os.path.join(home, ".claude"), os.environ.get("CLAUDE_CONFIG_DIR")]
     globals_ = [os.path.join(d, ".config.json") for d in config if d] + \
         [os.path.join(d, f".claude{name}.json") for d in (home, config[1]) if d for name in GLOBAL_CONFIG_NAMES]
+    wsl = PLATFORM.startswith("linux") and under_wsl()
+    managed = [MANAGED["darwin" if PLATFORM == "darwin" else "linux"]] + [MANAGED["wsl"]] * wsl
+    managed_files = [os.path.join(d, "managed-settings.json") for d in managed] + \
+        [p for d in managed for p in sorted(glob.glob(os.path.join(glob.escape(d), "managed-settings.d", "*.json")))]
     for path in [os.path.join(d, "settings.json") for d in config if d] + globals_ + [".claude/settings.json",
-                 ".claude/settings.local.json", "/etc/claude-code/managed-settings.json"] \
-            + sorted(glob.glob("/etc/claude-code/managed-settings.d/*.json")):
+                 ".claude/settings.local.json"] + managed_files:
         try:
             if path in globals_ and os.path.getsize(path) == 0:
                 continue
             with open(path) as f:
                 settings = json.load(f)
-            env = settings.get("env", {})
         except FileNotFoundError:
             continue
-        except (OSError, ValueError, RecursionError, AttributeError):
+        except (OSError, ValueError, RecursionError):
             return "unreadable-settings"
-        sources.append(env if isinstance(env, dict) else {"unreadable-settings": ""})
-        sources.append({name: "" for name in OTHER_MODEL_SETTINGS if name in settings})
+        if not add_settings(sources, settings):
+            return "unreadable-settings"
+    try:
+        for text in registry_settings() if wsl else ():
+            if not add_settings(sources, json.loads(text)):
+                return "unreadable-settings"
+    except (ValueError, RecursionError):
+        return "unreadable-settings"
     found = set()
     profile = profile_base_url()
     if profile == "unreadable-profile":

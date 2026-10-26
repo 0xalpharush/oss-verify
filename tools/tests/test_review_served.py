@@ -7,6 +7,8 @@ review-run and review-comment.
 Each stand-in agent prints events in the shapes Claude Code prints them (`--output-format stream-json
 --verbose`): a `system` event, an `assistant` event for each content block of a response, with the response's model and
 message id, and a `result` event whose `modelUsage` names the tool's provider."""
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
@@ -661,6 +663,92 @@ class Run(StandIn):
         with open(os.path.join(self.dir, "pids")) as f:
             for pid in map(int, f.read().split()):
                 self.assertTrue(self.gone(pid), f"process {pid} still runs")
+
+
+def load_served():
+    """review-served as a module, so that a test can point the folders it reads at its own."""
+    loader = importlib.machinery.SourceFileLoader("review_served", SERVED)
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("review_served", loader))
+    loader.exec_module(module)
+    return module
+
+
+class Managed(unittest.TestCase):
+    """endpoint() reads the tool's managed settings where the tool does: the platform's folder (on macOS its own), and
+    under WSL also Windows' folder and registry keys."""
+    PROXY = {"env": {"ANTHROPIC_BASE_URL": "https://proxy.example"}}
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory(prefix="served-managed-")
+        self.dir = os.path.realpath(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.served = load_served()
+        self.served.MANAGED = {name: os.path.join(self.dir, name) for name in ("darwin", "linux", "wsl")}
+        self.served.REG = os.path.join(self.dir, "reg.exe")
+        self.served.PLATFORM = "linux"
+        self.served.under_wsl = lambda: False
+        home = os.path.join(self.dir, "home")
+        os.mkdir(home)
+        self.environ = environment(HOME=home)
+        cwd = os.getcwd()
+        os.chdir(self.dir)
+        self.addCleanup(os.chdir, cwd)
+
+    def endpoint(self):
+        saved = dict(os.environ)
+        os.environ.clear()
+        os.environ.update(self.environ)
+        try:
+            return self.served.endpoint(HOST)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+    def write(self, *parts, content=None):
+        path = os.path.join(self.dir, *parts)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content if content is not None else json.dumps(self.PROXY))
+        return path
+
+    def reg(self, status, output=""):
+        """A stand-in reg.exe that prints `output` and exits with `status`."""
+        with open(os.path.join(self.dir, "reg.out"), "w", newline="") as f:
+            f.write(output)
+        with open(self.served.REG, "w") as f:
+            f.write(f"#!/bin/sh\ncat '{self.dir}/reg.out'\nexit {status}\n")
+        os.chmod(self.served.REG, 0o755)
+
+    def test_the_platform_s_managed_settings_are_read(self):
+        self.assertEqual(self.endpoint(), HOST)
+        for platform, parts in (("linux", ("linux", "managed-settings.json")),
+                                ("linux", ("linux", "managed-settings.d", "10-proxy.json")),
+                                ("darwin", ("darwin", "managed-settings.json"))):
+            with self.subTest(platform=platform, parts=parts):
+                self.served.PLATFORM = platform
+                path = self.write(*parts)
+                self.assertEqual(self.endpoint(), "https:proxy.example")
+                os.remove(path)
+
+    def test_windows_managed_settings_are_read_under_wsl_only(self):
+        self.write("wsl", "managed-settings.json")
+        self.assertEqual(self.endpoint(), HOST)
+        self.served.under_wsl = lambda: True
+        self.assertEqual(self.endpoint(), "https:proxy.example")
+
+    def test_the_windows_registry_is_read_under_wsl_only(self):
+        line = "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\ClaudeCode\r\n    Settings    REG_SZ    " + \
+            json.dumps(self.PROXY) + "\r\n"
+        self.reg(0, line)
+        self.assertEqual(self.endpoint(), HOST)
+        self.served.under_wsl = lambda: True
+        self.assertEqual(self.endpoint(), "https:proxy.example")
+        self.reg(1)   # no such key: nothing set
+        self.assertEqual(self.endpoint(), HOST)
+        self.reg(0, "something else")   # an answer it cannot read: refused
+        self.assertEqual(self.endpoint(), "unreadable-settings")
+        self.reg(0, "    Settings    REG_SZ    {not json")
+        self.assertEqual(self.endpoint(), "unreadable-settings")
 
 
 class Check(unittest.TestCase):

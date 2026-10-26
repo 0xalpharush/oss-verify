@@ -13,7 +13,8 @@
 # review-gather first, then this, and read comment.md. Nothing is posted. review-served refuses to start Claude Code
 # (exit 4, naming them) when the shell or Claude Code's settings set any ANTHROPIC_* or CLAUDE_CODE_* variable other
 # than a credential (an API key, an OAuth token, the federation variables) or one of its harmless knobs: unset those
-# for the run, for example with `env -u <name> .github/scripts/review-run …`.
+# for the run, for example with `env -u <name> .github/scripts/review-run …`, or take them out of the settings file's
+# `env` that sets them.
 # The model gets three tools only, Read, Glob and Grep, in Claude Code's restricted mode, which also keeps them inside
 # this checkout: no shell, no network tool, no file writes, no MCP server. It reads what the pull request and the
 # project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the
