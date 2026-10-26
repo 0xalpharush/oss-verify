@@ -63,7 +63,7 @@ This table is the only list of languages in these documents. It gives the status
 | `c` | C | statements today | |
 | `c++` | C++, or C and C++ together | statements today | |
 | `rust` | Rust | statements today | `*.rs` |
-| `python` | Python | statements today | `*.py` |
+| `python` | Python | statements today; we start no statements for a new enrollment for now ([README](../README.md#when-the-checks-pass)) | `*.py` |
 | `go` | Go | builds today (plain build only, no cgo); our tools do not write theorem statements for Go yet | `*.go` |
 | `jvm` | Java, Kotlin and the other JVM languages | halts statements only; JVM binaries are not byte-reproducible yet | `*.java` `*.kt` |
 | `javascript` | JavaScript | held | `*.js` `*.mjs` `*.cjs` `*.ts` |

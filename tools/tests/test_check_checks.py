@@ -601,10 +601,13 @@ class ReviewComment(unittest.TestCase):
 
 
 class WorkflowArguments(unittest.TestCase):
-    """What build.yaml and triage.yaml do with the credentials they hold, as far as their text shows it: each named
-    credential reaches a command through a pipe or a shell builtin and never as a process's argument, and only the
-    jobs that run no code of the pull request can ask for a GitHub identity token. This reads the files; it does not
-    run them, so it proves nothing about what a called script does with what it is given."""
+    """What build.yaml, triage.yaml and enroll-dispatch.yml do with the credentials they hold, as far as their text
+    shows it: each named credential reaches a command through a pipe or a shell builtin and never as a process's
+    argument, and only the jobs that run no code of the pull request can ask for a GitHub identity token. This reads
+    the files; it does not run them, so it proves nothing about what a called script does with what it is given."""
+
+    # The one job of each workflow that reads the App's key, in the GitHub Environment `comment`.
+    KEY_JOBS = {"build.yaml": "comment", "triage.yaml": "comment", "enroll-dispatch.yml": "dispatch"}
 
     def workflow(self, name):
         return yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text())
@@ -648,7 +651,8 @@ class WorkflowArguments(unittest.TestCase):
         # by those names, beside the environment variables.
         for workflow, names in (("build.yaml", ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "OTEL_COLLECTOR_TOKEN",
                                                 "GCP_ACCESS_TOKEN", "key", "payload")),
-                                ("triage.yaml", ("GCP_ACCESS_TOKEN", "key", "payload"))):
+                                ("triage.yaml", ("GCP_ACCESS_TOKEN", "key", "payload")),
+                                ("enroll-dispatch.yml", ("GCP_ACCESS_TOKEN", "key", "payload"))):
             steps = self.steps(workflow)
             for name in names:
                 used = 0
@@ -678,7 +682,8 @@ class WorkflowArguments(unittest.TestCase):
         # to its job, and these files must also keep id-token: write off every other job. project-builds builds the
         # pull request's code and triage's gather reads its text, so neither may ever ask for one. A job with no permissions of its own inherits the workflow's, so the effective
         # permission is what is read here: a workflow-level id-token: write would reach every job.
-        for workflow, want in (("build.yaml", {"review", "comment"}), ("triage.yaml", {"comment"})):
+        for workflow, want in (("build.yaml", {"review", "comment"}), ("triage.yaml", {"comment"}),
+                               ("enroll-dispatch.yml", {"dispatch"})):
             parsed = self.workflow(workflow)
             default = parsed.get("permissions") or {}
             got = set()
@@ -722,8 +727,8 @@ class WorkflowArguments(unittest.TestCase):
              {"ACTIONS_ID_TOKEN_REQUEST_TOKEN": request, "ACTIONS_ID_TOKEN_REQUEST_URL": "http://127.0.0.1:9/?x=1"},
              [request, "jwt-not-a-secret"]),
         ]
-        for workflow in ("build.yaml", "triage.yaml"):
-            cases.append((f"{workflow} comment key", steps(workflow, "comment", "Read the oss-verify App's key"),
+        for workflow, job in self.KEY_JOBS.items():
+            cases.append((f"{workflow} {job} key", steps(workflow, job, "Read the oss-verify App's key"),
                           json.dumps({"payload": {"data": base64.b64encode(key.encode()).decode()}}),
                           {"GCP_ACCESS_TOKEN": gcp}, [gcp, base64.b64encode(key.encode()).decode()] + key_lines[1:3]))
         for label, run, answer, environment, secrets in cases:
@@ -801,45 +806,45 @@ class WorkflowArguments(unittest.TestCase):
 
     APP_ACCOUNT = "ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com"
 
-    def app_key_jobs_problems(self, jobs):
-        """Why these jobs could let a job other than `comment` read the App's key, or [] if they cannot.
+    def app_key_jobs_problems(self, jobs, key_job="comment"):
+        """Why these jobs could let a job other than `key_job` read the App's key, or [] if they cannot.
 
         The account that reads the key can be acted as only by an oss-verify job whose identity token carries
         `environment: comment` (Theorem's infrastructure code). GitHub accepts an environment as a string,
         as an object with `name`, and through an expression, and compares names without regard to case. An expression
         can compute `comment` from text that does not contain it (format('com{0}', 'ment')), so another job's
         environment is refused if it holds an expression at all, or if its text names `comment` in any case; the
-        review job's own, the plain name enroll-review, passes. The comment job's must be the plain name `comment`,
+        review job's own, the plain name enroll-review, passes. The key job's must be the plain name `comment`,
         with nothing but `deployment: false` beside it."""
         problems = []
         for name, job in jobs.items():
-            if name == "comment":
+            if name == key_job:
                 if job.get("environment") not in ("comment", {"name": "comment", "deployment": False}):
-                    problems.append(f"comment: environment {job.get('environment')!r}, want the plain name 'comment'")
+                    problems.append(f"{name}: environment {job.get('environment')!r}, want the plain name 'comment'")
                 if (job.get("env") or {}).get("GCP_SERVICE_ACCOUNT") != self.APP_ACCOUNT:
-                    problems.append(f"comment: does not sign in as {self.APP_ACCOUNT}")
+                    problems.append(f"{name}: does not sign in as {self.APP_ACCOUNT}")
             else:
                 text = json.dumps(job.get("environment", ""))
                 if "${{" in text:
                     problems.append(f"{name}: its environment ({job['environment']!r}) is an expression")
                 if "comment" in text.lower():
-                    problems.append(f"{name}: its environment ({job['environment']!r}) names comment; only comment may")
+                    problems.append(f"{name}: its environment ({job['environment']!r}) names comment; only {key_job} may")
                 if self.APP_ACCOUNT in json.dumps(job):
                     problems.append(f"{name}: names {self.APP_ACCOUNT}")
         return problems
 
-    def test_only_the_comment_jobs_can_read_the_app_key(self):
-        for workflow in ("build.yaml", "triage.yaml"):
+    def test_only_the_key_jobs_can_read_the_app_key(self):
+        for workflow, key_job in self.KEY_JOBS.items():
             jobs = self.workflow(workflow)["jobs"]
-            self.assertIn("comment", jobs, workflow)
-            self.assertEqual(self.app_key_jobs_problems(jobs), [], workflow)
+            self.assertIn(key_job, jobs, workflow)
+            self.assertEqual(self.app_key_jobs_problems(jobs, key_job), [], workflow)
 
     def test_only_the_review_job_can_read_the_collector_token(self):
         # ossv-ci can be acted as only from oss-verify's GitHub Environment `enroll-review` (Theorem's
         # infrastructure code), which the review job declares; no other job of either file may name that account or
         # that environment, and the review job must keep it, or its sign-in stops working.
         account = "ossv-ci@theorem-agent-infra.iam.gserviceaccount.com"
-        for workflow in ("build.yaml", "triage.yaml"):
+        for workflow in self.KEY_JOBS:
             for name, job in self.workflow(workflow)["jobs"].items():
                 review = workflow == "build.yaml" and name == "review"
                 environment = json.dumps(job.get("environment", "")).lower()
@@ -851,15 +856,15 @@ class WorkflowArguments(unittest.TestCase):
                     self.assertNotIn("enroll-review", environment, f"{workflow} {name} is in enroll-review")
 
     @unittest.skipUnless(shutil.which("jq") and shutil.which("base64"), "the key step needs jq and base64")
-    def test_the_app_key_is_masked_in_both_comment_jobs(self):
-        # The key-reading step is in both files, and the runner logs the private-key input of the next step: these
-        # masks are what keep a key that does not expire out of a public log. Each copy is run with a stand-in curl
-        # for Secret Manager, and every non-blank line of the key, and its base64 form, must be masked.
+    def test_the_app_key_is_masked_in_every_key_job(self):
+        # The key-reading step is in each of these files, and the runner logs the private-key input of the next step:
+        # these masks are what keep a key that does not expire out of a public log. Each copy is run with a stand-in
+        # curl for Secret Manager, and every non-blank line of the key, and its base64 form, must be masked.
         key = "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu\n" \
               "KUpRKfFLfRYC9AIKjbJTWit+CqvjWYzvQwECAwEAAQ==\n-----END RSA PRIVATE KEY-----\n"
         payload = base64.b64encode(key.encode()).decode()
-        for workflow in ("build.yaml", "triage.yaml"):
-            steps = [s for s in self.workflow(workflow)["jobs"]["comment"]["steps"]
+        for workflow, key_job in self.KEY_JOBS.items():
+            steps = [s for s in self.workflow(workflow)["jobs"][key_job]["steps"]
                      if s.get("name") == "Read the oss-verify App's key"]
             self.assertEqual(len(steps), 1, workflow)
             with tempfile.TemporaryDirectory() as directory:
@@ -888,9 +893,9 @@ class WorkflowArguments(unittest.TestCase):
 
     def test_every_google_sign_in_keeps_its_token_to_one_step(self):
         # Each auth step writes no credentials file, exports no variable, and mints a five-minute access token: its
-        # output is all that holds it. Three steps, one per job that signs in.
+        # output is all that holds it. Four steps, one per job that signs in.
         found = 0
-        for workflow in ("build.yaml", "triage.yaml"):
+        for workflow in self.KEY_JOBS:
             for name, job in self.workflow(workflow)["jobs"].items():
                 for step in job["steps"]:
                     if step.get("uses", "").startswith("google-github-actions/auth@"):
@@ -900,7 +905,7 @@ class WorkflowArguments(unittest.TestCase):
                                          {"token_format": "access_token", "access_token_lifetime": "300s",
                                           "create_credentials_file": False, "export_environment_variables": False},
                                          f"{workflow} {name}")
-        self.assertEqual(found, 3)
+        self.assertEqual(found, 4)
 
     def test_another_job_in_the_comment_environment_is_refused_in_every_shape(self):
         # The shapes GitHub takes for `environment` (workflow syntax, jobs.<job_id>.environment), each put on the

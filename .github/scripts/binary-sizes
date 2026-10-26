@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+"""Print each binary's two sizes, as one line of JSON, for build.yaml's record of a build:
+
+    python3 .github/scripts/binary-sizes <tools/check's work directory>
+
+{target: {build: {"text": <the .text section's bytes>, "exec": <the bytes the loader maps executable>}}}, from the
+manifest.yaml tools/check wrote there and the files in its out/. A value that cannot be read is null. The enrollment
+size line (1 MB of a plain binary, enroll-dispatch) is applied to the larger of the two: the .text section's size is
+what tools/check shows, and the executable segments' size is what a build cannot shrink by renaming or resizing a
+section (tools/manifest.py, executable_bytes).
+"""
+import json
+import pathlib
+import sys
+
+import yaml
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "tools"))
+import manifest  # noqa: E402
+
+
+def sizes(work):
+    with open(work / "manifest.yaml", encoding="utf-8") as handle:
+        targets = yaml.safe_load(handle)["targets"]
+    out = {}
+    for target, entry in targets.items():
+        out[target] = {}
+        for build, binary in entry["builds"].items():
+            path = work / "out" / target / binary["file"]
+            layout = manifest.binary_layout(path) or {}
+            out[target][build] = {"text": layout.get("text_bytes"), "exec": manifest.executable_bytes(path)}
+    return out
+
+
+if __name__ == "__main__":
+    print(json.dumps(sizes(pathlib.Path(sys.argv[1])), sort_keys=True, separators=(",", ":")))

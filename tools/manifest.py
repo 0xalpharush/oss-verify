@@ -34,7 +34,8 @@ SHN_XINDEX = 0xFFFF
 STT_FUNC = 2
 STB_GLOBAL, STB_WEAK = 1, 2
 ET_EXEC, ET_DYN = 2, 3
-PT_DYNAMIC, PT_INTERP = 2, 3
+PT_LOAD, PT_DYNAMIC, PT_INTERP = 1, 2, 3
+PF_X = 1
 PN_XNUM = 0xFFFF
 TEXT = b".text\0"
 MAX_ELF_BYTES = 4 << 30
@@ -128,6 +129,40 @@ def program_header_types(handle, header):
             return None
         kinds.add(struct.unpack(header["order"] + "I", raw)[0])
     return kinds
+
+
+def executable_bytes(path):
+    """The bytes of memory a loader maps executable for an ELF file: the sum of p_memsz over its PT_LOAD program
+    headers whose p_flags has PF_X. None if the file is not one we can read, or a program header cannot be read.
+
+    A loader reads the program headers, not the section headers, so the build that made the file cannot shrink this
+    number by renaming or resizing a section, as it can the .text section's size (binary_layout)."""
+    parsed = read_elf(path)
+    if parsed is None:
+        return None
+    header = parsed[0]
+    count, size, wide = header["phnum"], header["phentsize"], header["wide"]
+    entry = header["order"] + ("IIQQQQQQ" if wide else "IIIIIIII")
+    if count == PN_XNUM or (count and size < struct.calcsize(entry)):
+        return None
+    total = 0
+    try:
+        with open(path, "rb") as handle:
+            for index in range(count):
+                handle.seek(header["phoff"] + index * size)
+                raw = handle.read(struct.calcsize(entry))
+                if len(raw) < struct.calcsize(entry):
+                    return None
+                values = struct.unpack(entry, raw)
+                # 64-bit: type, flags, offset, vaddr, paddr, filesz, memsz, align; 32-bit: type, offset, vaddr,
+                # paddr, filesz, memsz, flags, align
+                kind, flags, memsz = (values[0], values[1], values[6]) if wide else (values[0], values[6], values[5])
+                if kind == PT_LOAD and flags & PF_X:
+                    total += memsz
+    except (OSError, ValueError):  # ValueError: an offset larger than any file
+        return None
+    return total
+
 
 
 def section_size(handle, sections, names, wanted):
