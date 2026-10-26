@@ -69,7 +69,7 @@ patch_style: .oss-verify/patch_style.md
 # Optional, and rarely needed: the memory budgets of the statements (docs/what-gets-proven.md), and where the proofs
 # are published (docs/project-yaml.md). Set only what you want to change.
 # budgets:
-#   halts: 16GiB
+#   halts: 16GiB              # only 16GiB is supported
 #   agrees:
 #     address: [2GiB, 512GiB]
 #     undefined: [16GiB, 512GiB]

@@ -181,13 +181,15 @@ The memory budgets of the statements ([what-gets-proven.md](what-gets-proven.md#
 
 ```yaml
 budgets:
-  halts: 16GiB               # each build that runs alone
+  halts: 16GiB               # each build that runs alone; only 16GiB
   agrees:                    # for each sanitizer: [plain side, sanitizer side]
     address: [2GiB, 512GiB]  # also for asan-ubsan
     undefined: [16GiB, 512GiB]
 ```
 
-Give a size as a positive number of bytes, or as a number followed by `KiB`, `MiB`, `GiB` or `TiB`. Give a budget under `agrees` only for a sanitizer that the project uses. Give only the values that you want to change.
+Give a size as a positive number of bytes, or as a number followed by `KiB`, `MiB`, `GiB` or `TiB`. Give a budget under `agrees` only for a sanitizer that the project uses. Give only the values that you want to change. The plain side of a pair must be at least 4096 bytes, and the sanitizer side must be at least the plain side. `halts` can only be 16GiB: a project's own halts budget is not carried into the statements yet.
+
+A statement made under a project's own budgets names both of them. A smaller plain-side budget covers fewer inputs. A larger sanitizer-side budget lets the sanitizer build use more memory before a refusal counts as a difference. So two agrees statements with different budgets claim different things: compare the budgets before you compare the statements.
 
 ### proofs
 
