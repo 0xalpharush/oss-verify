@@ -1555,8 +1555,8 @@ class ReviewRun(unittest.TestCase):
         self.assertIn(f"kept the session {self.OLD}, the review of {self.HEAD}", out.stdout)
 
     def test_without_the_diff_since_the_last_review_the_review_is_fresh(self):
-        # None, a failed compare, and an empty one (only keep's line): each gives a fresh review.
-        for diff in (None, "gh: Not Found (HTTP 404)\n(exit status 1)\n", "(exit status 0)\n"):
+        # None (a force-push, the same head) and a failed compare: each gives a fresh review.
+        for diff in (None, "gh: Not Found (HTTP 404)\n(exit status 1)\n"):
             with self.subTest(diff=diff):
                 self.last_review()
                 path = self.directory / "review" / "since-last-review.diff"
@@ -1570,6 +1570,18 @@ class ReviewRun(unittest.TestCase):
                 self.assertIn(f"review-gather wrote no diff since {self.LAST}", out.stdout)
                 [call] = self.claude_calls()
                 self.assertNotIn("--resume", call)
+
+    def test_an_empty_diff_on_a_new_head_resumes_the_same_session(self):
+        # A push that changed nothing in projects/<name>/ (a merge of main): the same session, told the diff is empty.
+        self.last_review()
+        (self.directory / "review" / "since-last-review.diff").write_text("(exit status 0)\n")
+        out = self.run_review(**self.resume())
+        self.assertEqual(out.returncode, 0, out.stderr)
+        [call] = self.claude_calls()
+        self.assertEqual(call[call.index("--resume") + 1], self.OLD)
+        self.assertIn("When the diff is empty, the push changed nothing in projects/libreac/.",
+                      call[call.index("-p") + 1])
+        self.assertEqual(self.kept()[0]["id"], self.OLD)
 
     def test_a_session_that_cannot_be_resumed_gives_a_fresh_review(self):
         self.last_review()
@@ -1602,6 +1614,33 @@ class ReviewRun(unittest.TestCase):
         self.assertIn(f"the session {self.OLD} holds a finding held back for private review, so it is not kept",
                       out.stdout)
         self.assertEqual(list(self.session.iterdir()), [])
+
+    def test_every_way_a_model_writes_the_marker_cuts_the_finding(self):
+        for marker in ("  <!-- held finding -->", "<!--held finding-->", "<!-- Held Finding -->",
+                       "- <!-- held finding -->",
+                       "> <!-- held_finding -->"):
+            with self.subTest(marker=marker):
+                (self.directory / "stream").write_text(stream({"type": "result", "is_error": False,
+                                                                "result": "Thanks.\n\nA finding was sent for private "
+                                                                          "review.\n\n" + self.HELD.replace(
+                                                                              "<!-- held finding -->", marker)}))
+                out = self.run_review()
+                self.assertEqual(out.returncode, 0, out.stderr)
+                self.assertNotIn("SECRETBUG", (self.directory / "review" / "comment.md").read_text())
+                self.assertIn("SECRETBUG", (self.directory / "review" / "held-finding.md").read_text())
+
+    def test_a_comment_that_still_names_a_held_finding_is_not_published(self):
+        # A marker inside a sentence is no marker line: nothing is cut, and the comment names a held finding.
+        for result in ("Thanks. <!-- held finding --> parse_SECRETBUG reads past the end.\n",
+                       "Thanks.\n\nA held finding: parse_SECRETBUG.\n\n" + self.HELD):
+            with self.subTest(result=result):
+                (self.directory / "stream").write_text(stream({"type": "result", "is_error": False,
+                                                                "result": result}))
+                out = self.run_review()
+                self.assertEqual(out.returncode, 1, out.stderr)
+                self.assertIn("named a held finding outside its own part", self.failure()[0])
+                self.assertFalse((self.directory / "review" / "held-finding.md").exists())
+                self.assertNotIn("SECRETBUG", out.stdout + out.stderr)
 
     def test_a_failed_try_never_shows_a_held_finding(self):
         self.fake_claude(({"type": "result", "subtype": "success", "is_error": True, "num_turns": 3,
@@ -1913,31 +1952,26 @@ class ReviewHeld(unittest.TestCase):
 
     RUN = "https://example.test/run"
 
-    def run_held(self, held, issues=(), comments=(), label=True, variable="theorem-labs/private", private=True):
-        """issues: (number, state, title, body) of the label's issues; comments: the bodies of an issue's comments."""
+    def run_held(self, held, bodies_on_github=(), label=True, variable="theorem-labs/private", visibility="private"):
+        """bodies_on_github: the bodies of the label's issues already there, open or closed."""
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "bin").mkdir()
             (root / "review").mkdir()
             (root / "review" / "held-finding.md").write_text(held)
-            (root / "issues.json").write_text(json.dumps(
-                [{"number": n, "state": s, "title": t, "body": b} for n, s, t, b in issues]))
-            (root / "comments.json").write_text(json.dumps(list(comments)))
+            (root / "issues.json").write_text(json.dumps(list(bodies_on_github)))
             gh = root / "bin" / "gh"
-            gh.write_text(f"#!{sys.executable}\nimport json, os, pathlib, sys\nroot = pathlib.Path({str(root)!r})\n"
+            # gh api: the repository's visibility, the key lines of the label's issues (as --jq selects them), or the
+            # new issue's address; it records its arguments and each body it is sent.
+            gh.write_text(f"#!{sys.executable}\nimport json, pathlib, sys\nroot = pathlib.Path({str(root)!r})\n"
                           "a = sys.argv[1:]\n"
                           "with open(root / 'calls', 'a') as f: f.write(json.dumps(a) + '\\n')\n"
                           "path = next(x for x in a[1:] if x.startswith('repos/'))\n"
-                          "run = os.environ.get('RUN_URL', '')\n"
                           f"if path.endswith('/labels/held-finding'): sys.exit(0 if {label} else 1)\n"
-                          f"if path == 'repos/{variable}': print('true' if {private} else 'false')\n"
-                          "elif '/issues?' in path: print('\\n'.join(f\"{i['number']}\\t{i['state']}\\t{i['title']}\\t"
-                          "{str(('review run: ' + run) in i['body']).lower()}\" for i in "
-                          "json.loads((root / 'issues.json').read_text())))\n"
-                          "elif path.endswith('/comments') and '--paginate' in a:\n"
-                          "    print('\\n'.join('1' for c in json.loads((root / 'comments.json').read_text())"
-                          " if ('review run: ' + run) in c))\n"
-                          "elif path.endswith('/comments'): print('https://example.test/comment')\n"
+                          f"if path == 'repos/{variable}': print({visibility!r})\n"
+                          "elif '/issues?' in path:\n"
+                          "    for b in json.loads((root / 'issues.json').read_text()):\n"
+                          "        print('\\n'.join(l for l in b.split('\\n') if l.startswith('held finding key: ')))\n"
                           "elif path.endswith('/issues'): print('https://example.test/issue')\n"
                           "for x in a:\n"
                           "    if x.startswith('body=@'):\n"
@@ -1968,36 +2002,49 @@ class ReviewHeld(unittest.TestCase):
         self.assertTrue(all("labels[]=held-finding" in c for c in created))
         self.assertEqual(len(bodies), 2)
         self.assertTrue(bodies[0].startswith(f"enrollment PR: theorem-labs/oss-verify#68\nenrollment PR head: {'1' * 40}\n"
-                                             "public PR comment: https://example.test/pr-comment\n"))
+                                             "public PR comment: https://example.test/pr-comment\n"
+                                             f"review run: {self.RUN}\nheld finding key: {self.RUN} 1\n"))
+        self.assertIn(f"held finding key: {self.RUN} 2\n", bodies[1])
         self.assertIn("project: libreac\nwhy held: memory safety\n", bodies[0])
         self.assertNotIn("title:", bodies[0])
 
-    def test_a_finding_found_again_is_a_comment_on_its_open_issue(self):
-        run, calls, _ = self.run_held(ReviewRun.HELD, issues=[
-            (7, "open", "[held] libreac/fuzz: heap-buffer-overflow in parse_SECRETBUG", "review run: https://old")])
+    def test_a_re_run_sends_only_what_its_run_did_not_send_and_the_title_routes_nothing(self):
+        # The first of two untitled findings was sent before the run failed; a closed issue counts too. Another run's
+        # issue with the same title does not stop either.
+        two = "<!-- held finding -->\nproject: libreac\n<!-- held finding -->\nproject: libreac\nsecond\n"
+        run, calls, bodies = self.run_held(two, bodies_on_github=[
+            f"review run: {self.RUN}\nheld finding key: {self.RUN} 1\n", "held finding key: https://old 2\n"])
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn("found again", run.stdout)
-        self.assertFalse([c for c in calls if c[1] == "repos/theorem-labs/private/issues"])
-        self.assertTrue([c for c in calls if c[1] == "repos/theorem-labs/private/issues/7/comments" and "-F" in c])
+        self.assertIn("this run already sent finding 1", run.stdout)
+        self.assertEqual(len(bodies), 1)
+        self.assertIn(f"held finding key: {self.RUN} 2\n", bodies[0])
+        self.assertIn("second", bodies[0])
 
-    def test_a_re_run_sends_nothing_its_run_already_sent(self):
-        title = "[held] libreac/fuzz: heap-buffer-overflow in parse_SECRETBUG"
-        for issues, comments in (([(7, "open", title, f"review run: {self.RUN}\n")], ()),
-                                 ([(7, "open", title, "review run: https://old\n")], [f"review run: {self.RUN}\n"])):
-            with self.subTest(issues=issues, comments=comments):
-                run, calls, bodies = self.run_held(ReviewRun.HELD, issues=issues, comments=comments)
-                self.assertEqual(run.returncode, 0, run.stderr)
-                self.assertIn("this run already sent this finding", run.stdout)
-                self.assertFalse([c for c in calls if "-F" in c])
+    def test_empty_markers_are_no_findings_and_at_most_ten_are_sent(self):
+        run, calls, bodies = self.run_held("<!-- held finding -->\n<!-- held finding -->\nproject: libreac\n")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(bodies), 1)
+        eleven = "".join(f"<!-- held finding -->\ntitle: t{i}\nproject: libreac\n" for i in range(11))
+        run, calls, bodies = self.run_held(eleven)
+        self.assertEqual(run.returncode, 1)
+        self.assertEqual(len(bodies), 10)
+        self.assertIn("more than 10 findings", run.stderr)
+
+    def test_a_loose_marker_splits_findings_as_review_run_cuts_them(self):
+        run, _, bodies = self.run_held("  - <!--Held Finding-->\nproject: a\n> <!-- held_finding -->\nproject: b\n")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(bodies), 2)
 
     def test_without_a_private_repository_or_a_finding_it_fails(self):
         run, calls, _ = self.run_held(ReviewRun.HELD, variable="")
         self.assertEqual(run.returncode, 2)
         self.assertEqual(calls, [])
-        run, calls, _ = self.run_held(ReviewRun.HELD, private=False)
-        self.assertEqual(run.returncode, 2)
-        self.assertIn("is not a private repository", run.stderr)
-        self.assertFalse([c for c in calls if "-F" in c or "-f" in c])
+        for visibility in ("public", "internal", ""):
+            with self.subTest(visibility=visibility):
+                run, calls, _ = self.run_held(ReviewRun.HELD, visibility=visibility)
+                self.assertEqual(run.returncode, 2)
+                self.assertIn("is not a private repository", run.stderr)
+                self.assertFalse([c for c in calls if "-F" in c or "-f" in c])
         run, _, _ = self.run_held("<!-- held finding -->\n")
         self.assertEqual(run.returncode, 1)
 

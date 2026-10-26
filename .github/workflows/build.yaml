@@ -133,7 +133,15 @@ name: "Build"
 # request cannot write the session that its review resumes. Every other job has cache-mode: none (below).
 # A session holds the public inputs the review read and the review's own reasoning, and no token: review-run keeps
 # none that looks like a credential. As with every cache entry of main, a pull request's own run can read it. GitHub
-# drops an entry that no run has read for 7 days, and the next review is then fresh.
+# drops an entry that no run has read for 7 days, and the next review is then fresh. A review that holds back a
+# finding (review.md, rule 6) keeps no session, because the session would hold the finding: the next push resumes the
+# last session kept before it, or starts fresh.
+# Only the review job can act as ossv-ci: that comes with the environment enroll-review. Its deployment branch rule,
+# declared in Theorem's infrastructure code, allows main alone; GitHub checks it against the run's ref, which is main
+# for pull_request_target and refs/pull/<n>/merge for a pull request's own run
+# (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
+# That rule is the second lock beside Google's provider, which admits refs/heads/main alone. The environment and its
+# rule are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -579,6 +587,9 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
+          # At most 1 MiB, the most the hold job reads.
+          [ "$(wc -c < .review/held-finding.md)" -le 1048576 ] \
+            || { echo "::error::The held finding is larger than 1 MiB, so it is not stored and the review is not posted."; exit 1; }
           name="held/$RUN_ID/$(openssl rand -hex 16)"
           # The token reaches curl through a pipe that the builtin printf writes, not an argument.
           generation=$(curl -q -sSf --max-time 60 -X POST \
@@ -615,6 +626,10 @@ jobs:
     if: ${{ !cancelled() && needs.review.outputs.held_object != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # One hold job at a time for a pull request, so two runs cannot both find no issue of a finding and both file it.
+    concurrency:
+      group: build-hold-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: false
     environment:
       name: comment
       deployment: false

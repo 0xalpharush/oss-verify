@@ -77,10 +77,11 @@ its section \"In CI\" says. The workflow gathered the inputs into $in/, and the 
 this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing else: it starts with the \
 sentence of thanks, with no line before it about you or your review."
 
-# The session of the last review, when REVIEW_SESSION holds one that is whole and review-gather wrote a diff since its
-# commit that is not empty (keep's last line is the command's exit status). review-gather writes none when the head
-# does not descend from that commit (a force-push) or is that commit (an edit of the pull request): then the review is
-# fresh, and reads every input again.
+# The session of the last review, when REVIEW_SESSION holds one that is whole and review-gather wrote the diff since
+# its commit (keep's last line is the command's exit status). The diff can be empty, when the push changed nothing in
+# projects/<name>/ (a merge of main, say): the review still resumes, and the prompt says so. review-gather writes none
+# when the head does not descend from that commit (a force-push) or is that commit (an edit of the pull request): then
+# the review is fresh, and reads every input again.
 last_id="" last_head=""
 if [ -n "$session_dir" ] && [ -f "$session_dir/session" ]; then
   last_id=$(sed -n 's/^id=//p' "$session_dir/session")
@@ -90,8 +91,7 @@ if [ -n "$session_dir" ] && [ -f "$session_dir/session" ]; then
         && $last_dir =~ ^-[A-Za-z0-9-]{1,200}$ ]] || [ ! -s "$session_dir/$last_id.jsonl" ]; then
     echo "review-run: $session_dir/session does not name a whole session"
     last_id=""
-  elif [ "$(tail -n 1 "$in/since-last-review.diff" 2> /dev/null)" != "(exit status 0)" ] \
-      || ! sed '$d' "$in/since-last-review.diff" | grep -q .; then
+  elif [ "$(tail -n 1 "$in/since-last-review.diff" 2> /dev/null)" != "(exit status 0)" ]; then
     echo "review-run: review-gather wrote no diff since $last_head, the commit of the last review"
     last_id=""
   else
@@ -102,7 +102,8 @@ fi
 again="This is a new push to pull request #$PR. Earlier in this session you reviewed its commit $last_head, and your \
 last message was your comment on it. This review looks only at the diff since the head you last reviewed: \
 $in/since-last-review.diff holds the changes to projects/$NAME/ from $last_head to ${HEAD_SHA:-}. Review that diff \
-against review.md (read it again: main can have changed it). Do not review again what the diff does not change: a \
+against review.md (read it again: main can have changed it). When the diff is empty, the push changed nothing in \
+projects/$NAME/. Do not review again what the diff does not change: a \
 new request comes only from the diff. For each request of your last comment, read again the current input it is \
 about (the files of projects/$NAME/, the build's results, the description, the checks, the project's source): drop \
 the request when that input shows its fix, and keep it otherwise. The workflow gathered those inputs again into \
@@ -312,7 +313,7 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
     | join("; ")' "$in/claude.json" 2> /dev/null | tr '[:cntrl:]' ' ') || true
   builtin printf '%s' "$detail" > "$in/claude.detail"
   # A finding held back for private review (review.md, rule 6) is never shown, also in a try that failed.
-  if [[ $detail == *'<!-- held finding -->'* ]]; then
+  if grep -qiE 'held[[:space:]_-]*finding' "$in/claude.detail"; then
     detail="(not shown: it holds a finding held back for private review)"
   elif holds_credential "$in/claude.detail"; then
     detail="(not shown: it holds what looks like a credential)"
@@ -344,15 +345,25 @@ jq -r 'if .is_error then error("the review ended with an error: \(.result // .su
                           NR <= 6 && !cut { held = held $0 "\n"; next }
                           { printf "%s", held; held = ""; print }
                           END { printf "%s", held }' > "$in/comment.md"
-# A finding held back for private review (review.md, rule 6): from the first line `<!-- held finding -->` on, the
-# message goes to held-finding.md, which nothing here prints and build.yaml stores for its hold job, which sends it to
-# the disclosure route (.github/scripts/review-held); the comment keeps only what is before it.
+# A finding held back for private review (review.md, rule 6): from the first marker line on, the message goes to
+# held-finding.md, which nothing here prints and build.yaml stores for its hold job, which sends it to the disclosure
+# route (.github/scripts/review-held); the comment keeps only what is before it. A marker line is `<!-- held finding -->`
+# in any case, with any spacing, and after any indent, list bullet or quote mark, as a model can write it; review-held
+# splits the findings with the same pattern. If anything that names a held finding is still in the comment after the
+# cut, nothing is published.
+held_marker='^[[:space:]>*+-]*<!--[[:space:]]*held[[:space:]_-]*finding[[:space:]]*-->[[:space:]]*$'
 rm -f "$in/held-finding.md"
-if grep -qx '<!-- held finding -->[[:space:]]*' "$in/comment.md"; then
-  awk -v held="$in/held-finding.md" '!h && /^<!-- held finding -->[[:space:]]*$/ { h = 1 } h { print > held; next } { print }' \
-    "$in/comment.md" > "$in/comment.public"
-  mv "$in/comment.public" "$in/comment.md"
+awk -v held="$in/held-finding.md" -v marker="$held_marker" \
+  '!h && tolower($0) ~ marker { h = 1 } h { print > held; next } { print }' "$in/comment.md" > "$in/comment.public"
+mv "$in/comment.public" "$in/comment.md"
+if [ -s "$in/held-finding.md" ]; then
   echo "review-run: the review holds back a finding for private review; no log shows it"
+fi
+if grep -qiE '<!--[[:space:]]*held|held[[:space:]_-]*finding' "$in/comment.md"; then
+  rm -f "$in/held-finding.md"
+  echo "review-run: the comment still names a held finding after the cut, so nothing of it is published" >&2
+  echo "the comment named a held finding outside its own part, so it is not posted" > "$in/failure.txt"
+  exit 1
 fi
 if [ ! -s "$in/comment.md" ]; then
   echo "review-run: the review wrote no comment" >&2
