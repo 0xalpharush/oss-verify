@@ -2012,39 +2012,63 @@ class ReviewHeld(unittest.TestCase):
         """An issue body as review-held writes it: its key on the fifth line."""
         return f"enrollment PR: x\nenrollment PR head: y\npublic PR comment: z\nreview run: r\n{key}\n"
 
+    # A stand-in for `gh api`: it answers each call with the JSON GitHub would (from state.json), applies the script's
+    # own --jq filter to it with the real jq, and records each call and each body it is sent. So the tests check the
+    # script's filters, not a copy of them.
+    GH = r'''#!PYTHON
+import json, pathlib, subprocess, sys
+root = pathlib.Path(ROOT)
+state = json.loads((root / "state.json").read_text())
+a = sys.argv[2:]
+with open(root / "calls", "a") as f:
+    f.write(json.dumps(sys.argv[1:]) + "\n")
+path = next(x for x in a if x.startswith("repos/"))
+fields = [x for i, x in enumerate(a) if i and a[i - 1] in ("-f", "-F")]
+body = next((open(x[6:]).read() for x in fields if x.startswith("body=@")), None)
+if body is not None:
+    with open(root / "bodies", "a") as f:
+        f.write(body + "\0")
+repo = path.split("/")[1] + "/" + path.split("/")[2]
+private = repo == state["variable"]
+if path.endswith("/labels/held-finding"):
+    sys.exit(0 if state["label"] else 1)
+if path == "repos/" + state["variable"]:
+    answer = {"visibility": state["visibility"]}
+elif "/issues?" in path:
+    answer = [{"number": i, "body": b} for i, b in enumerate(state["issues"], 1)]
+elif path.endswith("/comments") and not fields:
+    answer = state["comments"] if private else state["public_comments"]
+elif path.endswith("/comments"):
+    answer = {"id": 7, "html_url": "https://example.test/comment"}
+elif path.endswith("/issues"):
+    answer = {"number": 42, "html_url": "https://example.test/issue"}
+else:
+    answer = {}
+if "--jq" in a:
+    out = subprocess.run(["jq", "-r", a[a.index("--jq") + 1]], input=json.dumps(answer), capture_output=True, text=True,
+                         check=True).stdout
+    sys.stdout.write(out)
+else:
+    print(json.dumps(answer))
+'''
+
     def run_held(self, held, bodies_on_github=(), label=True, variable="theorem-labs/private", visibility="private",
-                 header=None, comments=()):
+                 header=None, comments=(), public_comments=()):
         """bodies_on_github: the bodies of the label's issues already there, open or closed, numbered from 1. comments:
-        the bodies of comments already on issue 1. held follows the six lines the review job writes (header, by default
-        HEADER)."""
+        the bodies of comments already on a private issue. public_comments: the pull request's comments, as
+        (login, body, html_url). held follows the six lines the review job writes (header, by default HEADER)."""
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "bin").mkdir()
             (root / "review").mkdir()
             (root / "review" / "object").write_text((self.HEADER if header is None else header) + held)
-            (root / "issues.json").write_text(json.dumps(list(bodies_on_github)))
-            (root / "comments.json").write_text(json.dumps(list(comments)))
+            (root / "state.json").write_text(json.dumps({
+                "variable": variable, "visibility": visibility, "label": label, "issues": list(bodies_on_github),
+                "comments": [{"id": i, "body": c} for i, c in enumerate(comments)],
+                "public_comments": [{"user": {"login": login}, "body": b, "html_url": u}
+                                    for login, b, u in public_comments]}))
             gh = root / "bin" / "gh"
-            # gh api: the repository's visibility; the number and fifth body line of the label's issues, as --jq
-            # selects them; the first lines of issue 1's comments; or a new issue's number. It records its arguments
-            # and each body it is sent.
-            gh.write_text(f"#!{sys.executable}\nimport json, pathlib, sys\nroot = pathlib.Path({str(root)!r})\n"
-                          "a = sys.argv[1:]\n"
-                          "with open(root / 'calls', 'a') as f: f.write(json.dumps(a) + '\\n')\n"
-                          "path = next(x for x in a[1:] if x.startswith('repos/'))\n"
-                          f"if path.endswith('/labels/held-finding'): sys.exit(0 if {label} else 1)\n"
-                          f"if path == 'repos/{variable}': print({visibility!r})\n"
-                          "elif '/issues?' in path:\n"
-                          "    for i, b in enumerate(json.loads((root / 'issues.json').read_text()), 1):\n"
-                          "        lines = b.split('\\n')\n"
-                          "        if len(lines) > 4 and lines[4].startswith('held finding key: '):\n"
-                          "            print(f'{i}\\t{lines[4]}')\n"
-                          "elif path.endswith('/comments') and '--paginate' in a:\n"
-                          "    for c in json.loads((root / 'comments.json').read_text()): print(c.split('\\n')[0])\n"
-                          "elif path.endswith('/issues'): print(42)\n"
-                          "for x in a:\n"
-                          "    if x.startswith('body=@'):\n"
-                          "        with open(root / 'bodies', 'a') as f: f.write(open(x[6:]).read() + '\\0')\n")
+            gh.write_text(self.GH.replace("PYTHON", sys.executable).replace("ROOT", repr(str(root))))
             gh.chmod(0o755)
             run = subprocess.run([str(ROOT / ".github" / "scripts" / "review-held"), str(root / "review")],
                                  env={**os.environ, "PATH": f"{root / 'bin'}:{os.environ['PATH']}",
@@ -2117,7 +2141,7 @@ class ReviewHeld(unittest.TestCase):
         run, calls, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + long + "END-OF-FINDING\n")
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(len(bodies), 3)
-        self.assertTrue(all(len(b.encode()) <= 60200 for b in bodies))
+        self.assertTrue(all(len(b.encode()) <= 60500 for b in bodies))
         self.assertIn("(Part 1 of 3: the rest follows in the comments.)", bodies[0])
         self.assertTrue(bodies[1].startswith(f"held finding part: {self.OBJECT} 1 2/3\n"))
         self.assertIn("END-OF-FINDING", bodies[2])
@@ -2132,6 +2156,39 @@ class ReviewHeld(unittest.TestCase):
         self.assertEqual(len(bodies), 1)
         self.assertTrue(bodies[0].startswith(f"held finding part: {self.OBJECT} 1 3/3\n"))
         self.assertEqual([c[1] for c in calls if "-F" in c], ["repos/theorem-labs/private/issues/1/comments"])
+
+    @staticmethod
+    def finding_of(issue_body, comment_bodies):
+        """The finding as the disclosure route reads it back: the issue after its five lines, without the part note,
+        then each comment after its part line and the blank line."""
+        text = issue_body.split("\n", 5)[5]
+        text = re.sub(r"\n\n\(Part 1 of \d+: the rest follows in the comments\.\)\n$", "", text)
+        return text + "".join(c.split("\n", 2)[2] for c in comment_bodies)
+
+    def test_a_long_finding_comes_back_byte_for_byte_whatever_the_comment_address(self):
+        # Run 1 finds no review comment yet (the long fallback text) and stops after part 2. Run 2 finds the comment
+        # (a short address) and posts the rest. The parts must join to the finding exactly.
+        # Short lines, so that a change of a few bytes in the lines the script adds would move where a part ends.
+        lines = [f"{i:05d} " + "é" * (i % 7) + "y" * (30 + i % 13) + "\n" for i in range(2800)]
+        finding = "".join(lines) + "END-OF-FINDING\n"
+        held = "<!-- held finding -->\ntitle: big\n" + finding
+        run, _, first = self.run_held(held)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertGreater(len(first), 2)
+        self.assertEqual(self.finding_of(first[0], first[1:]), finding)
+        issue = first[0].replace("public PR comment: not posted yet: the review comment on theorem-labs/oss-verify#68",
+                                 "public PR comment: https://example.test/c")
+        run, _, second = self.run_held(held, bodies_on_github=[issue], comments=first[1:2],
+                                       public_comments=[("oss-verify[bot]", "<!-- oss-verify-review -->\nx",
+                                                         "https://example.test/c")])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(second, first[2:])
+        self.assertEqual(self.finding_of(first[0], first[1:2] + second), finding)
+
+    def test_only_the_first_title_line_leaves_the_finding(self):
+        run, _, bodies = self.run_held("<!-- held finding -->\ntitle: crash in f\nlog:\ntitle: from the input\n")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(self.finding_of(bodies[0], []), "log:\ntitle: from the input\n")
 
     def test_a_loose_marker_splits_findings_as_review_run_cuts_them(self):
         run, _, bodies = self.run_held("  - <!--Held Finding-->\nproject: a\n> <!-- held_finding -->\nproject: b\n")
@@ -2208,10 +2265,11 @@ class ReviewHold(unittest.TestCase):
     """review-hold sends every stored finding in the bucket, its own run's and a cancelled run's, through a fake curl for
     the bucket and a stand-in review-held, and deletes each object once it is sent."""
 
-    def sweep(self, objects, held_fails=(), delete_fails=False, current="", gone=(), sizes=None, cut=()):
+    def sweep(self, objects, held_fails=(), delete_fails=False, current="", gone=(), sizes=None, cut=(), late=()):
         """objects: name -> stored bytes. held_fails: names whose review-held fails. current: this run's object. gone:
         names another hold job deleted (404). sizes: name -> the size the listing reports. cut: names whose download
-        the connection cuts after the 200 line (half the bytes, curl exit 18)."""
+        the connection cuts after the 200 line (half the bytes, curl exit 18). late: names whose download has every
+        byte but curl still exits 18 (the connection fails at the end)."""
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             scripts = root / "scripts"
@@ -2240,8 +2298,9 @@ class ReviewHold(unittest.TestCase):
                 "name = url.split('/o/')[1].split('?')[0]\n"
                 f"if urllib.parse.unquote(name) in {list(gone)!r}: print('404', end=''); sys.exit(0)\n"
                 "data = (root / 'store' / name).read_bytes()\n"
-                f"if urllib.parse.unquote(name) in {list(cut)!r}:\n"
-                "    pathlib.Path(a[a.index('-o') + 1]).write_bytes(data[:len(data) // 2]); print('200', end='')\n"
+                f"if urllib.parse.unquote(name) in {list(cut) + list(late)!r}:\n"
+                f"    keep = data if urllib.parse.unquote(name) in {list(late)!r} else data[:len(data) // 2]\n"
+                "    pathlib.Path(a[a.index('-o') + 1]).write_bytes(keep); print('200', end='')\n"
                 "    sys.exit(18)\n"
                 "pathlib.Path(a[a.index('-o') + 1]).write_bytes(data)\n"
                 "print('200', end='')\n")
@@ -2294,7 +2353,7 @@ class ReviewHold(unittest.TestCase):
     def test_a_cut_download_is_not_sent_or_deleted(self):
         # curl exit 18 after the 200 line, and a download shorter than the listing's size with exit 0.
         mine = "held/9/" + "a" * 32
-        for kwargs in ({"cut": (mine,)}, {"sizes": {mine: 40}}):
+        for kwargs in ({"cut": (mine,)}, {"late": (mine,)}, {"sizes": {mine: 40}}):
             with self.subTest(kwargs=kwargs):
                 run, sent, curl = self.sweep({mine: b"oss-verify held finding v1\n" + b"y" * 20}, current=mine,
                                              **kwargs)
