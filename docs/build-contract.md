@@ -330,7 +330,7 @@ The checks hold each binary against LPS as the published proofs use it: the proo
 
 The records and the quiet twins change no byte of a binary. With `--twice`, the second build makes neither, and its binaries must be the same as the first build's. A record that cannot be written leaves the link as it is, with a warning, and that fuzz target's checks say that it has no record.
 
-These checks find a build that did not do what it meant to, for example a library whose own build dropped the sanitizer flags. The records are written in the build's own container, so they do not stand against a `build.sh` written to deceive them; the review of the pull request does. `tools/check` reads the records and the runs' results without following a symbolic link, and checks each kept file against its SHA-256.
+These checks find a build that did not do what it meant to, for example a library whose own build dropped the sanitizer flags. The records are written in the build's own container, so they do not stand against a `build.sh` written to deceive them; the review of the pull request does. The same holds for the runs: qemu writes the trace as the program's own user, so a binary written to deceive the checks can rewrite its trace. `tools/check` reads the records and the runs' results without following a symbolic link, and checks each kept file against its SHA-256.
 
 ## Go fuzz targets
 

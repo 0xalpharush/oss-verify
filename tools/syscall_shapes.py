@@ -167,6 +167,7 @@ DIRENT64_MIN_RECLEN = 24                      # Sys/Fs/Readdir.v dirent64_min_re
 SOCKADDR_STORAGE_SIZE = 128                   # Sys/Net/Socket.v SOCKADDR_STORAGE_SIZE
 SIGABRT = 6
 PID_MAX = 1 << 31                             # Sys/Kernel/Signal.v pid_positive: 1 <= pid < 2^31
+NGROUPS_MAX = 65536                           # Sys/Uapi.v NGROUPS_MAX
 PID_MAX_ENVELOPE = 1 << 22                    # Sys/Kernel/Fork.v PID_MAX_ENVELOPE: a task id is in (0, 2^22)
 
 # Errno values, as the kernel numbers them. ERRNO_NAMES spells the ones an arm answers, for the reasons.
@@ -174,11 +175,13 @@ EPERM, ENOENT, ESRCH, EINTR, EBADF, ECHILD, EAGAIN, ENOMEM, EACCES, EFAULT = 1, 
 EEXIST, ENOTDIR, EISDIR, EINVAL, ENFILE, EMFILE, ENOTTY = 17, 20, 21, 22, 23, 24, 25
 ESPIPE, ECONNRESET, EISCONN, ENOTCONN, ETIMEDOUT = 29, 104, 106, 107, 110
 ERANGE, ENAMETOOLONG, ENOTSOCK, EOPNOTSUPP, EAFNOSUPPORT = 34, 36, 88, 95, 97
+EBUSY, EROFS, EPIPE, ENOTEMPTY, EPROTONOSUPPORT, ESOCKTNOSUPPORT, EADDRINUSE = 16, 30, 32, 39, 93, 94, 98
 ERRNO_NAMES = {1: "EPERM", 2: "ENOENT", 3: "ESRCH", 4: "EINTR", 9: "EBADF", 10: "ECHILD", 11: "EAGAIN", 12: "ENOMEM",
-               13: "EACCES", 14: "EFAULT", 17: "EEXIST", 20: "ENOTDIR", 21: "EISDIR", 22: "EINVAL", 23: "ENFILE",
-               24: "EMFILE", 25: "ENOTTY", 29: "ESPIPE", 34: "ERANGE", 36: "ENAMETOOLONG", 88: "ENOTSOCK",
-               95: "EOPNOTSUPP", 97: "EAFNOSUPPORT", 104: "ECONNRESET", 106: "EISCONN", 107: "ENOTCONN",
-               110: "ETIMEDOUT"}
+               13: "EACCES", 14: "EFAULT", 16: "EBUSY", 17: "EEXIST", 20: "ENOTDIR", 21: "EISDIR", 22: "EINVAL",
+               23: "ENFILE", 24: "EMFILE", 25: "ENOTTY", 29: "ESPIPE", 30: "EROFS", 32: "EPIPE", 34: "ERANGE",
+               36: "ENAMETOOLONG", 39: "ENOTEMPTY", 88: "ENOTSOCK", 93: "EPROTONOSUPPORT", 94: "ESOCKTNOSUPPORT",
+               95: "EOPNOTSUPP", 97: "EAFNOSUPPORT", 98: "EADDRINUSE", 104: "ECONNRESET", 106: "EISCONN",
+               107: "ENOTCONN", 110: "ETIMEDOUT"}
 # The errno sets the model's arms draw an environment's refusal from, each the model's list of the same name.
 OPENAT_ERRNOS = {ENOMEM, EACCES, EMFILE, ENFILE}          # Sys/Fs/Open.v openat_errnos
 MMAP_ERRNOS = {ENOMEM}                                    # Sys/Mm/Mmap.v mmap_errnos
@@ -190,6 +193,9 @@ PIPE2_ERRNOS = {EMFILE, ENFILE, ENOMEM}                   # Sys/Fs/Pipe.v pipe2_
 GETRANDOM_ERRNOS = {EINTR}                                # Sys/Drivers/Char/Random.v getrandom_errnos
 GETCWD_ERRNOS = {ENOMEM, ENOENT, ENAMETOOLONG}            # Sys/Fs/DPath.v getcwd_errnos
 GETDENTS64_ERRNOS = {ENOENT}                              # Sys/Fs/Readdir.v getdents64_errnos
+UNLINKAT_ERRNOS = {ENOMEM, EACCES, EPERM, EROFS, EBUSY}   # Sys/Fs/Namei.v unlinkat_errnos
+SOCKET_ERRNOS = {ENOMEM, EMFILE, ENFILE}                  # Sys/Net/Socket.v socket_errnos, accept_errnos
+BIND_ERRNOS = {EADDRINUSE}                                # Sys/Net/Socket.v bind_errnos, listen_errnos
 
 # The Linux riscv64 system-call numbers of the names qemu -strace prints (asm-generic/unistd.h). The model's arms are
 # numbers; this table names them. Model.load checks that every arm number is here, so an arm the table cannot name is
@@ -905,6 +911,9 @@ class Ledger:
         self.sigaltstack_installed = False  # m_sigaltstack_installed
         self.cloned = False                 # a clone or clone3 answered a child's pid
         self.setsid_done = False            # m_setsid_succeeded
+        self.fork_unseen = False            # a fork the model answers whose return the trace does not show
+        self.ngroups = None                 # the run's number of groups (cr_groups), once an answer has shown it
+        self.rlimit_core = None             # (rlim_cur, rlim_max) of m_rlimit_core, once the trace has shown it
 
     # -- the address space ------------------------------------------------------------------------------------------
     def image_clear(self, addr, n):
@@ -1608,7 +1617,8 @@ def _openat(run, args, ret, errno, tid):
     if fl not in OPENAT_MODELED:
         return f"flag word {flags_text} is none of the modeled open words (Sys/Fs/Open.v modeled_open_flags)"
     if path == "":
-        return None
+        return errno_only(ret, errno, {ENOENT, ENAMETOOLONG, EFAULT}, "openat of the empty path",
+                          "Sys/Fs/Open.v openat_body_spec")
     if args[0].strip() != "AT_FDCWD":
         return f"dirfd {args[0]} is not AT_FDCWD (Sys/Fs/Open.v openat_body_spec)"
     fd = ret if ret is not None and ret >= 0 else None
@@ -1617,6 +1627,14 @@ def _openat(run, args, ret, errno, tid):
         if fd is not None:
             led.fds[fd] = open_kind(fl, path)
 
+    def any_open_answer(what, cite):
+        """Every open arm answers a new descriptor (one the table does not hold: lowest_fd), an errno of
+        openat_errnos, or one of the path errnos its arms give; read_cstr adds -ENAMETOOLONG and -EFAULT."""
+        if fd is not None and fd in led.fds:
+            return (f"{what} returned {fd}, a descriptor the run already holds: the model answers a free one "
+                    f"({cite}: lowest_fd)")
+        return refused(ret, errno, OPENAT_ERRNOS | {EEXIST, EISDIR, ENOENT, ENOTDIR, ENAMETOOLONG, EFAULT}, what,
+                       cite)
     if "/" not in path:
         # Sys/Fs/Open.v openat_dir_spec declines a name over NAME_MAX and never answers a successful directory open of
         # a name other than "." and ".." (only -ENOENT and -ENOTDIR).
@@ -1630,6 +1648,9 @@ def _openat(run, args, ret, errno, tid):
             why = create_answer(path, ret, errno)
             if why:
                 return why
+        why = any_open_answer(f"openat of {path!r}", "Sys/Fs/Open.v openat_resolved_spec")
+        if why:
+            return why
         install()
         return None
     if path == LOCALTIME_PATH:
@@ -1639,12 +1660,18 @@ def _openat(run, args, ret, errno, tid):
         return errno_only(ret, errno, {ENOENT}, "openat of /etc/localtime", "Sys/Fs/Open.v openat_localtime_spec")
     if path == DEVNULL_PATH:
         # Sys/Fs/Open.v openat_devnull_spec: every modeled word, a /dev/null descriptor.
+        why = any_open_answer("openat of /dev/null", "Sys/Fs/Open.v openat_devnull_spec")
+        if why:
+            return why
         install()
         return None
     if path == URANDOM_PATH:
         # Sys/Fs/Open.v openat_urandom_spec: O_RDONLY opens it; the exclusive words are -EEXIST; O_DIRECTORY is
         # -ENOTDIR; every other word is unmodeled.
         if fl == OPEN_RD:
+            why = any_open_answer("openat of /dev/urandom", "Sys/Fs/Open.v openat_urandom_spec")
+            if why:
+                return why
             install()
             return None
         if fl in OPEN_EXCL or fl in OPEN_RDWR_EXCL:
@@ -1667,6 +1694,9 @@ def _openat(run, args, ret, errno, tid):
         why = create_answer(path, ret, errno)
         if why:
             return why
+        why = any_open_answer(f"openat of {path!r}", "Sys/Fs/Open.v openat_create_spec")
+        if why:
+            return why
         if fd is not None:
             led.tmp_held.add(path)
         install()
@@ -1676,6 +1706,9 @@ def _openat(run, args, ret, errno, tid):
             return (f"a read of {path!r}, a /tmp key this run does not hold: no create of that name comes before it, "
                     "the declared /tmp is taken to be empty, and the model declines a key the run does not hold "
                     "(Sys/Fs/Open.v openat_tmp_spec, State.v in_tmp)")
+        why = any_open_answer(f"openat of {path!r}", "Sys/Fs/Open.v openat_tmp_spec")
+        if why:
+            return why
         install()
         return None
     return (f"openat of {path!r} with {flags_text} is unmodeled: the /tmp arm answers O_WRONLY|O_CREAT|O_TRUNC, and "
@@ -1724,8 +1757,9 @@ def _unlinkat(run, args, ret, errno, tid):
     if args[0].strip() != "AT_FDCWD":
         return f"dirfd {args[0]} is not AT_FDCWD (Sys/Fs/Namei.v unlinkat_body_spec)"
     c = path.rstrip("/")
+    found = UNLINKAT_ERRNOS | {ENOTDIR}     # Sys/Fs/Namei.v unlink_found_spec: a name that exists
     if c == "":
-        return None
+        return errno_only(ret, errno, {EBUSY, EISDIR}, f"unlinkat of {path!r}", "Sys/Fs/Namei.v unlinkat_body_spec")
     if "/" in c:
         # Sys/Fs/Namei.v unlinkat_tmp_spec: AT_REMOVEDIR and a component over NAME_MAX are unmodeled; a name some key
         # lives under (fs_under) is -EISDIR; a key the run does not hold is -ENOENT; a key it holds is removed
@@ -1751,17 +1785,22 @@ def _unlinkat(run, args, ret, errno, tid):
         if led.names_key(c):
             return (f"an unlink of {path!r} while a descriptor on it is open: the model declines "
                     "(Sys/Fs/Namei.v unlink_found_spec, fd_names_path)")
+        why = answered(ret, errno, {0}, found, f"unlinkat of {path!r}", "Sys/Fs/Namei.v unlink_found_spec")
+        if why:
+            return why
         if ret is None or ret == 0:
             led.tmp_held.discard(c)
         return None
     if c in (".", ".."):
-        return None
+        return errno_only(ret, errno, {EINVAL, EISDIR, ENOTEMPTY}, f"unlinkat of {path!r}",
+                          "Sys/Fs/Namei.v unlinkat_body_spec")
     if len(c) > NAME_MAX:
         return "a path longer than NAME_MAX (Sys/Fs/Namei.v unlinkat_body_spec)"
     if led.names_key(c):
         return (f"an unlink of {path!r} while a descriptor on it is open: the model declines "
                 "(Sys/Fs/Namei.v unlink_found_spec, fd_names_path)")
-    return None
+    return answered(ret, errno, {0}, found | {ENOENT, ENAMETOOLONG, EFAULT}, f"unlinkat of {path!r}",
+                    "Sys/Fs/Namei.v unlinkat_body_spec, unlink_found_spec")
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -2232,8 +2271,8 @@ def _clock_gettime(run, args, ret, errno, tid):
 def _nanosleep(run, args, ret, errno, tid):
     """Sys/Kernel/Time/Hrtimer.v nanosleep_spec: a request the model cannot read is unmodeled, not -EFAULT; an invalid
     timespec is -EINVAL; the sleep answers 0, or -EINTR with the rest written."""
-    return errno_in(ret, errno, {EINVAL, EINTR}, "nanosleep",
-                      "Sys/Kernel/Time/Hrtimer.v nanosleep_spec: an unreadable request is unmodeled, not -EFAULT")
+    return answered(ret, errno, {0}, {EINVAL, EINTR}, "nanosleep",
+                    "Sys/Kernel/Time/Hrtimer.v nanosleep_spec: an unreadable request is unmodeled, not -EFAULT")
 
 
 def _fstat(run, args, ret, errno, tid):
@@ -2470,7 +2509,9 @@ def _rt_sigaction(run, args, ret, errno, tid):
                     "(Sys/Kernel/Signal.v sigaction_accepted)")
     elif not 1 <= sig <= 64:
         return errno_only(ret, errno, {EINVAL}, f"rt_sigaction of signal {args[0]}", "Sys/Kernel/Signal.v sig_valid")
-    return None
+    # -EINVAL is accepted above (the sigsetsize qemu does not print); else 0, and -EFAULT for an unreadable act.
+    return answered(ret, errno, {0}, set() if is_null(args[1]) else {EFAULT}, f"rt_sigaction of signal {args[0]}",
+                    "Sys/Kernel/Signal.v rt_sigaction_spec")
 
 
 def _rt_sigprocmask(run, args, ret, errno, tid):
@@ -2483,7 +2524,7 @@ def _rt_sigprocmask(run, args, ret, errno, tid):
         if size is not None and size != NSIG_BYTES:
             return errno_only(ret, errno, {EINVAL}, f"rt_sigprocmask with sigsetsize {size}",
                               "Sys/Kernel/Signal.v rt_sigprocmask_spec")
-    return errno_in(ret, errno, {EINVAL, EFAULT}, "rt_sigprocmask", "Sys/Kernel/Signal.v rt_sigprocmask_spec")
+    return answered(ret, errno, {0}, {EINVAL, EFAULT}, "rt_sigprocmask", "Sys/Kernel/Signal.v rt_sigprocmask_spec")
 
 
 def _sigaltstack(run, args, ret, errno, tid):
@@ -2503,7 +2544,7 @@ def _sigaltstack(run, args, ret, errno, tid):
     if is_null(args[0]):
         return None if ret in (None, 0) else (f"sigaltstack with a NULL new stack returned {ret_text(ret, errno)}: "
                                               "the model answers 0 (Sys/Kernel/Signal.v sigaltstack_spec)")
-    why = errno_in(ret, errno, {EFAULT, EINVAL, ENOMEM}, "sigaltstack", "Sys/Kernel/Signal.v sigaltstack_spec")
+    why = answered(ret, errno, {0}, {EFAULT, EINVAL, ENOMEM}, "sigaltstack", "Sys/Kernel/Signal.v sigaltstack_spec")
     if why:
         return why
     if ret == 0:
@@ -2647,7 +2688,13 @@ def _prctl(run, args, ret, errno, tid):
     if low32(opt) != 23:
         return (f"prctl option {args[0]} is unmodeled: PR_CAPBSET_READ (23) is the one answered "
                 "(Sys/Kernel/Sys.v prctl_modeled_options)")
-    return None
+    cap = num(args[1]) if len(args) > 1 else None
+    if cap is None:
+        return und("unparseable capability argument")
+    cite = "Sys/Kernel/Sys.v prctl_spec"
+    if cap % TWO_POW_64 > 40:
+        return errno_only(ret, errno, {EINVAL}, f"prctl(PR_CAPBSET_READ, {args[1]})", f"{cite}: CAP_LAST_CAP")
+    return answered(ret, errno, {1}, set(), f"prctl(PR_CAPBSET_READ, {args[1]})", cite)
 
 
 FUTEX_OPS = {"FUTEX_WAIT": 0, "FUTEX_WAKE": 1, "FUTEX_FD": 2, "FUTEX_REQUEUE": 3, "FUTEX_CMP_REQUEUE": 4,
@@ -2698,7 +2745,7 @@ def _pipe2(run, args, ret, errno, tid):
         return errno_only(ret, errno, {EINVAL}, f"pipe2 with flags {args[1]}", "Sys/Fs/Pipe.v pipe2_flags_mask")
     if low32(fl):
         return f"flags {args[1]}: only pipe2(.., 0) is modeled (Sys/Fs/Pipe.v pipe2_spec)"
-    why = errno_in(ret, errno, PIPE2_ERRNOS | {EFAULT}, "pipe2", "Sys/Fs/Pipe.v pipe2_errnos")
+    why = answered(ret, errno, {0}, PIPE2_ERRNOS | {EFAULT}, "pipe2", "Sys/Fs/Pipe.v pipe2_spec, pipe2_errnos")
     if why:
         return why
     if ret == 0:
@@ -2727,6 +2774,8 @@ def _dup(run, args, ret, errno, tid):
         return None
     if ret < 0:
         return errno_only(ret, errno, DUP_ERRNOS, "dup", "Sys/Fs/File.v dup_errnos")
+    if ret in led.fds:
+        return f"dup returned {ret}, a descriptor the run already holds: the model answers a free one ({cite})"
     led.fds[ret] = kind
     return None
 
@@ -2806,7 +2855,7 @@ def _sched_setscheduler(run, args, ret, errno, tid):
     if policy != 5:
         return errno_only(ret, errno, {EINVAL}, f"sched_setscheduler policy {policy}",
                           f"{cite}: a success is answered for SCHED_IDLE only")
-    return None
+    return answered(ret, errno, {0}, {EINVAL}, "sched_setscheduler(SCHED_IDLE)", f"{cite}: sched_setscheduler_answer")
 
 
 RLIM = re.compile(r"\{rlim_cur=(-?\d+),\s*rlim_max=(-?\d+)\}")
@@ -2831,15 +2880,20 @@ def _prlimit64(run, args, ret, errno, tid):
     if new_null == old_null:
         return f"exactly one of new_rlim and old_rlim must be non-NULL ({cite})"
     if new_null:
-        why = errno_in(ret, errno, {EFAULT}, "a prlimit64 read", cite)
+        why = answered(ret, errno, {0}, {EFAULT}, "a prlimit64 read", cite)
         if why:
             return why
         if ret == 0:
-            led.rlimit_core_read = True
             old = RLIM.search(run.tail)
             if not old:
+                led.rlimit_core_read = True
                 return und("a successful prlimit64 read whose old limit qemu did not print, so rlim_max is not known")
-            led.rlimit_core_hard = int(old.group(2)) % TWO_POW_64
+            limit = (int(old.group(1)) % TWO_POW_64, int(old.group(2)) % TWO_POW_64)
+            if led.rlimit_core is not None and limit != led.rlimit_core:
+                return (f"a prlimit64 read answered {limit} after the model recorded {led.rlimit_core}: a read "
+                        f"returns the recorded limit (m_rlimit_core) ({cite})")
+            led.rlimit_core_read = True
+            led.rlimit_core, led.rlimit_core_hard = limit, limit[1]
         return None
     if not led.rlimit_core_read:
         return (f"a prlimit64 write before any read: the model's m_rlimit_core is None until a read records one, and "
@@ -2859,6 +2913,7 @@ def _prlimit64(run, args, ret, errno, tid):
     if ret not in (None, 0):
         return (f"a prlimit64 write returned {ret_text(ret, errno)}: the model answers 0 or -EINVAL, and a hard limit "
                 f"other than the recorded one is unmodeled ({cite})")
+    led.rlimit_core = (soft, hard)
     return None
 
 
@@ -2894,19 +2949,23 @@ def _faccessat(run, args, ret, errno, tid, name="faccessat"):
     if q is None:
         return und(f"unparseable path {args[1]}")
     path, truncated = q
+    # faccessat_body_spec: read_cstr first (-ENAMETOOLONG, -EFAULT), then the empty path is -ENOENT; a name that
+    # exists answers access_exists_spec (0 or faccessat_errnos), and one that does not, -ENOENT.
+    exists = {0}, {ENOMEM, EACCES, ENAMETOOLONG, EFAULT}
     if path == "":
-        return None
+        return errno_only(ret, errno, {ENOENT, ENAMETOOLONG, EFAULT}, f"{name} of the empty path", cite)
     if args[0].strip() != "AT_FDCWD":
         return f"dirfd {args[0]} is not AT_FDCWD ({cite})"
     if path in (".", ".."):
-        return None
+        return answered(ret, errno, *exists, f"{name} of {path!r}", "Sys/Fs/Open.v access_exists_spec")
     if truncated:
         return und(f"the path {args[1]} was cut short by qemu -strace, so the path tests cannot be decided")
     if "/" in path:
         return f"the path {path!r} has a separator: unmodeled ({cite})"
     if len(path) > NAME_MAX:
         return f"a path longer than NAME_MAX ({cite})"
-    return None
+    return answered(ret, errno, exists[0], exists[1] | {ENOENT}, f"{name} of {path!r}",
+                    "Sys/Fs/Open.v faccessat_body_spec, access_exists_spec")
 
 
 def _faccessat2(run, args, ret, errno, tid):
@@ -2970,6 +3029,8 @@ def _clone(run, args, ret, errno, tid):
         if why:
             return why
         run.led.cloned = True
+    else:
+        run.led.fork_unseen = True
     return None
 
 
@@ -2990,11 +3051,14 @@ def _clone3(run, args, ret, errno, tid):
         if why:
             return why
         run.led.cloned = True
+    else:
+        run.led.fork_unseen = True
     return None
 
 
 def _wait4(run, args, ret, errno, tid):
-    """Sys/Kernel/Exit.v wait4_spec: wait4(-1, status, WNOHANG, NULL) with no child is -ECHILD, and nothing else."""
+    """Sys/Kernel/Exit.v wait4_spec: wait4(-1, status, WNOHANG, NULL) is unmodeled once the run has a child
+    (m_has_children, which clone_resolve sets on every success), and with no child is -ECHILD, and nothing else."""
     if len(args) < 4:
         return und("unparseable argument list")
     cite = "Sys/Kernel/Exit.v wait4_spec"
@@ -3004,30 +3068,63 @@ def _wait4(run, args, ret, errno, tid):
         return f"wait4 options {args[2]}: only WNOHANG (1) is answered ({cite})"
     if not is_null(args[3]):
         return f"wait4 with a non-NULL rusage is unmodeled ({cite})"
+    if run.led.cloned:
+        return f"wait4 after a fork: the run has a child, and the model answers unmodeled ({cite}: m_has_children)"
+    if run.led.fork_unseen:
+        return und(f"wait4 after a fork whose return the trace does not show: if it made a child, the model answers "
+                   f"unmodeled ({cite}: m_has_children)")
+    if ret is None:
+        return und(f"wait4 with no return in the trace: the model answers only -ECHILD ({cite})")
     return errno_only(ret, errno, {ECHILD}, "wait4(-1, ..., WNOHANG, NULL)", f"{cite}: the run has no child")
 
 
 def _gettimeofday(run, args, ret, errno, tid):
-    """Sys/Kernel/Time/Time.v gettimeofday_spec: a non-NULL tz and a NULL tv are unmodeled."""
+    """Sys/Kernel/Time/Time.v gettimeofday_spec: a non-NULL tz and a NULL tv are unmodeled; then -EFAULT, or 0 with
+    the time written."""
     if len(args) < 2:
         return und("unparseable argument list")
+    cite = "Sys/Kernel/Time/Time.v gettimeofday_spec"
     if not is_null(args[1]):
-        return "a non-NULL tz is unmodeled (Sys/Kernel/Time/Time.v gettimeofday_spec)"
+        return f"a non-NULL tz is unmodeled ({cite})"
     if is_null(args[0]):
-        return "a NULL tv is unmodeled (Sys/Kernel/Time/Time.v gettimeofday_spec)"
-    return None
+        return f"a NULL tv is unmodeled ({cite})"
+    return answered(ret, errno, {0}, {EFAULT}, "gettimeofday", cite)
 
 
 def _getgroups(run, args, ret, errno, tid):
-    """Sys/Kernel/Groups.v getgroups_spec: a negative size is -EINVAL; delivering a non-empty group list into a buffer
-    is unmodeled."""
+    """Sys/Kernel/Groups.v getgroups_spec: a negative size (sint32) is -EINVAL; a size of 0 answers the number of
+    groups (at most NGROUPS_MAX); a size below it is -EINVAL; with no group, 0; delivering a non-empty list is
+    unmodeled. The number of groups is the run's, fixed, so every answer must agree with it."""
     if len(args) < 2:
         return und("unparseable argument list")
+    cite = "Sys/Kernel/Groups.v getgroups_spec"
     size = sint32(num(args[0]))
-    if size is not None and size > 0 and ret is not None and ret > 0:
-        return (f"getgroups({size}) returned {ret}: delivering a non-empty group list is unmodeled "
-                "(Sys/Kernel/Groups.v getgroups_spec)")
-    return None
+    if size is None:
+        return und(f"unparseable size {args[0]}")
+    led = run.led
+    if size < 0:
+        return errno_only(ret, errno, {EINVAL}, f"getgroups({size})", cite)
+    if ret is None:
+        return None
+    if size == 0:
+        why = answered(ret, errno, range(NGROUPS_MAX + 1), set(), "getgroups(0)", cite)
+        if why:
+            return why
+        if led.ngroups is not None and ret != led.ngroups:
+            return f"getgroups(0) returned {ret} after {led.ngroups}: the run's groups do not change ({cite})"
+        led.ngroups = ret
+        return None
+    if ret > 0:
+        return f"getgroups({size}) returned {ret}: delivering a non-empty group list is unmodeled ({cite})"
+    if ret == 0:
+        if led.ngroups not in (None, 0):
+            return f"getgroups({size}) returned 0, but the run has {led.ngroups} groups ({cite})"
+        led.ngroups = 0
+        return None
+    why = errno_only(ret, errno, {EINVAL}, f"getgroups({size})", cite)
+    if why is None and led.ngroups is not None and size >= led.ngroups:
+        return f"getgroups({size}) answered -EINVAL, but the run has {led.ngroups} groups ({cite})"
+    return why
 
 
 def _setgroups(run, args, ret, errno, tid):
@@ -3140,7 +3237,8 @@ def _ppoll(run, args, ret, errno, tid):
                           "Sys/Fs/Select.v ppoll_spec: a readable mask is unmodeled")
     if is_null(args[2]) and ret == 0:
         return "ppoll without a timeout returned 0: unmodeled (Sys/Fs/Select.v ppoll_spec)"
-    return None
+    return answered(ret, errno, range(nfds + 1), {EINVAL, EFAULT}, f"ppoll of {nfds} descriptors",
+                    "Sys/Fs/Select.v ppoll_outcome, pselect_finish")
 
 
 SOCK_FAMILIES = {"PF_UNSPEC": 0, "PF_UNIX": 1, "PF_LOCAL": 1, "PF_INET": 2, "PF_AX25": 3, "PF_IPX": 4,
@@ -3194,12 +3292,17 @@ def _socket(run, args, ret, errno, tid):
     if base == 1:
         if proto in (132, 262):
             return f"socket(AF_INET, SOCK_STREAM, {args[2]}) is unmodeled ({cite})"
-        if proto in (0, 6) and ret is not None and ret >= 0:
+        if proto not in (0, 6):
+            return errno_only(ret, errno, {EPROTONOSUPPORT}, f"socket(AF_INET, SOCK_STREAM, {args[2]})", cite)
+        if ret is not None and ret >= 0 and ret in run.led.fds:
+            return f"socket returned {ret}, a descriptor the run already holds ({cite}: lowest_fd)"
+        why = refused(ret, errno, SOCKET_ERRNOS, "socket(AF_INET, SOCK_STREAM)", f"{cite}, socket_errnos")
+        if why is None and ret is not None and ret >= 0:
             run.led.fds[ret] = ("socket", True)
-        return None
+        return why
     if base in (2, 3, 5, 6):
         return f"socket(AF_INET, {args[1]}) is unmodeled: only SOCK_STREAM is answered ({cite})"
-    return None
+    return errno_only(ret, errno, {ESOCKTNOSUPPORT}, f"socket with type {args[1]}", cite)
 
 
 def _socketpair(run, args, ret, errno, tid):
@@ -3227,7 +3330,7 @@ def _accept(run, args, ret, errno, tid, name="accept"):
         return und("unparseable argument list")
     cite = "Sys/Net/Socket.v accept4_spec"
     why = bad_fd_only(run, num(args[0]), ret, errno, name, cite)
-    if why:
+    if why or run.led.kind(num(args[0])) is ABSENT:
         return why
     fl = 0 if name == "accept" else flagword(args[3], SOCK_TYPES)
     if fl is None:
@@ -3238,9 +3341,17 @@ def _accept(run, args, ret, errno, tid, name="accept"):
         return f"accept4(SOCK_NONBLOCK) is unmodeled ({cite})"
     if not is_null(args[1]):
         return f"{name} with a non-NULL address is unmodeled ({cite})"
-    if ret is not None and ret >= 0:
+    kind = run.led.kind(num(args[0]))
+    if kind is not None and kind is not ABSENT and kind[0] != "socket":
+        return errno_only(ret, errno, {ENOTSOCK}, f"{name} on a {kind_name(kind)} descriptor", cite)
+    if kind is not None and len(kind) < 3:
+        return errno_only(ret, errno, {EINVAL}, f"{name} on a socket that is not listening", cite)
+    if ret is not None and ret >= 0 and ret in run.led.fds:
+        return f"{name} returned {ret}, a descriptor the run already holds ({cite}: lowest_fd)"
+    why = refused(ret, errno, SOCKET_ERRNOS | {EINVAL, ENOTSOCK, EBADF}, name, f"{cite}, accept_errnos")
+    if why is None and ret is not None and ret >= 0:
         run.led.fds[ret] = ("socket", False)
-    return None
+    return why
 
 
 def _accept4(run, args, ret, errno, tid):
@@ -3291,7 +3402,7 @@ def _socket_success_unmodeled(run, args, ret, errno, name):
     """Sys/Net/Socket.v getsockname_spec, getpeername_spec, setsockopt_spec: every success on a socket is
     unmodeled."""
     why = bad_fd_only(run, num(args[0]) if args else None, ret, errno, name, f"Sys/Net/Socket.v {name}_spec")
-    if why:
+    if why or run.led.kind(num(args[0]) if args else None) is ABSENT:
         return why
     if ret is not None and ret >= 0:
         return f"{name} returned {ret}: every success is unmodeled (Sys/Net/Socket.v {name}_spec)"
@@ -3316,7 +3427,7 @@ def _getsockopt(run, args, ret, errno, tid):
     if len(args) < 2:
         return und("unparseable argument list")
     why = bad_fd_only(run, num(args[0]), ret, errno, "getsockopt", "Sys/Net/Socket.v getsockopt_spec")
-    if why:
+    if why or run.led.kind(num(args[0])) is ABSENT:
         return why
     if sint32(num(args[1])) in (0, 1, 6):
         return f"getsockopt at level {args[1]} is unmodeled (Sys/Net/Socket.v getsockopt_spec)"
@@ -3328,15 +3439,21 @@ def _shutdown(run, args, ret, errno, tid):
     if len(args) < 2:
         return und("unparseable argument list")
     why = bad_fd_only(run, num(args[0]), ret, errno, "shutdown", "Sys/Net/Socket.v shutdown_spec")
-    if why:
+    if why or run.led.kind(num(args[0])) is ABSENT:
         return why
     how = sym(args[1], {"SHUT_RD": 0, "SHUT_WR": 1, "SHUT_RDWR": 2})
     if how is None:
         return und(f"unparseable how {args[1]}")
-    if low32(how) in (0, 1, 2) and ret is not None and ret >= 0 and low32(how) != 1:
-        return (f"shutdown({args[1]}) returned {ret}: only SHUT_WR succeeds in the model "
+    how = low32(how)
+    if how not in (0, 1, 2):
+        return errno_only(ret, errno, {EINVAL, ENOTSOCK}, f"shutdown({args[1]})", "Sys/Net/Socket.v shutdown_spec")
+    kind = run.led.kind(num(args[0]))
+    if kind is not None and kind is not ABSENT and kind[0] != "socket":
+        return errno_only(ret, errno, {ENOTSOCK}, f"shutdown of a {kind_name(kind)}", "Sys/Net/Socket.v shutdown_spec")
+    if ret is not None and ret >= 0 and (how != 1 or kind is None or len(kind) < 3):
+        return (f"shutdown({args[1]}) returned {ret}: only SHUT_WR on a listening socket succeeds in the model "
                 "(Sys/Net/Socket.v shutdown_spec)")
-    return None
+    return answered(ret, errno, {0}, {ENOTSOCK}, f"shutdown({args[1]})", "Sys/Net/Socket.v shutdown_spec")
 
 
 def _sendto(run, args, ret, errno, tid):
@@ -3360,15 +3477,22 @@ def _sendto(run, args, ret, errno, tid):
     if count % TWO_POW_64 > RW_BYTES_MAX:
         return (f"sendto count {count % TWO_POW_64} is above rw_bytes_max {RW_BYTES_MAX}: unmodeled "
                 f"({cite}: Sys/Uaccess.v modeled_rw_count reads the count unsigned)")
-    why = bad_fd_only(run, num(args[0]), ret, errno, "sendto", cite)
-    if why:
-        return why
+    if run.led.kind(num(args[0])) is ABSENT:
+        # access_ok_zero wraps the descriptor's lookup, so an unreadable buffer is -EFAULT before -EBADF.
+        return errno_only(ret, errno, {EBADF, EFAULT}, f"sendto on descriptor {args[0]}, which this run never opened",
+                          f"{cite}: access_ok_zero, fd_lookup")
     kind = run.led.kind(num(args[0]))
     if kind is None:
         return kind_reason(num(args[0]), ret, errno, "sendto", cite)
     if kind[0] != "socket":
         return errno_only(ret, errno, {ENOTSOCK, EFAULT}, f"sendto on a {kind_name(kind)} descriptor", cite)
-    return None
+    # Sys/Net/Socket.v send_on_socket, behind access_ok_zero (-EFAULT): a socket no connect has reached is SendDead
+    # (-EPIPE); a connected one gives -EPIPE, -ECONNRESET, -ETIMEDOUT, or 1..count bytes (0 for a count of 0).
+    if kind[1]:
+        return errno_only(ret, errno, {EPIPE, EFAULT}, "sendto on a socket no connect has reached",
+                          f"{cite}: send_state SendDead")
+    return counted(ret, errno, Arg.full(count), {EPIPE, ECONNRESET, ETIMEDOUT, EFAULT}, "sendto on a socket",
+                   f"{cite}: send_on_socket", shape="positive")
 
 
 def _sendmsg(run, args, ret, errno, tid):
@@ -3394,13 +3518,42 @@ def _recvmsg(run, args, ret, errno, tid):
 
 
 def _fsync(run, args, ret, errno, tid):
-    """Sys/Fs/Sync.v fsync_spec: total on every open descriptor, -EBADF on none."""
-    return bad_fd_only(run, num(args[0]) if args else None, ret, errno, "fsync", "Sys/Fs/Sync.v fsync_spec")
+    """Sys/Fs/Sync.v fsync_spec: -EBADF for a descriptor the table does not hold; -EINVAL on a channel, socket, pipe
+    end, /dev/null or /dev/urandom; 0 on a file or a directory."""
+    cite = "Sys/Fs/Sync.v fsync_spec"
+    fd = num(args[0]) if args else None
+    why = bad_fd_only(run, fd, ret, errno, "fsync", cite)
+    if why or run.led.kind(fd) is ABSENT:
+        return why
+    kind = run.led.kind(fd)
+    if kind is None:
+        return kind_reason(fd, ret, errno, "fsync", cite)
+    if kind[0] in FILE_KINDS or kind[0] == "dir":
+        return answered(ret, errno, {0}, set(), f"fsync of a {kind_name(kind)}", cite)
+    return errno_only(ret, errno, {EINVAL}, f"fsync of a {kind_name(kind)}", cite)
 
 
 def _ftruncate(run, args, ret, errno, tid):
-    """Sys/Fs/Open.v ftruncate_spec: a descriptor the table does not hold is -EBADF; the rest reads the file."""
-    return bad_fd_only(run, num(args[0]) if args else None, ret, errno, "ftruncate", "Sys/Fs/Open.v ftruncate_spec")
+    """Sys/Fs/Open.v ftruncate_spec: a negative length is -EINVAL first; -EBADF for a descriptor the table does not
+    hold; -EINVAL on every kind but a writable file; on a writable file 0, or unmodeled past modeled_truncate_gap
+    (the file's length, which the trace does not show)."""
+    if len(args) < 2:
+        return und("unparseable argument list")
+    cite = "Sys/Fs/Open.v ftruncate_spec"
+    fd, length = num(args[0]), num(args[1])
+    if length is None:
+        return und(f"unparseable length {args[1]}")
+    if length < 0 or length >= TWO_POW_64 >> 1:
+        return errno_only(ret, errno, {EINVAL}, "ftruncate to a negative length", cite)
+    why = bad_fd_only(run, fd, ret, errno, "ftruncate", cite)
+    if why or run.led.kind(fd) is ABSENT:
+        return why
+    kind = run.led.kind(fd)
+    if kind is None:
+        return kind_reason(fd, ret, errno, "ftruncate", cite)
+    if kind[0] in ("filew", "filea", "filerw"):
+        return answered(ret, errno, {0}, set(), f"ftruncate of a {kind_name(kind)}", cite)
+    return errno_only(ret, errno, {EINVAL}, f"ftruncate of a {kind_name(kind)}", cite)
 
 
 def _bind_listen(run, args, ret, errno, name):
@@ -3411,9 +3564,22 @@ def _bind_listen(run, args, ret, errno, name):
     if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
-    if kind is not None and kind[0] == "socket" and ret is not None and ret >= 0:
-        run.led.fds[fd] = ("socket", False)
-    return None
+    cite = f"Sys/Net/Socket.v {name}_spec"
+    if kind is None:
+        return kind_reason(fd, ret, errno, name, cite)
+    if kind[0] != "socket":
+        return errno_only(ret, errno, {ENOTSOCK}, f"{name} on a {kind_name(kind)} descriptor", cite)
+    # bind reads the address (-EINVAL, -EFAULT, -EAFNOSUPPORT) and answers bind_errnos or 0 on a fresh socket, -EINVAL
+    # on a bound or listening one; listen answers 0, listen_errnos, or -EINVAL on a connected one.
+    errnos = BIND_ERRNOS | ({EINVAL, EFAULT, EAFNOSUPPORT} if name == "bind" else {EINVAL})
+    if name == "bind" and not kind[1]:
+        return errno_only(ret, errno, {EINVAL, EFAULT, EAFNOSUPPORT}, "bind on a socket a bind, listen or connect has "
+                          "used", cite)
+    why = answered(ret, errno, {0}, errnos, f"{name} on a socket", cite)
+    if why is None and ret is not None and ret >= 0:
+        # A third field marks a listening socket (SkListening), the one state accept and shutdown(SHUT_WR) answer.
+        run.led.fds[fd] = ("socket", False, True) if name == "listen" else ("socket", False)
+    return why
 
 
 def _bind(run, args, ret, errno, tid):
@@ -3523,9 +3689,41 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
             seen.add((call, why))
             (unsure if isinstance(why, Undecided) else unmodeled).append({"call": call, "why": str(why)})
 
+    if image_error is not None:
+        # The image places the initial break (Run.v valid_brk) and every range clear of it: without it a run's
+        # address-space calls decide nothing, so the run is never a pass.
+        report("the binary's image", und(f"{image_error}: the initial break and the ranges the image holds cannot be "
+                                         "checked (Run.v valid_brk)"))
+    def judge(tid, name, args, tail):
+        nonlocal forked
+        ret = parse_ret(tail)
+        e = ERRNO_TAIL.match(tail)
+        errno = int(e.group(1)) if e else None
+        run.tail = tail
+        if name in ("read", "write") and len(args) > 1 and (num(args[1]) or 0) >= TWO_POW_32:
+            run.wide_buffers = True
+        gate = GATES.get(name)
+        if gate is not None:
+            why = gate(run, args, ret, errno, tid)
+            if why is None and name in ("clone", "clone3") and (ret is None or ret > 0):
+                forked = True
+        elif name in NAME_ONLY:
+            why = None
+        else:
+            why = "an arm of spec_table that this checker has no rule for, so it cannot say the call is modeled"
+        if why is not None:
+            report(name, why)
+
+    # A record of the run's task with no return yet: qemu writes the return when the call returns, on a line of its
+    # own (` = N`) when another task's record took the line meanwhile. Such a record is judged with that return, the
+    # first such line after it, oldest first; one whose return never comes is judged with none at the end.
+    pending = []
     for line in text.splitlines():
         if kill_line(line):
             saw_death = True
+        if pending and not RECORD.match(line) and parse_ret(line) is not None:
+            judge(*pending.pop(0)[:3], line)
+            continue
         for unknown in UNKNOWN_RECORD.finditer(line):
             calls += 1
             number = int(unknown.group(2))
@@ -3543,7 +3741,9 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
             if owner is None:
                 owner = tid
             if tid != owner:
-                if forked:
+                # A fork still waiting for its return has made the child whose record this is; if the model refuses
+                # that fork, the fork itself is reported when its return comes.
+                if forked or any(p[1] in ("clone", "clone3") for p in pending):
                     # Sys/Kernel/Fork.v: "the child is not executed by this model ([clone] describes the parent)".
                     child_records += 1
                     continue
@@ -3564,23 +3764,12 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
                 report(name, "not an arm of spec_table (Sys/SyscallTable.v): the model answers every other number "
                              "unmodeled (Specs.v syscall_spec)")
                 continue
-            ret = parse_ret(tail)
-            e = ERRNO_TAIL.match(tail)
-            errno = int(e.group(1)) if e else None
-            run.tail = tail
-            if name in ("read", "write") and len(args) > 1 and (num(args[1]) or 0) >= TWO_POW_32:
-                run.wide_buffers = True
-            gate = GATES.get(name)
-            if gate is not None:
-                why = gate(run, args, ret, errno, tid)
-                if why is None and name in ("clone", "clone3") and (ret is None or ret > 0):
-                    forked = True
-            elif name in NAME_ONLY:
-                why = None
-            else:
-                why = "an arm of spec_table that this checker has no rule for, so it cannot say the call is modeled"
-            if why is not None:
-                report(name, why)
+            if parse_ret(tail) is None and not tail.strip() and name not in EXIT_NAMES:
+                pending.append((tid, name, args))
+                continue
+            judge(tid, name, args, tail)
+    for tid, name, args in pending:
+        judge(tid, name, args, "")
     exited = saw_exit or (saw_death and run.self_kill)
     host_log = "present" if (run.host.given and run.host.started) else "missing"
     if unmodeled:

@@ -297,13 +297,16 @@ def quiet_loud(has_quiet, why_none, inputs, results, whole=None):
     differ, noisy, undecided, agreed = [], [], [], 0
     for n, (name, _) in enumerate(inputs):
         loud, silent = read_number(results, f"l{n}.status"), read_number(results, f"q{n}.status")
-        written = (read_number(results, f"q{n}.out") or 0) + (read_number(results, f"q{n}.err") or 0)
+        out, err = read_number(results, f"q{n}.out"), read_number(results, f"q{n}.err")
         # host-calls logs `exec` once the program has started; without it, the status is host-calls' own.
         started = all("exec" in (read_result(results, f"{kind}{n}.calls") or "").split("\n") for kind in "lq")
-        if loud is None or silent is None or STOPPED in (loud, silent) or not started:
+        if loud is None or silent is None or STOPPED in (loud, silent) or not started or out is None or err is None:
             undecided.append(f"{name}: the binary {describe_status(loud)}, the quiet twin {describe_status(silent)}"
-                             + ("" if started else ", and a run did not start"))
+                             + ("" if started else ", and a run did not start")
+                             + ("" if out is not None and err is not None else ", and the count of what the quiet "
+                                                                               "twin wrote is missing"))
             continue
+        written = out + err
         if loud != silent:
             differ.append(f"{name}: the binary exits {loud}, the quiet twin {silent}")
         if written:

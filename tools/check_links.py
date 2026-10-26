@@ -498,9 +498,10 @@ def analyse(records, image, dwarf_units=None, checkouts=(), assembly_sources=Non
         code, provided, problems = project_code(record, image)
         scanned[build] = code
         # A list that leaves a file out is worse than no list: the facts would then say that the build links less
-        # uninstrumented code than it does. So one file without a kind, or an empty list, leaves the build with no
-        # list and an error, in the plain build as in the others. Every static link takes the C library, so an empty
-        # list means the record named nothing; the facts' schema asks for at least one entry too.
+        # uninstrumented code than it does. So a file the record does not describe or this cannot read, one file
+        # without a kind, or an empty list, leaves the build with no list and an error, in the plain build as in the
+        # others. Every static link takes the C library, so an empty list means the record named nothing; the facts'
+        # schema asks for at least one entry too.
         listing, unknown = [], []
         for real, sha256 in sorted(provided):
             kind = runtime_kind(real)
@@ -511,9 +512,9 @@ def analyse(records, image, dwarf_units=None, checkouts=(), assembly_sources=Non
             listing.append({"name": real.rsplit("/", 1)[-1], "kind": kind, "sha256": sha256})
         if not listing:
             unknown.append("the link took no file of the toolchain image, and every static link takes its C library")
-        problems += unknown
+        unknown = problems + unknown
         results[build] = {"uninstrumented": None if unknown else listing, "incomplete": unknown}
-        problems_of[build] = problems
+        problems_of[build] = list(unknown)
 
     for build, problems in problems_of.items():
         result, code = results[build], scanned[build]
@@ -548,10 +549,13 @@ def analyse(records, image, dwarf_units=None, checkouts=(), assembly_sources=Non
                 for c, unit in zip(assembly, units):
                     entry, problem = source_entry(c, unit, checkouts,
                                                   next(found_sources) if unit is None else None)
-                    if result["uninstrumented"] is not None:
-                        result["uninstrumented"].append(entry)
                     if problem:
+                        # Code not shown to be assembly or Fortran is a finding (fail), and the list, which could not
+                        # hold its entry, is not written either: never shorter than what the link took.
                         problems.append(problem)
+                        result["uninstrumented"] = None
+                    elif result["uninstrumented"] is not None:
+                        result["uninstrumented"].append(entry)
             plain_c += shims[1:]
             if plain_c:
                 found.append(f"{len(plain_c)} of {len(with_code)} objects with code refer to no AddressSanitizer "

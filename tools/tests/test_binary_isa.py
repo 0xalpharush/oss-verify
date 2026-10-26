@@ -285,13 +285,16 @@ class WhereTheCodeIs(Base):
                             "RVC", rvc16=2, in_data=2, mapping_symbols=3)
         self.assertIn("2 finding(s) inside $d data", out["detail"])
 
-    def test_a_data_section_mapped_executable_is_named_not_decoded(self):
-        # A non-executable section inside a PF_X segment is reported for a reader, but it is not guessed to be code.
-        for text in (NOP + CNOP + CNOP, NOP + VSETVLI, NOP + ADD, Z32 * 2):
-            res, out = self.one(mkelf(text, text_flags=0x2), "UNEXAMINED", exec_bytes=0, rvc16=0)
+    def test_a_data_section_mapped_executable_is_decoded(self):
+        # The loader maps a PF_X segment executable whatever its section headers say: a section without
+        # SHF_EXECINSTR inside one is named, and its bytes are decoded like a gap, so they never pass unexamined.
+        for text, verdict in ((NOP + CNOP + CNOP, "RVC"), (NOP + VSETVLI, "NOT-MODEL"), (NOP + ADD, "CLEAN")):
+            res, out = self.one(mkelf(text, text_flags=0x2), verdict)
             self.assertEqual(res["pf_x"]["data_in_x"], [(".text", len(text))])
-            self.assertEqual((res["pf_x"]["gap_zero"], res["pf_x"]["gap_nonzero"]), (0, 0))
-            self.assertIn("examined nothing", out["detail"])
+            self.assertEqual((res["pf_x"]["gap_zero"], res["pf_x"]["gap_nonzero"]), (0, len(text)))
+        # All zero, it is padding, and nothing was examined.
+        res, out = self.one(mkelf(Z32 * 2, text_flags=0x2), "UNEXAMINED", exec_bytes=0)
+        self.assertEqual((res["pf_x"]["gap_zero"], res["pf_x"]["gap_nonzero"]), (8, 0))
 
     def test_a_section_must_be_where_its_segment_maps_it(self):
         # The code is at 2 mod 4, and its section header says 0 mod 4.

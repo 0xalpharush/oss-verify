@@ -14,7 +14,9 @@
 # process model's environment has it: in an empty working directory, /ovb, that holds the input as input.bin, named by
 # that relative name; with an empty /tmp; with an /etc that holds only the files written below, so that no file of the
 # image's /etc decides what a run does; with no environment; and as user 65534, so that the program cannot write what
-# the next run, or the host, reads. Each run is stopped after <seconds>, and no run starts after <total> seconds.
+# the next run, or the host's files, read. The program can write its own trace (qemu writes it as that user), so like
+# the records the runs do not stand against a binary written to deceive them. Each run is stopped after <seconds>, and
+# no run starts after <total> seconds.
 #
 # Each run runs qemu-riscv64 -strace under tools/checks/host-calls.c, which logs the host calls whose arguments qemu's
 # log prints in 32 bits only. For each run it writes /results/<id>.status (the exit status; 137 when it was stopped),
@@ -58,6 +60,9 @@ while read -r id binary input name; do
   wc -c < /ovr.err > "/results/$id.err"
   # The trace, which the guest's user owns: only a regular file, and at most 256 MiB of it.
   if [ -f /ovt/trace ] && [ ! -L /ovt/trace ]; then head -c 268435456 /ovt/trace > "/results/$id.trace"; fi
+  # A host-call log over 64 MiB is emptied, not cut: a cut log would look whole, and an empty one reads as missing,
+  # so the run decides nothing.
+  if [ "$(wc -c < "/results/$id.calls" 2>/dev/null || echo 0)" -gt 67108864 ]; then : > "/results/$id.calls"; fi
   echo "$status" > "/results/$id.status"
 done < /job/runs
 rm -rf /ovb /ovt /ovr.out /ovr.err /ovc-host-calls

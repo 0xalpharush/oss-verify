@@ -64,17 +64,15 @@ WHERE THE CODE IS. The model fetches an instruction from any byte of a loaded se
 nothing else (RiscvSemantics.v, code_read and fetch_byte_traps). Two sources are cross-checked:
 
     sections   every SHF_EXECINSTR section with bytes in the file is decoded, whether or not a PF_X segment maps it.
-    segments   every PT_LOAD segment with PF_X is what the loader maps executable. Its file bytes are: bytes inside a
-               section (decoded above if the section has SHF_EXECINSTR); the ELF header and the program and section
-               header tables (a text segment can start at file offset 0); and gaps that no section covers. A gap of
-               only zero bytes is padding. A gap with any other byte is decoded as code, since the loader maps it
-               executable and no section header describes it.
+    segments   every PT_LOAD segment with PF_X is what the loader maps executable. Its file bytes are: bytes inside an
+               SHF_EXECINSTR section (decoded above); the ELF header and the program and section header tables (a
+               text segment can start at file offset 0); and every other byte, inside a section without SHF_EXECINSTR
+               or inside no section. A run of those that is all zero is padding; any other run is decoded as code,
+               since the loader maps it executable.
 
-An ELF section header does not decide what the loader maps executable, but it does mark whether the producer says a
-range is instructions. A non-executable section inside a PF_X segment is named and counted, never decoded. This
-leaves its contents unexamined. It avoids deciding ordinary read-only data such as strings or notes is code merely
-because a linker put it in an executable segment. A gap without a section has no such description and is decoded
-unless it is all zero.
+A section header is the producer's claim, and the loader does not read it: a section without SHF_EXECINSTR inside a
+PF_X segment is named and counted (data_in_x), and its bytes are decoded like a gap. Data mapped executable therefore
+fails the check, as data in code does; it never passes unexamined.
 
 A file with no section headers is decoded from its PF_X segments, without the ELF header and program header table.
 The three header tables are the other bytes in an executable segment that are not decoded: the check trusts that a
@@ -817,11 +815,14 @@ def regions(data, e, secs, segs):
         for s in filled:
             a, b = max(lo, s["off"]), min(hi, s["off"] + s["size"])
             if a < b:
-                cover.append((a, b))
                 if s["flags"] & SHF_EXECINSTR and s["addr"] - s["off"] != g["vaddr"] - lo:
                     raise Unexamined(f"section {s['name']} says it is at {s['addr']:#x}, but PF_X LOAD[{g['idx']}] "
                                      f"maps it at {g['vaddr'] + s['off'] - lo:#x}")
-                if not s["flags"] & SHF_EXECINSTR:
+                if s["flags"] & SHF_EXECINSTR:
+                    cover.append((a, b))
+                else:
+                    # The loader maps these bytes executable whatever the section header says, so they are not
+                    # covered: like a gap, they are padding when all zero and decoded as code otherwise.
                     notes["data_in_x"].append((s["name"], b - a))
         for a, b in hdr:
             a, b = max(lo, a), min(hi, b)

@@ -242,8 +242,11 @@ ACCEPT = [
     ("dup3 of a stdio channel to a low descriptor", "1 dup3(2,3,0) = 3\n" + EXIT),
     ("dup3 onto an open descriptor above NR_OPEN_DEFAULT", "1 dup3(2,70,0) = -1 errno=9\n" + EXIT),
     ("lseek on a file", OPEN3 + "1 lseek(3,0,SEEK_SET) = 0\n" + EXIT),
-    ("ftruncate of an open descriptor", OPEN3 + "1 ftruncate(3,0) = 0\n" + EXIT),
+    ("ftruncate of a write-only file", '1 openat(AT_FDCWD,"f",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n'
+                                       "1 ftruncate(3,0) = 0\n" + EXIT),
+    ("ftruncate of a read-only file, -EINVAL", OPEN3 + "1 ftruncate(3,0) = -1 errno=22\n" + EXIT),
     ("fsync of an open descriptor", OPEN3 + "1 fsync(3) = 0\n" + EXIT),
+    ("fsync of standard output, -EINVAL", "1 fsync(1) = -1 errno=22\n" + EXIT),
     ("pipe2 with no flags", "1 pipe2(0x40007ff8b0,0) = 0\n" + EXIT),
     ("readlinkat answered -EINVAL", '1 readlinkat(AT_FDCWD,"x",0x1000,64) = -1 errno=22\n' + EXIT),
     # -- reads and writes --------------------------------------------------------------------------------------------
@@ -303,11 +306,15 @@ ACCEPT = [
     # -- sockets -----------------------------------------------------------------------------------------------------
     ("socket AF_INET SOCK_STREAM", SOCKET3 + EXIT),
     ("socket of family 46, -EAFNOSUPPORT", "1 socket(46,SOCK_STREAM,IPPROTO_IP) = -1 errno=97\n" + EXIT),
-    ("sendto with MSG_NOSIGNAL and no address", SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+    ("sendto on a socket no connect has reached, -EPIPE",
+     SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n" + EXIT),
     ("connect on a socket answered -EAFNOSUPPORT", SOCKET3 + "1 connect(3,0x40007ff8b0,16) = -1 errno=97\n" + EXIT),
     ("getsockopt at a level the model refuses", SOCKET3 + "1 getsockopt(3,999,2,0x40007ff8b0,0x40007ff8c8) = -1 "
                                                           "errno=95\n" + EXIT),
-    ("shutdown(SHUT_WR)", SOCKET3 + "1 shutdown(3,1,0,0,0,0) = 0\n" + EXIT),
+    ("shutdown(SHUT_WR) of a listening socket",
+     SOCKET3 + "1 listen(3,5) = 0\n1 shutdown(3,1,0,0,0,0) = 0\n" + EXIT),
+    ("a wait4 whose return came on a later line",
+     "1 wait4(-1,0x40007ff8b0,1,NULL)\n = -1 errno=10\n" + EXIT),
     # -- the answers the model gives ---------------------------------------------------------------------------------
     ("a write to /dev/null that took the whole count",
      '1 openat(AT_FDCWD,"/dev/null",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n1 write(3,0x1000,64) = 64\n' + EXIT),
@@ -581,6 +588,43 @@ REJECT = [
     ("a fork that returned the task's own id", TID + "1 clone(SIGCHLD,0,0,0,0) = 1\n" + EXIT),
     ("a task id of 2^22", "1 set_tid_address(0x64dbf0) = 4194304\n" + EXIT),
     ("a second setsid that succeeded", "1 setsid() = 1\n1 setsid() = 1\n" + EXIT),
+    ("wait4 after a fork", "1 clone(SIGCHLD,0,0,0,0) = 1234\n1 wait4(-1,0x40007ff8b0,1,NULL) = -1 errno=10\n" + EXIT),
+    ("a wait4 whose later return is not -ECHILD", "1 wait4(-1,0x40007ff8b0,1,NULL)\n = 0\n" + EXIT),
+    ("a blocked read whose later return is more than its count",
+     OPEN3 + "1 read(3,0x1000,4)\n = 8\n" + EXIT),
+    ("sendto on a socket no connect has reached that sent bytes",
+     SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+    ("sendto on a connected socket that sent more than its count",
+     SOCKET3 + "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n"
+     "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 99\n" + EXIT),
+    ("socket SOCK_STREAM with protocol 17 that succeeded", "1 socket(PF_INET,SOCK_STREAM,17) = 3\n" + EXIT),
+    ("socket answered -EPERM", "1 socket(PF_INET,SOCK_STREAM,IPPROTO_IP) = -1 errno=1\n" + EXIT),
+    ("socket of type 4 that succeeded", "1 socket(PF_INET,4,IPPROTO_IP) = 3\n" + EXIT),
+    ("a prlimit64 read that returned 5",
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 5 ({rlim_cur=0, rlim_max=0})\n" + EXIT),
+    ("two prlimit64 reads that disagree",
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0, rlim_max=0})\n"
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=7, rlim_max=9})\n" + EXIT),
+    ("fsync of standard output that succeeded", "1 fsync(1) = 0\n" + EXIT),
+    ("fsync of a file answered -EIO", OPEN3 + "1 fsync(3) = -1 errno=5\n" + EXIT),
+    ("ftruncate of a read-only file that succeeded", OPEN3 + "1 ftruncate(3,0) = 0\n" + EXIT),
+    ("pipe2 that returned 5", "1 pipe2(0x40007ff8b0,0) = 5\n" + EXIT),
+    ("nanosleep that returned 4", "1 nanosleep(274886295728,0,0,0,0,0) = 4\n" + EXIT),
+    ("rt_sigprocmask that returned 3", "1 rt_sigprocmask(SIG_BLOCK,0x40007ff8b0,NULL,8) = 3\n" + EXIT),
+    ("gettimeofday answered -EPERM", "1 gettimeofday(0x40007ff8b0,NULL) = -1 errno=1\n" + EXIT),
+    ("faccessat F_OK that returned 7", '1 faccessat(AT_FDCWD,"in.bin",F_OK) = 7\n' + EXIT),
+    ("getgroups(0) twice with different answers", "1 getgroups(0,NULL) = 0\n1 getgroups(0,NULL) = 5\n" + EXIT),
+    ("bind on a file", OPEN3 + "1 bind(3,0x40007ff8b0,16) = 0\n" + EXIT),
+    ("bind on a socket answered -EPERM", SOCKET3 + "1 bind(3,0x40007ff8b0,16) = -1 errno=1\n" + EXIT),
+    ("an openat of input.bin answered -EIO", '1 openat(AT_FDCWD,"input.bin",O_RDONLY) = -1 errno=5\n' + EXIT),
+    ("an openat that returned a descriptor the run holds", OPEN3 + OPEN3 + EXIT),
+    ("unlinkat of a bare name answered -EIO", '1 unlinkat(AT_FDCWD,"x.gz",0) = -1 errno=5\n' + EXIT),
+    ("prctl PR_CAPBSET_READ that returned 0", "1 prctl(23,40,0,7517016,0,-8606760485637849041) = 0\n" + EXIT),
+    ("sched_setscheduler to SCHED_IDLE that returned 2", "1 sched_setscheduler(0,5,0x40007ff8b0,0,0,0) = 2\n" + EXIT),
+    ("sigaltstack that returned 1", "1 sigaltstack(0x40007ff8b0,NULL) = 1\n" + EXIT),
+    ("shutdown(SHUT_WR) of a fresh socket that succeeded", SOCKET3 + "1 shutdown(3,1,0,0,0,0) = 0\n" + EXIT),
+    ("ppoll that returned more than nfds", "1 ppoll(0x7fae17bfd5e0,1,0x7fae17bfd5f0,(nil)) = 2\n" + EXIT),
+    ("dup that returned a descriptor the run holds", OPEN3 + "1 dup(2) = 3\n" + EXIT),
     # -- the parser ----------------------------------------------------------------------------------------------
     ("an unmodeled call behind a blocked modeled one", OPEN3 + "1 read(3,0x1000,64)1 getppid() = 1\n = 64\n" + EXIT),
     ("an unmodeled call behind a modeled one", "1 write(1,0x1000,2)1 kill(1234,SIGTERM) = 0\n" + EXIT),
@@ -725,7 +769,8 @@ def test_a_cut_count_that_the_host_log_pins_as_huge(model, image):
 
 @needs_model
 def test_a_sendto_count_is_printed_whole_and_read_unsigned(model, image):
-    assert check(model, image, SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT)["verdict"] == "pass"
+    assert check(model, image, SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n" + EXIT)[
+        "verdict"] == "pass"
     why = one_why(check(model, image, SOCKET3 + "1 sendto(3,0x1000,-1,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT), "sendto")
     assert "rw_bytes_max" in why and "unsigned" in why
 
@@ -1259,18 +1304,22 @@ def test_image_spans_refuse_what_they_cannot_read(tmp_path, data, needle):
 
 @needs_model
 def test_an_unreadable_binary_leaves_the_image_missing_not_an_exception(model):
-    # A wrong x86 build is what the binary checks need to report, not a reason to discard every binary's report.
+    # A wrong x86 build is what the binary checks need to report, not a reason to discard every binary's report; and
+    # with no image the initial break cannot be checked (Run.v valid_brk), so the run is never a pass.
     text = "1 write(1,0x1000,2) = 2\n" + EXIT
     result = S.check_trace(model, text, stance="off", binary="/bin/sh", lengths=faithful_log(text))
-    assert result["verdict"] == "pass"
+    assert result["verdict"] == "undecided" and result["unmodeled"] == []
     assert result["image"] == "missing" and "not a RISC-V" in result["image_error"]
-    image_dependent = "1 brk(NULL) = 0x100000\n" \
-                      "1 mmap(0x80000,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0) = 0x80000\n" \
-                      + EXIT
-    result = S.check_trace(model, image_dependent, stance="off", binary="/bin/sh",
-                           lengths=faithful_log(image_dependent))
-    assert result["verdict"] == "undecided"
-    assert result["image"] == "missing" and S.IMAGE_UNKNOWN in one_undecided(result, "mmap")
+    assert [u["call"] for u in result["undecided"]] == ["the binary's image"]
+    # A break below any image passed with the image missing; it is now undecided, never a pass.
+    low_break = "1 brk(NULL) = 0x1000\n1 brk(0x3000) = 0x3000\n" + EXIT
+    result = S.check_trace(model, low_break, stance="off", binary="/nonexistent/binary",
+                           lengths=faithful_log(low_break))
+    assert result["verdict"] == "undecided" and "cannot read" in result["image_error"]
+    # A call that is unmodeled whatever the image still fails.
+    loud = S.check_trace(model, "1 getppid() = 1\n" + EXIT, stance="off", binary="/bin/sh",
+                         lengths=faithful_log("1 getppid() = 1\n" + EXIT))
+    assert loud["verdict"] == "fail"
 
 
 # ---------------------------------------------------------------------------------------------------------------------

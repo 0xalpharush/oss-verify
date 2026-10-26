@@ -283,8 +283,18 @@ class Analyse(unittest.TestCase):
         record = self.record({"/work/libproject.a": {"lib.c.o": good()}})
         record.taken.append(("/work/libproject.a", "gone.o", ".text", 4))
         result = self.analyse({"asan": record})["asan"]
-        self.assertEqual(result["instrumented"]["result"], "fail")
+        # The record names a member that is not there: the list may leave code out, so no list and an error.
+        self.assertEqual(result["instrumented"]["result"], "error")
+        self.assertIsNone(result["uninstrumented"])
         self.assertIn("libproject.a(gone.o)", result["instrumented"]["detail"])
+
+    def test_a_file_the_record_does_not_describe_leaves_no_list_in_the_plain_build(self):
+        record = self.record({"/work/libproject.a": {"lib.c.o": good()}})
+        record.taken.append(("/opt/musl-sysroot/usr/lib/libmissing.a", "m.o", ".text", 4))
+        result = self.analyse({"plain": record})["plain"]
+        self.assertIsNone(result["uninstrumented"])
+        self.assertEqual(result["instrumented"]["result"], "error", result)
+        self.assertIn("which its record does not describe", result["instrumented"]["detail"])
 
     def test_asan_lists_hand_written_assembly_from_its_dwarf(self):
         asm = elf_object(NOP, defined=["memcpy_fast"])  # no STT_FILE, no compiler mark: clang's output for a .S
@@ -545,6 +555,19 @@ class Runs(unittest.TestCase):
         self.write("l0.calls", "")
         self.write("l1.calls", "")
         self.assertEqual(check_binaries.quiet_loud(True, "", self.inputs, self.results)["result"], "error")
+
+    def test_a_missing_byte_count_is_not_silence(self):
+        for n in range(2):
+            self.write(f"l{n}.status", 0)
+            self.write(f"q{n}.status", 0)
+            self.write(f"q{n}.out", 0)
+            self.write(f"q{n}.err", 0)
+        self.assertEqual(check_binaries.quiet_loud(True, "", self.inputs, self.results)["result"], "pass")
+        for n in range(2):
+            (self.results / f"q{n}.err").unlink()
+        result = check_binaries.quiet_loud(True, "", self.inputs, self.results)
+        self.assertEqual(result["result"], "error", result)
+        self.assertIn("count of what the quiet twin wrote is missing", result["detail"])
 
     def test_a_run_that_never_reached_its_input_decides_nothing(self):
         """Two binaries that both die before main agree on every status and write nothing."""
