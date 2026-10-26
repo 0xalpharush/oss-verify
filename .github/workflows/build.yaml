@@ -459,8 +459,8 @@ jobs:
           # declares and grants this job's account. It stays a variable of this shell, masked in the log and no
           # process's argument. The export is a measurement and never decides whether the review runs: if the sign-in
           # failed, or the read fails, or the value is blank, this is one warning and review-run exports nothing.
-          # `jq -e` with the type check refuses a response with no payload, which would otherwise decode "null" into
-          # bytes that look like a token.
+          # The select() refuses a response with no payload, which would otherwise decode "null" into bytes that
+          # look like a token; jq then prints nothing, so the value is empty and the blank check below warns.
           OTEL_COLLECTOR_TOKEN=""
           if [ -n "$GCP_ACCESS_TOKEN" ]; then
             OTEL_COLLECTOR_TOKEN=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \

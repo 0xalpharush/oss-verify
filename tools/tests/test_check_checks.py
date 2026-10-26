@@ -716,11 +716,11 @@ class WorkflowArguments(unittest.TestCase):
         cases = [
             ("build.yaml review Review", steps("build.yaml", "review", "Review"),
              json.dumps({"payload": {"data": base64.b64encode(token.encode()).decode()}}),
-             {"GCP_ACCESS_TOKEN": gcp}, [token, gcp]),
+             {"GCP_ACCESS_TOKEN": gcp}, [token, base64.b64encode(token.encode()).decode(), gcp]),
             ("build.yaml review identity token", steps("build.yaml", "review", "Get the GitHub identity token for Anthropic"),
              json.dumps({"value": "jwt-not-a-secret"}),
              {"ACTIONS_ID_TOKEN_REQUEST_TOKEN": request, "ACTIONS_ID_TOKEN_REQUEST_URL": "http://127.0.0.1:9/?x=1"},
-             [request]),
+             [request, "jwt-not-a-secret"]),
         ]
         for workflow in ("build.yaml", "triage.yaml"):
             cases.append((f"{workflow} comment key", steps(workflow, "comment", "Read the oss-verify App's key"),
@@ -749,9 +749,10 @@ class WorkflowArguments(unittest.TestCase):
                                         cwd=directory, env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, f"{label}: {result.stderr}")
                 text = trace.read_text()
-                self.assertIn("execve(", text)
+                self.assertIn('"curl"', text, f"{label}: the stand-in curl was not started")
                 for secret in secrets:
                     self.assertNotIn(secret, text, f"{label}: a credential is in a program's arguments")
+                    self.assertNotIn(secret, result.stderr, f"{label}: a credential is on stderr")
 
     def test_the_helpers_production_definitions_keep_the_token_out_of_argv(self):
         # The production keep, the triage call and fetch_head, taken from the scripts and run under strace with a fake
@@ -2130,7 +2131,7 @@ class ReviewStep(unittest.TestCase):
     TOKEN = "collector-token-not-a-secret"
 
     def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None, secret_manager=True,
-                 secret=None, signed_in=True, lost=None):
+                 secret=None, signed_in=True, lost=None, trace=None, raw_answer=None):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / ".github" / "scripts").mkdir(parents=True)
@@ -2158,7 +2159,8 @@ class ReviewStep(unittest.TestCase):
             bin = directory / "bin"
             bin.mkdir()
             value = self.TOKEN if secret is None else secret
-            payload = json.dumps({"payload": {"data": base64.b64encode(value.encode()).decode()}})
+            payload = raw_answer if raw_answer is not None else \
+                json.dumps({"payload": {"data": base64.b64encode(value.encode()).decode()}})
             # A curl that is called when it must not be leaves a mark the tests read.
             (bin / "curl").write_text(f"#!/bin/bash\ntouch {shlex.quote(str(directory / 'curl-called'))}\n"
                                       + (f"printf '%s' {shlex.quote(payload)}\n" if secret_manager else "exit 22\n"))
@@ -2168,13 +2170,47 @@ class ReviewStep(unittest.TestCase):
                            "GCP_ACCESS_TOKEN": "gcp-not-a-secret" if signed_in else "",
                            "ANTHROPIC_IDENTITY_TOKEN_FILE": str(token), "GITHUB_OUTPUT": str(directory / "output"),
                            "GITHUB_STEP_SUMMARY": str(directory / "summary")}
-            run = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-c", review_step()["run"]],
+            # With trace, the step runs under strace, and the trace of every program it starts is appended to it.
+            prefix = ["strace", "-f", "-qq", "-s", "65536", "-e", "trace=execve", "-o", str(directory / "trace")] \
+                if trace is not None else []
+            run = subprocess.run(prefix + ["bash", "--noprofile", "--norc", "-e", "-c", review_step()["run"]],
                                  cwd=directory, env=environment, capture_output=True, text=True)
+            if trace is not None:
+                trace.append((directory / "trace").read_text() + "\n" + run.stderr)
             self.assertFalse(token.exists(), "the identity token file is removed")
             self.curl_called = (directory / "curl-called").exists()
             if output is not None:
                 output.append((directory / "output").read_text() if (directory / "output").exists() else "")
             return run.returncode, run.stdout, (directory / "summary").read_text()
+
+    def test_no_ending_of_the_review_step_puts_a_credential_in_an_argument(self):
+        # Every ending of the step, under strace: a review that finished, one that did not (with a message to scan),
+        # one that was refused, and a lost export. The collector token, its base64 form and the access token must be
+        # in no program's arguments and nowhere on stderr.
+        if not shutil.which("strace"):
+            self.skipTest("strace is not installed (the tests workflow installs it)")
+        secrets = [self.TOKEN, base64.b64encode(self.TOKEN.encode()).decode(), "gcp-not-a-secret"]
+        lost = "the cost collector answered 401, not 200, before the review, so its usage is not exported\n"
+        for code, failure, detail, served in ((0, None, None, None), (1, "plain words\n", "API Error: x\n", None),
+                                              (4, "the review is not published: x\n", None, SERVED_OTHER),
+                                              (0, None, None, SERVED_OK)):
+            with self.subTest(code=code, served=bool(served)):
+                traces = []
+                self.run_step(code, failure, detail, served=served, lost=lost, trace=traces)
+                self.assertIn("execve(", traces[0])
+                self.assertIn("review-run", traces[0], "the stand-in review-run was not started")
+                for secret in secrets:
+                    self.assertNotIn(secret, traces[0], f"exit {code}: a credential is in an argument or on stderr")
+
+    def test_a_response_with_no_payload_is_no_token(self):
+        # Secret Manager answering 200 with no payload (or a payload of null) must give the warning, never a token
+        # made of "null" or an empty string.
+        for body in ('{}', '{"payload": {}}', '{"payload": {"data": null}}', '{"payload": {"data": ""}}'):
+            with self.subTest(body=body):
+                code, out, _ = self.run_step(0, raw_answer=body)
+                self.assertEqual(code, 0, out)
+                self.assertIn("::warning::Could not read the cost collector's token", out)
+                self.assertIn("review-run: gcp=unset otel=\n", out)
 
     def test_a_token_that_cannot_be_read_does_not_stop_the_review(self):
         # Fail-soft: the export is a measurement. A read that fails, a value of whitespace alone, or a sign-in that
