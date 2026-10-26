@@ -2272,7 +2272,7 @@ class ReviewSessionStore(unittest.TestCase):
     def test_review_md_and_codeowners_are_the_only_files_with_an_owner_and_the_last_patterns(self):
         lines = [line.split() for line in (ROOT / ".github" / "CODEOWNERS").read_text().splitlines()
                  if line.strip() and not line.lstrip().startswith("#")]
-        owned = [["/review.md", "@sjawhar"], ["/.github/CODEOWNERS", "@sjawhar"]]
+        owned = [["/review.md", "@theorem-labs/engineering"], ["/.github/CODEOWNERS", "@theorem-labs/engineering"]]
         self.assertEqual([line for line in lines if len(line) > 1], owned)
         self.assertEqual(lines[-2:], owned)
         self.assertTrue((ROOT / "review.md").is_file())
