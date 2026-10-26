@@ -10,6 +10,7 @@ import os
 import importlib.machinery
 import importlib.util
 import pathlib
+import random
 import re
 import shutil
 import socket
@@ -560,6 +561,54 @@ class Screening(unittest.TestCase):
             text = self.comment(review, checks)
             self.assertLessEqual(len(text), 65_536, (len(review), len(checks)))
             self.assertIn("Claude wrote this review", text)
+
+    def test_nothing_generated_ever_follows_the_review(self):
+        # The review-last guarantee: in every path, including a cut review and a kept comment, the review or the kept
+        # body is the last block, and the note about a cut comes before it.
+        long = "R" * (review_comment.MAX_REVIEW + 50)
+        for text in (self.comment("The model's text.", "### report\n"), self.comment(long, "### report\n"),
+                     self.comment("", "### report\n"),
+                     review_comment.not_current(f"{review_comment.MARKER}\n"
+                                                f"{review_comment.meta_line('a' * 40, 'review')}\n\n"
+                                                "## Enrollment review\n\nOLD_BODY <b", "b" * 40, "")):
+            blocks = text.strip().split("\n\n")
+            last = blocks[-1]
+            for mine in (review_comment.MARKER, "oss-verify-meta", review_comment.HEADING, "Claude wrote this review",
+                         review_comment.CHECKS_SUMMARY, "is cut at", "**Not current:**", "did not run on this push"):
+                self.assertNotIn(mine, last, f"{mine} follows the review")
+        text = self.comment(long, "### report\n")
+        self.assertLess(text.index("The review is cut at"), text.index("R" * 100))
+
+    def test_nothing_in_the_report_can_end_the_fence(self):
+        # A closing fence must use the same character as the opening one and be at least as long, so a tilde line
+        # cannot end a backtick fence, and a backtick line cannot either, because the fence is longer than any run.
+        for report in ("~~~\nstill inside\n~~~\n", "```   \nstill inside\n", "   ```\nstill inside\n",
+                       "``````\nstill inside\n", "a``````b\nstill inside\n", "~~~text\nstill inside\n"):
+            text = self.comment("REVIEW_SENTINEL", report)
+            bar = re.search(r"\n(`{3,})text\n", text).group(1)
+            inside = text.split(f"{bar}text\n", 1)[1].split(f"\n{bar}\n", 1)[0]
+            self.assertIn("still inside", inside)
+            for line in report.split("\n"):
+                if line.strip() and set(line.strip()) == {"`"}:
+                    self.assertLess(len(line.strip()), len(bar), line)
+            self.assertTrue(text.strip().endswith("REVIEW_SENTINEL"))
+
+    def test_neutralize_removes_only_a_complete_marker_of_this_script(self):
+        # An independent implementation of the rule, by regular expression rather than by scan, on inputs small enough
+        # that its backtracking does not matter.
+        def expected(text):
+            return re.sub(r"<!--.*?-->", lambda m: " " if "oss-verify" in m.group().lower() else m.group(), text,
+                          flags=re.S)
+        rng = random.Random(37)
+        pieces = ["<!--", "-->", "oss-verify", "OSS-Verify", "<!", "x", " ", "\n", "-", ">", "`"]
+        for _ in range(20_000):
+            text = "".join(rng.choice(pieces) for _ in range(rng.randrange(0, 12)))
+            got = review_comment.neutralize(text)
+            self.assertEqual(got, expected(text), text)
+            self.assertEqual(review_comment.neutralize(got), got, text)
+            # Nothing but those spans goes: what is left, with spaces put back, is a subsequence of the input.
+            if "oss-verify" not in text.lower():
+                self.assertEqual(got, text, text)
 
     def test_a_cut_says_so_before_the_text_it_cut(self):
         text = self.comment("x" * (review_comment.MAX_REVIEW + 10), "y" * (review_comment.MAX_CHECKS + 10))
