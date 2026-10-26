@@ -61,22 +61,24 @@ fails on data in code, it never passes it. When the file still has RISC-V mappin
 the findings that fall inside $d data are counted (`in_data`); that count does not change the result.
 
 WHERE THE CODE IS. The model fetches an instruction from any byte of a loaded segment marked executable, and from
-nothing else (RiscvSemantics.v, code_read and fetch_byte_traps). What the section headers say does not change that,
-and the loader never reads them. So the code is located by the program headers:
+nothing else (RiscvSemantics.v, code_read and fetch_byte_traps). Two sources are cross-checked:
 
-    segments   every byte of a PT_LOAD segment with PF_X is decoded, except the ELF header and the program and section
-               header tables, which this check reads as those tables (a linker can map them executable: Go's linker
-               puts all three at the start of its text segment). The bytes of an executable (SHF_EXECINSTR) section
-               are decoded as that section, which must say it is at the address the segment maps it at: alignment
-               depends on the address, so a section that says otherwise cannot be examined. Every other run of bytes,
-               inside a section without SHF_EXECINSTR or inside no section, is padding when every byte is zero, and
-               is decoded as code otherwise: data that is mapped executable fails the check, as data in code does.
-    sections   every SHF_EXECINSTR section with bytes in the file is decoded too, whether or not a PF_X segment maps
-               it.
+    sections   every SHF_EXECINSTR section with bytes in the file is decoded, whether or not a PF_X segment maps it.
+    segments   every PT_LOAD segment with PF_X is what the loader maps executable. Its file bytes are: bytes inside a
+               section (decoded above if the section has SHF_EXECINSTR); the ELF header and the program and section
+               header tables (a text segment can start at file offset 0); and gaps that no section covers. A gap of
+               only zero bytes is padding. A gap with any other byte is decoded as code, since the loader maps it
+               executable and no section header describes it.
 
-The three header tables are the one part of an executable segment that is not decoded: the check trusts that a
-program does not jump into its own headers. The ELF header is taken as its 64 bytes, whatever its e_ehsize says.
+An ELF section header does not decide what the loader maps executable, but it does mark whether the producer says a
+range is instructions. A non-executable section inside a PF_X segment is named and counted, never decoded. This
+leaves its contents unexamined. It avoids deciding ordinary read-only data such as strings or notes is code merely
+because a linker put it in an executable segment. A gap without a section has no such description and is decoded
+unless it is all zero.
+
 A file with no section headers is decoded from its PF_X segments, without the ELF header and program header table.
+The three header tables are the other bytes in an executable segment that are not decoded: the check trusts that a
+program does not jump into its own headers. The ELF header is taken as its 64 bytes, whatever its e_ehsize says.
 A file in which nothing is decoded (no executable section with bytes, and no byte of a PF_X segment outside the header
 tables that is not zero) had nothing examined: the result is "error", never "pass".
 
@@ -790,16 +792,19 @@ def outside_sites(buf, base, clean, outw, pairs_fn):
 
 
 def regions(data, e, secs, segs):
-    """The byte ranges to decode (see WHERE THE CODE IS): (how the code was located, [PF_X segment], [region], {what the
-    PF_X segments map besides executable sections}). Raise Unexamined if an executable section inside a PF_X segment
-    claims an address other than the one the segment maps its bytes at."""
+    """The byte ranges to decode (see WHERE THE CODE IS): (how the code was located, [PF_X segment], [region], {what
+    the PF_X segments map besides executable sections}). An executable section inside a PF_X segment must say it is
+    at the address the segment maps its bytes at, or alignment cannot be checked."""
     regs, notes = [], {"data_in_x": [], "gap_zero": 0, "gap_nonzero": 0, "header_in_x": 0}
     xsegs = [g for g in segs if g["type"] == PT_LOAD and g["flags"] & PF_X and g["filesz"]]
-    code = [s for s in secs if s["flags"] & SHF_EXECINSTR and s["type"] != SHT_NOBITS and s["size"]]
-    data_secs = [s for s in secs if not s["flags"] & SHF_EXECINSTR and s["type"] not in (0, SHT_NOBITS) and s["size"]]
-    for s in code:
-        regs.append({"idx": s["idx"], "addr": s["addr"], "off": s["off"], "size": s["size"]})
-    mode = "sections" if secs else "segments"
+    filled = [s for s in secs if s["type"] != SHT_NOBITS and s["size"] and s["type"] != 0]
+    if secs:
+        mode = "sections"
+        for s in secs:
+            if s["flags"] & SHF_EXECINSTR and s["type"] != SHT_NOBITS and s["size"]:
+                regs.append({"idx": s["idx"], "addr": s["addr"], "off": s["off"], "size": s["size"]})
+    else:
+        mode = "segments"
     # The ELF header (64 bytes in ELF64) and the program and section header tables, as parse_elf() read them.
     hdr = [(0, 64)]
     if e["phoff"] and e["phnum"]:
@@ -809,22 +814,20 @@ def regions(data, e, secs, segs):
     for g in xsegs:
         lo, hi = g["off"], g["off"] + g["filesz"]
         cover = []
-        for s in code:
+        for s in filled:
             a, b = max(lo, s["off"]), min(hi, s["off"] + s["size"])
             if a < b:
                 cover.append((a, b))
-                if s["addr"] - s["off"] != g["vaddr"] - lo:
+                if s["flags"] & SHF_EXECINSTR and s["addr"] - s["off"] != g["vaddr"] - lo:
                     raise Unexamined(f"section {s['name']} says it is at {s['addr']:#x}, but PF_X LOAD[{g['idx']}] "
                                      f"maps it at {g['vaddr'] + s['off'] - lo:#x}")
+                if not s["flags"] & SHF_EXECINSTR:
+                    notes["data_in_x"].append((s["name"], b - a))
         for a, b in hdr:
             a, b = max(lo, a), min(hi, b)
             if a < b:
                 cover.append((a, b))
                 notes["header_in_x"] += b - a
-        for s in data_secs:
-            a, b = max(lo, s["off"]), min(hi, s["off"] + s["size"])
-            if a < b:
-                notes["data_in_x"].append((s["name"], b - a))
         cover.sort()
         pos = lo
         gaps = []

@@ -257,10 +257,10 @@ class WhereTheCodeIs(Base):
         res, _ = self.one(bytes(b), "CLEAN", exec_bytes=8, regions=1)
         self.assertEqual(res["pf_x"]["header_in_x"], 64 + 56 + 64 * shnum)
 
-    def test_e_ehsize_does_not_hide_bytes(self):
-        # A vector word in a section without SHF_EXECINSTR, inside the text segment; e_ehsize claims 65535 bytes. The
-        # bytes after the program header table up to the end of the segment are one run, decoded whole.
-        b = bytearray(mkelf(NOP + VSETVLI, text_flags=0x2, seg_from_zero=True))
+    def test_e_ehsize_does_not_hide_a_segment_gap(self):
+        # There is no section header table. e_ehsize claims 65535 bytes, but the ELF header is still only 64 bytes and
+        # the non-zero gap after the program header is decoded.
+        b = bytearray(mkelf(NOP + VSETVLI, sections=False, seg_from_zero=True))
         struct.pack_into("<H", b, 52, 0xFFFF)
         res, _ = self.one(bytes(b), "NOT-MODEL", outside_model=1, exec_bytes=TEXT_OFF + 8 - 64 - 56)
         self.assertEqual(res["pf_x"]["header_in_x"], 64 + 56)
@@ -285,16 +285,13 @@ class WhereTheCodeIs(Base):
                             "RVC", rvc16=2, in_data=2, mapping_symbols=3)
         self.assertIn("2 finding(s) inside $d data", out["detail"])
 
-    def test_a_data_section_mapped_executable_is_decoded(self):
-        # What the loader maps executable is decoded, whatever the section headers say.
-        res, out = self.one(mkelf(NOP + CNOP + CNOP, text_flags=0x2), "RVC", rvc16=2, exec_bytes=8, regions=1)
-        self.assertEqual(res["pf_x"]["data_in_x"], [(".text", 8)])
-        self.assertEqual(out["first"], f"rvc16 at {TEXT_VADDR + 4:#x}")
-        self.one(mkelf(NOP + VSETVLI, text_flags=0x2), "NOT-MODEL", outside_model=1)
-        self.one(mkelf(NOP + ADD, text_flags=0x2), "CLEAN", insn32=2)
-        # Zero bytes are padding there too, so nothing is left to examine.
-        res, _ = self.one(mkelf(Z32 * 2, text_flags=0x2), "UNEXAMINED", exec_bytes=0)
-        self.assertEqual(res["pf_x"]["gap_zero"], 8)
+    def test_a_data_section_mapped_executable_is_named_not_decoded(self):
+        # A non-executable section inside a PF_X segment is reported for a reader, but it is not guessed to be code.
+        for text in (NOP + CNOP + CNOP, NOP + VSETVLI, NOP + ADD, Z32 * 2):
+            res, out = self.one(mkelf(text, text_flags=0x2), "UNEXAMINED", exec_bytes=0, rvc16=0)
+            self.assertEqual(res["pf_x"]["data_in_x"], [(".text", len(text))])
+            self.assertEqual((res["pf_x"]["gap_zero"], res["pf_x"]["gap_nonzero"]), (0, 0))
+            self.assertIn("examined nothing", out["detail"])
 
     def test_a_section_must_be_where_its_segment_maps_it(self):
         # The code is at 2 mod 4, and its section header says 0 mod 4.

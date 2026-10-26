@@ -10,12 +10,13 @@ and gives each build of each fuzz target two results:
 
 1. The uninstrumented list, in the shape of the proofs repository's harness.yaml (builds.<build>.uninstrumented):
    each file the link took from the toolchain image, which no sanitizer instruments in any build, as in OSS-Fuzz's
-   sanitizer builds: {name: <file name>, kind: libc | compiler-rt | sanitizer-runtime | cxx-runtime | image-library,
-   sha256}, sorted by the file's path in the image. A file is the toolchain image's when its path is under /opt and
-   the toolchain image has those bytes at that path (tools/check reads them from the image). In an AddressSanitizer
-   build, an uninstrumented object whose DWARF says it is assembly is listed too, as {name, kind: assembly, source},
-   as OSS-Fuzz allows. The driver (cli.o, the adapter and the seals) is compiled without a sanitizer in every build,
-   by design, and is not listed.
+   sanitizer builds: {name: <file name>, kind: libc | compiler-rt | sanitizer-runtime | cxx-runtime | fortran-runtime
+   | image-library, sha256}, sorted by the file's path in the image. A file is the toolchain image's when its path is
+   under /opt and the toolchain image has those bytes at that path (tools/check reads them from the image). In an
+   AddressSanitizer build, an uninstrumented object is listed too, as {name, kind: assembly | fortran, source}, as
+   OSS-Fuzz allows, when its DWARF says it is assembly or Fortran, or, for one assembled without DWARF, when a source
+   of the project carries its name and names every global it defines. The driver (cli.o, the adapter and the seals)
+   is compiled without a sanitizer in every build, by design, and is not listed.
 
 2. Whether the project's own code is instrumented, in each sanitizer build. The project's code is every object and
    archive member the link took that is neither the driver's nor the toolchain image's. In the AddressSanitizer
@@ -25,7 +26,7 @@ and gives each build of each fuzz target two results:
    it makes no memory access for AddressSanitizer to check. The UndefinedBehaviorSanitizer runs in trap mode and
    leaves no symbol: its checks are trap instructions (`unimp`), and rustc's UB checks are precondition_check
    functions. So in the ubsan and asan-ubsan builds, each archive of the project's code must hold more of them than
-   the same archive in the plain build, and its loose objects together more than the plain build's.
+   the same archive in the plain build, and so must the project's code as a whole.
 
 The plain build instruments nothing, by design; its result is "plain".
 
@@ -49,6 +50,9 @@ import sys
 CXX_RUNTIME = re.compile(r"libc\+\+\.a|libc\+\+abi\.a|libunwind\.a|libc\+\+experimental\.a")
 COMPILER_RT = re.compile(r"libclang_rt\.builtins.*\.a|clang_rt\.crt(begin|end).*\.o")
 SANITIZER_RUNTIME = re.compile(r"libclang_rt\..*\.a")
+# The Fortran runtime, which a toolchain image with a Fortran compiler links beside the others: LLVM's flang and
+# GCC's gfortran name theirs differently.
+FORTRAN_RUNTIME = re.compile(r"lib(Fortran[A-Za-z]*|flang[A-Za-z_.]*|gfortran|quadmath)\.a")
 # musl's C library: its start files, libc.a, its empty stub archives, and libssp_nonshared.a.
 LIBC = re.compile(r"(crt1|crti|crtn|Scrt1|rcrt1)\.o|lib(c|m|rt|pthread|crypt|util|xnet|resolv|dl|ssp_nonshared)\.a")
 SYSROOT_LIB = re.compile(r"/opt/[^/]+(/[^/]+)*/usr/lib/[^/]+\.a")
@@ -63,7 +67,13 @@ ASAN_BUILDS = ("asan", "asan-ubsan")
 UBSAN_BUILDS = ("ubsan", "asan-ubsan")
 C_FAMILY = re.compile(r"\.(c|cc|cp|cpp|cxx|c\+\+|C|CPP|m|mm|h|hh|hpp|hxx|inc|ii|i)$")
 ASSEMBLY = re.compile(r"\.(S|s|sx|asm)$")
-ASSEMBLER_LANGUAGE = "DW_LANG_Mips_Assembler"  # the DWARF language of an object assembled from a .S or .s file
+FORTRAN = re.compile(r"\.(f|for|ftn|fpp|f77|f90|f95|f03|f08|f18)$", re.I)
+# The DWARF language of an object assembled from a .S or .s file, and of one compiled from Fortran.
+ASSEMBLER_LANGUAGE = "DW_LANG_Mips_Assembler"
+FORTRAN_LANGUAGE = re.compile(r"DW_LANG_Fortran\w*")
+# What an uninstrumented entry's name and source may hold (the facts' schema for builds.<b>.uninstrumented).
+NAME = re.compile(r"[A-Za-z0-9._+-]{1,120}")
+SOURCE = re.compile(r"[A-Za-z0-9._+/-]{1,200}")
 MAP_COLUMNS = re.compile(r"^ *([0-9a-f]+) +[0-9a-f]+ +([0-9a-f]+) +[0-9]+ ")
 # An allocation-failure link's copy of an archive or object is named <position>-<the original's name>.
 COPY_PREFIX = re.compile(r"^[0-9]+-")
@@ -224,6 +234,8 @@ def runtime_kind(path):
         return "compiler-rt"
     if SANITIZER_RUNTIME.fullmatch(name):
         return "sanitizer-runtime"
+    if FORTRAN_RUNTIME.fullmatch(name):
+        return "fortran-runtime"
     if "/usr/lib/" in path and LIBC.fullmatch(name):
         return "libc"
     if SYSROOT_LIB.fullmatch(path):
@@ -243,6 +255,8 @@ def ar_members(data):
         try:
             size = int(header[48:58].decode("ascii").strip())
         except ValueError:
+            break
+        if size < 0:  # a header that would move the walk backwards
             break
         body = data[at + 60:at + 60 + size]
         at += 60 + size + (size & 1)
@@ -411,11 +425,13 @@ def listed(items):
 
 
 def ub_count(code):
-    """The UBSan traps and rustc UB checks of some code, by archive file name (None for the loose objects)."""
+    """The UBSan traps and rustc UB checks of some code, by the archive it is a member of, and by name for an object
+    the link took on its own: {archive or object name: count}."""
     counts = {}
     for c in code:
         if c.facts is not None and not c.facts.bitcode:
-            counts[c.archive] = counts.get(c.archive, 0) + c.facts.traps + c.facts.ub_checks
+            where = c.archive or c.label
+            counts[where] = counts.get(where, 0) + c.facts.traps + c.facts.ub_checks
     return counts
 
 
@@ -429,28 +445,45 @@ def relative_source(path, checkouts):
     return None
 
 
-def assembly_entry(c, unit, checkouts):
-    """The uninstrumented entry of an object with no mark of a compiler, from its DWARF compile unit (language, name,
-    compilation directory): (entry, problem or None)."""
-    entry = {"name": c.label.rsplit("(", 1)[-1].rstrip(")"), "kind": "assembly"}
-    if unit is None or unit[0] != ASSEMBLER_LANGUAGE or not unit[1]:
-        language = unit[0] if unit else "no DWARF compile unit"
-        return entry, (f"{c.label}: uninstrumented code with no mark of a compiler, and its DWARF says {language}, "
-                       "not assembly")
-    name, directory = unit[1], unit[2] or ""
-    source = relative_source(name if name.startswith("/") else posixpath.join(directory, name), checkouts)
-    if source is None or not ASSEMBLY.search(source):
-        return entry, f"{c.label}: its assembly source {name} is in no git checkout of the project image"
+def source_entry(c, unit, checkouts, named=None):
+    """The uninstrumented entry of an object with no mark of a C or C++ compiler: (entry, problem or None). A
+    compiler adds no sanitizer check to hand-written assembly or to Fortran, and OSS-Fuzz allows both uninstrumented,
+    listed by name with the source they came from; the facts' schema asks for that source. Two things can name it:
+    the object's DWARF compile unit (language, name, compilation directory), which the toolchain writes with -g and
+    which also says the language; and, for an assembly object with no DWARF at all, a source of the project that
+    carries the object's name and names every global the object defines (`named`, from assembly_sources). An object
+    assembled without -g carries no mark of any kind, so without the second rule an honest build would fail."""
+    name = c.label.rsplit("(", 1)[-1].rstrip(")")
+    language = unit[0] if unit else ""
+    kind = "assembly" if language == ASSEMBLER_LANGUAGE else "fortran" if FORTRAN_LANGUAGE.fullmatch(language) else ""
+    entry = {"name": name, "kind": kind or "assembly"}
+    if not NAME.fullmatch(name):
+        return entry, f"{c.label}: its name is not one the facts can hold"
+    if not kind:
+        if language:
+            return entry, (f"{c.label}: uninstrumented code with no mark of a C or C++ compiler, and its DWARF says "
+                           f"{language}, not assembly or Fortran")
+        if not named or not SOURCE.fullmatch(named):
+            return entry, (f"{c.label}: uninstrumented code with no mark of a compiler and no DWARF, and no assembly "
+                           "source of the project both carries its name and names every function it defines")
+        entry["source"] = named
+        return entry, None
+    source = relative_source(unit[1] if unit[1].startswith("/") else posixpath.join(unit[2] or "", unit[1]),
+                             checkouts) if unit[1] else None
+    if not source or not SOURCE.fullmatch(source) or not (ASSEMBLY if kind == "assembly" else FORTRAN).search(source):
+        return entry, (f"{c.label}: its {kind} source {unit[1] or '(not named)'} is in no checkout of the project "
+                       "image")
     entry["source"] = source
     return entry, None
 
 
-def analyse(records, image, dwarf_units=None, checkouts=()):
+def analyse(records, image, dwarf_units=None, checkouts=(), assembly_sources=None):
     """The results for one fuzz target: {build: {"uninstrumented": [...] or None, "instrumented": {"result",
     "detail"}}}. `records` maps a build to its Record, or to the reason it has none; `image` maps real paths under
     /opt to the toolchain image's sha256. `dwarf_units(objects)` gives each object's DWARF compile unit (language,
-    name, compilation directory) or None; `checkouts` are the git checkouts of the project image, which an assembly
-    source is named relative to."""
+    name, compilation directory) or None; `checkouts` are the checkouts of the project image, which a source is named
+    relative to; `assembly_sources([(object name, [the functions it defines])])` gives, for an object with no DWARF,
+    the assembly source of the project that carries its name and names every one of them, or None."""
     results, scanned, problems_of = {}, {}, {}
     for build, record in records.items():
         if not isinstance(record, Record):
@@ -464,15 +497,22 @@ def analyse(records, image, dwarf_units=None, checkouts=()):
             continue
         code, provided, problems = project_code(record, image)
         scanned[build] = code
-        listing = []
+        # A list that leaves a file out is worse than no list: the facts would then say that the build links less
+        # uninstrumented code than it does. So one file without a kind, or an empty list, leaves the build with no
+        # list and an error, in the plain build as in the others. Every static link takes the C library, so an empty
+        # list means the record named nothing; the facts' schema asks for at least one entry too.
+        listing, unknown = [], []
         for real, sha256 in sorted(provided):
             kind = runtime_kind(real)
             if kind is None:
-                problems.append(f"{real}: a file of the toolchain image that no kind names (tools/check_links.py, "
-                                "runtime_kind)")
+                unknown.append(f"{real}: a file of the toolchain image that no kind names (tools/check_links.py, "
+                               "runtime_kind)")
                 continue
             listing.append({"name": real.rsplit("/", 1)[-1], "kind": kind, "sha256": sha256})
-        results[build] = {"uninstrumented": listing}
+        if not listing:
+            unknown.append("the link took no file of the toolchain image, and every static link takes its C library")
+        problems += unknown
+        results[build] = {"uninstrumented": None if unknown else listing, "incomplete": unknown}
         problems_of[build] = problems
 
     for build, problems in problems_of.items():
@@ -481,8 +521,9 @@ def analyse(records, image, dwarf_units=None, checkouts=()):
             detail = "the plain build instruments nothing, by design"
             if problems:
                 detail += "; " + "; ".join(listed(problems))
-            result["instrumented"] = {"result": "plain", "detail": detail}
+            result["instrumented"] = {"result": "error" if result.pop("incomplete") else "plain", "detail": detail}
             continue
+        incomplete = result.pop("incomplete")
         with_code = [c for c in code if c.facts is not None and (c.facts.code or c.facts.bitcode)]
         unreadable = [c.label for c in code if c.facts is None]
         bitcode = [c.label for c in with_code if c.facts.bitcode]
@@ -500,32 +541,51 @@ def analyse(records, image, dwarf_units=None, checkouts=()):
                     plain_c.append(c.label)
             if assembly:
                 units = dwarf_units([c.data for c in assembly]) if dwarf_units else [None] * len(assembly)
+                # An object with no DWARF at all: the project's own assembly sources are asked for its name.
+                wanted = [(c.label.rsplit("(", 1)[-1].rstrip(")"), c.facts.defined)
+                          for c, unit in zip(assembly, units) if unit is None]
+                found_sources = iter(assembly_sources(wanted) if assembly_sources and wanted else [None] * len(wanted))
                 for c, unit in zip(assembly, units):
-                    entry, problem = assembly_entry(c, unit, checkouts)
-                    result["uninstrumented"].append(entry)
+                    entry, problem = source_entry(c, unit, checkouts,
+                                                  next(found_sources) if unit is None else None)
+                    if result["uninstrumented"] is not None:
+                        result["uninstrumented"].append(entry)
                     if problem:
                         problems.append(problem)
             plain_c += shims[1:]
             if plain_c:
                 found.append(f"{len(plain_c)} of {len(with_code)} objects with code refer to no AddressSanitizer "
                              "constructor: " + ", ".join(listed(plain_c)))
+        notes = []
         if build in UBSAN_BUILDS:
-            # Each archive must hold more checks than in the plain build, and so must the project's code as a whole.
-            # A loose object (the fuzz target's own, often) may have nothing for the sanitizer to check.
-            counts = ub_count(with_code)
-            baseline = ub_count(scanned["plain"]) if "plain" in scanned else {}
-            short = []
-            for archive, count in sorted((a, c) for a, c in counts.items() if a is not None):
-                before = baseline.get(archive)
-                if count == 0 or (before is not None and count <= before):
-                    short.append(f"{archive}: {count} UBSan traps and UB checks"
-                                 + (f", the plain build's {before}" if before is not None else ""))
-            total, before = sum(counts.values()), sum(baseline.values()) if baseline else None
-            if total == 0 or (before is not None and total <= before):
+            # Every archive of the project's code must hold more checks than the same archive in the plain build, and
+            # so must its code as a whole. An object the link took on its own is named when it holds none, and does
+            # not fail the build: one can genuinely have nothing to check (the example fixture's own fuzz target
+            # object has no check in either build), and nothing in the object tells the two apart. The enrollment's
+            # review reads that line. Without a plain build there is nothing to compare, and the check decides
+            # nothing.
+            if "plain" not in scanned:
+                incomplete = incomplete + ["no plain build to compare the UndefinedBehaviorSanitizer's checks with"]
+                found.append(incomplete[-1])
+            counts, baseline = ub_count(with_code), ub_count(scanned.get("plain", []))
+            archives = {c.archive for c in with_code if c.archive}
+            short, quiet = [], []
+            for where, count in sorted(counts.items()):
+                before = baseline.get(where)
+                if count and (before is None or count > before):
+                    continue
+                text = (f"{where}: {count} UBSan traps and UB checks"
+                        + (f", the plain build's {before}" if before is not None else ""))
+                (short if where in archives else quiet).append(text)
+            total, before = sum(counts.values()), sum(baseline.values())
+            if total == 0 or (baseline and total <= before):
                 short.append(f"the project's code as a whole: {total} UBSan traps and UB checks"
-                             + (f", the plain build's {before}" if before is not None else ""))
+                             + (f", the plain build's {before}" if baseline else ""))
             if short:
                 found.append("the UndefinedBehaviorSanitizer did not reach " + "; ".join(listed(short)))
+            if quiet:
+                notes.append("objects with no UndefinedBehaviorSanitizer check, which may have nothing to check: "
+                             + "; ".join(listed(quiet)))
         if bitcode:
             found.append(f"{len(bitcode)} objects are LLVM bitcode, which this does not read: "
                          + ", ".join(listed(bitcode)))
@@ -534,11 +594,14 @@ def analyse(records, image, dwarf_units=None, checkouts=()):
         if not with_code:
             found.append("the link took no object of the project's code (examined nothing)")
         found += problems
-        if found:
-            result["instrumented"] = {"result": "fail", "detail": "; ".join(found)}
+        if incomplete:
+            # The build's code may be instrumented, but the list of what it links uninstrumented is not there.
+            result["instrumented"] = {"result": "error", "detail": "; ".join(found + notes)}
+        elif found:
+            result["instrumented"] = {"result": "fail", "detail": "; ".join(found + notes)}
         else:
-            result["instrumented"] = {"result": "pass", "detail": f"{len(with_code)} objects with code, all "
-                                                                  "instrumented"}
+            result["instrumented"] = {"result": "pass", "detail": "; ".join(
+                [f"{len(with_code)} objects with code, all instrumented"] + notes)}
     return results
 
 

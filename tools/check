@@ -369,11 +369,14 @@ def main():
         # The checks of the binaries, into the manifest: per build, the uninstrumented list in the harness.yaml shape,
         # and the four results in its binary_checks block.
         try:
-            block, uninstrumented = check_binaries.binary_checks(job, toolchain, targets, entries, data["sources"],
-                                                                 work, labels=check_build.work_label(work))
+            block, uninstrumented = check_binaries.binary_checks(job, tag, toolchain, targets, entries,
+                                                                 data["sources"], work,
+                                                                 labels=check_build.work_label(work))
             for target, by_build in uninstrumented.items():
                 for build, listing in by_build.items():
-                    if listing is not None:
+                    # No list where the check could not make a whole one: the facts must never say that a build links
+                    # less uninstrumented code than it does, and the schema asks for at least one entry.
+                    if listing:
                         data["targets"][target]["builds"][build]["uninstrumented"] = listing
             data["binary_checks"] = block
             manifest.write_manifest(work / "manifest.yaml", data)

@@ -134,18 +134,21 @@ mv -f "$OV_TWINS/$sum.tmp" "$OV_TWINS/$sum"
 # ends, and the checks examine its code. A record that cannot be written is left out, with a warning: the link itself
 # has succeeded, and the checks then say that the target has no record.
 rec=$OV_RECORDS/$sum
+# `set -e` does not apply inside the condition of an `if`, so each step says `|| return 1` for itself.
 record_link() {
-  rm -rf "$rec"
-  mkdir -p "$rec" "$OV_RECORDS/store"
+  rm -rf "$rec" || return 1
+  mkdir -p "$rec" "$OV_RECORDS/store" || return 1
   awk '{
     line = $0
     sub(/^ *[0-9a-f]+ +[0-9a-f]+ +[0-9a-f]+ +[0-9]+ /, "", line)
     if (substr(line, 1, 8) == "        " && substr(line, 9, 1) != " " && index(line, ":(")) print
-  }' "$OV_RECORDS/map.$$" > "$rec/map"
-  rm -f "$OV_RECORDS/map.$$"
+  }' "$OV_RECORDS/map.$$" > "$rec/map" || return 1
+  [ -s "$rec/map" ] || return 1   # a link whose map names no input section: the record would say nothing
+  rm -f "$OV_RECORDS/map.$$" || return 1
   # shellcheck disable=SC2086 # lists of words
-  for word in $driver $seals; do case "$word" in *.o) printf '%s\n' "$word" ;; esac; done > "$rec/driver"
-  [ -z "${copies:-}" ] || [ ! -f "$copies/renamed" ] || cp -- "$copies/renamed" "$rec/renamed"
+  { for word in $driver $seals; do case "$word" in *.o) printf '%s\n' "$word" ;; esac; done; } > "$rec/driver" \
+    || return 1
+  if [ -n "${copies:-}" ] && [ -f "$copies/renamed" ]; then cp -- "$copies/renamed" "$rec/renamed" || return 1; fi
   awk '{
     sub(/^ *[0-9a-f]+ +[0-9a-f]+ +[0-9a-f]+ +[0-9]+ +/, "")
     at = 0
@@ -157,11 +160,12 @@ record_link() {
     print file
   }' "$rec/map" | LC_ALL=C sort -u | while IFS= read -r file; do
     real=$(readlink -f -- "$file") && [ -f "$real" ] || continue
-    digest=$(sha256sum < "$real" | cut -d' ' -f1)
-    printf '%s\t%s\t%s\t%s\n' "$file" "$real" "$digest" "$(wc -c < "$real")"
+    digest=$(sha256sum < "$real" | cut -d' ' -f1) || exit 1
+    printf '%s\t%s\t%s\t%s\n' "$file" "$real" "$digest" "$(wc -c < "$real")" || exit 1
     [ -f "$OV_RECORDS/store/$digest" ] \
-      || { cp -- "$real" "$OV_RECORDS/store/$digest.$$" && mv -f "$OV_RECORDS/store/$digest.$$" "$OV_RECORDS/store/$digest"; }
-  done > "$rec/inputs.tsv"
+      || { cp -- "$real" "$OV_RECORDS/store/$digest.$$" && mv -f "$OV_RECORDS/store/$digest.$$" "$OV_RECORDS/store/$digest"; } \
+      || exit 1
+  done > "$rec/inputs.tsv" || return 1
   local quiet="" word twin
   # shellcheck disable=SC2086 # a list of objects
   for word in $driver; do
@@ -171,10 +175,11 @@ record_link() {
   done
   if [ -n "$quiet" ]; then
     driver=$quiet
-    link -Wl,--strip-all -o "$rec/quiet"
+    link -Wl,--strip-all -o "$rec/quiet" || return 1
   fi
+  return 0
 }
-if ! (set -euo pipefail; record_link); then
+if ! record_link; then
   echo "link-fuzz-target: warning: the record of the link of $out could not be written; its binary checks will say so" >&2
   rm -rf "$rec" "$OV_RECORDS/map.$$"
 fi

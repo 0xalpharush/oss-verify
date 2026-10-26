@@ -58,8 +58,9 @@ API:
   check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=None) -> {"verdict": "pass" | "fail" |
     "undecided", "calls": records read, "names": sorted distinct call names, "unmodeled": [{"call", "why"}] in trace
     order, one per distinct pair, "undecided": the same for the calls the trace does not decide, "exited": the trace
-    holds the run's end, "host_log": "present" | "missing"}. A host log that does not hold the tracer's `exec` line,
-    and a `lengths` of None, are "missing": the run did not start, or its host calls were not recorded.
+    holds the run's end, "host_log": "present" | "missing", "image", "image_error", "child_records": a forked
+    child's records, not checked}. A host log that does not hold the tracer's `exec` line, and a `lengths` of None,
+    are "missing": the run did not start, or its host calls were not recorded.
   STANCES.
   MODEL_COMMIT, MODEL_FILES: the model commit the rules were checked against, and the code_sha256 of every model
     file the rules rest on (tools/model_release.py).
@@ -166,16 +167,18 @@ DIRENT64_MIN_RECLEN = 24                      # Sys/Fs/Readdir.v dirent64_min_re
 SOCKADDR_STORAGE_SIZE = 128                   # Sys/Net/Socket.v SOCKADDR_STORAGE_SIZE
 SIGABRT = 6
 PID_MAX = 1 << 31                             # Sys/Kernel/Signal.v pid_positive: 1 <= pid < 2^31
+PID_MAX_ENVELOPE = 1 << 22                    # Sys/Kernel/Fork.v PID_MAX_ENVELOPE: a task id is in (0, 2^22)
 
 # Errno values, as the kernel numbers them. ERRNO_NAMES spells the ones an arm answers, for the reasons.
 EPERM, ENOENT, ESRCH, EINTR, EBADF, ECHILD, EAGAIN, ENOMEM, EACCES, EFAULT = 1, 2, 3, 4, 9, 10, 11, 12, 13, 14
 EEXIST, ENOTDIR, EISDIR, EINVAL, ENFILE, EMFILE, ENOTTY = 17, 20, 21, 22, 23, 24, 25
-EISCONN = 106
+ESPIPE, ECONNRESET, EISCONN, ENOTCONN, ETIMEDOUT = 29, 104, 106, 107, 110
 ERANGE, ENAMETOOLONG, ENOTSOCK, EOPNOTSUPP, EAFNOSUPPORT = 34, 36, 88, 95, 97
 ERRNO_NAMES = {1: "EPERM", 2: "ENOENT", 3: "ESRCH", 4: "EINTR", 9: "EBADF", 10: "ECHILD", 11: "EAGAIN", 12: "ENOMEM",
                13: "EACCES", 14: "EFAULT", 17: "EEXIST", 20: "ENOTDIR", 21: "EISDIR", 22: "EINVAL", 23: "ENFILE",
-               24: "EMFILE", 25: "ENOTTY", 34: "ERANGE", 36: "ENAMETOOLONG", 88: "ENOTSOCK", 95: "EOPNOTSUPP",
-               97: "EAFNOSUPPORT", 106: "EISCONN"}
+               24: "EMFILE", 25: "ENOTTY", 29: "ESPIPE", 34: "ERANGE", 36: "ENAMETOOLONG", 88: "ENOTSOCK",
+               95: "EOPNOTSUPP", 97: "EAFNOSUPPORT", 104: "ECONNRESET", 106: "EISCONN", 107: "ENOTCONN",
+               110: "ETIMEDOUT"}
 # The errno sets the model's arms draw an environment's refusal from, each the model's list of the same name.
 OPENAT_ERRNOS = {ENOMEM, EACCES, EMFILE, ENFILE}          # Sys/Fs/Open.v openat_errnos
 MMAP_ERRNOS = {ENOMEM}                                    # Sys/Mm/Mmap.v mmap_errnos
@@ -327,52 +330,73 @@ class Model:
 # Reading a qemu -strace trace
 # ---------------------------------------------------------------------------------------------------------------------
 # A record: qemu's task id, the name, the open parenthesis. A record starts a line, and a second record can follow on
-# the same line (split_records).
-RECORD = re.compile(r"(\d+)\s+([a-z_0-9]+)\(")
+# the same line (split_records). The look-behind starts a search only at the head of a run of digits: the earliest
+# match is there anyway, and without it a long run of digits costs time quadratic in its length.
+RECORD = re.compile(r"(?<![0-9])(\d+)\s+([a-z_0-9]+)\(")
 # qemu's line for a syscall number it has no name for (linux-user/strace.c print_syscall). It can follow an open
 # record on the same line, so it is searched for anywhere.
 UNKNOWN_RECORD = re.compile(r"(?:^|(?<=[\s)]))(\d+) Unknown syscall (\d+)")
 # The return value and the errno, read from the text after the call's own `)`, never from the whole line.
-RET_TAIL = re.compile(r"^\s*=\s*(-?(?:0x[0-9a-fA-F]+|\d+))")
-ERRNO_TAIL = re.compile(r"^\s*=\s*-1\s+errno=(\d+)")
+RET_TAIL = re.compile(r"\s*=\s*(-?(?:0x[0-9a-fA-F]+|\d+))")
+ERRNO_TAIL = re.compile(r"\s*=\s*-1\s+errno=(\d+)")
 # qemu's line for the SIGABRT death after a self-kill: `--- SIGIOT {si_signo=SIGIOT, si_code=SI_TKILL, ...} ---`.
-# It too can land after an open record.
-KILL_LINE = re.compile(r"---\s+SIG(?:IOT|ABRT)\s+\{[^}]*si_code=SI_TKILL")
+# It too can land after an open record. kill_line reads the braces itself.
+KILL_HEAD = re.compile(r"---\s+SIG(?:IOT|ABRT)\s+\{")
 EXIT_NAMES = {"exit", "exit_group"}
 
 
-def scan_call(rest):
-    """(arguments, index just past the call's closing parenthesis, closed) of one argument list. Quoted strings,
-    structs and bracketed signal sets are kept whole. `closed` is False when the list has no closing parenthesis in
-    the text (the record is cut, or a quoted string swallowed the rest)."""
-    args, depth, cur, quoted = [], 0, "", False
-    for i, ch in enumerate(rest):
+def kill_line(line):
+    """True when the line holds qemu's SIGABRT line for a self-kill: a `--- SIGIOT {` (or SIGABRT) whose braces hold
+    si_code=SI_TKILL. Each head is read up to its first `}`; a head inside text already read is skipped, so a line of
+    many heads costs time linear in its length."""
+    read_to = 0
+    for head in KILL_HEAD.finditer(line):
+        if head.start() < read_to:
+            continue
+        close = line.find("}", head.end())
+        if close < 0:
+            return False
+        if "si_code=SI_TKILL" in line[head.end():close]:
+            return True
+        read_to = close
+    return False
+
+
+def scan_call(text, start=0):
+    """(arguments, index just past the call's closing parenthesis, closed) of the argument list that starts at
+    `start` in `text`. Quoted strings, structs and bracketed signal sets are kept whole. `closed` is False when the
+    list has no closing parenthesis in the text (the record is cut, or a quoted string swallowed the rest)."""
+    args, depth, cur, quoted = [], 0, [], False
+    for i in range(start, len(text)):
+        ch = text[i]
         if quoted:
-            cur += ch
+            cur.append(ch)
             if ch == '"':
                 quoted = False
             continue
         if ch == '"':
             quoted = True
-            cur += ch
+            cur.append(ch)
         elif ch in "([{":
             depth += 1
-            cur += ch
+            cur.append(ch)
         elif ch in ")]}":
             if depth == 0:
-                if cur.strip():
-                    args.append(cur.strip())
+                arg = "".join(cur).strip()
+                if arg:
+                    args.append(arg)
                 return args, i + 1, True
             depth -= 1
-            cur += ch
+            cur.append(ch)
         elif ch == "," and depth == 0:
-            args.append(cur.strip())
-            cur = ""
+            args.append("".join(cur).strip())
+            cur = []
         else:
-            cur += ch
-    if cur.strip():
-        args.append(cur.strip())
-    return args, len(rest), False
+            cur.append(ch)
+    arg = "".join(cur).strip()
+    if arg:
+        args.append(arg)
+    return args, len(text), False
 
 
 def split_records(line):
@@ -384,15 +408,10 @@ def split_records(line):
     line = line.rstrip("\n")
     m = RECORD.match(line)
     while m:
-        rest = line[m.end():]
-        args, off, closed = scan_call(rest)
-        after = rest[off:]
-        nxt = RECORD.search(after)
-        yield int(m.group(1)), m.group(2), args, (after[:nxt.start()] if nxt else after), closed
-        if not nxt:
-            return
-        line = after[nxt.start():]
-        m = RECORD.match(line)
+        args, off, closed = scan_call(line, m.end())
+        nxt = RECORD.search(line, off)
+        yield int(m.group(1)), m.group(2), args, line[off:nxt.start() if nxt else len(line)], closed
+        m = nxt
 
 
 def bits(arg):
@@ -467,7 +486,7 @@ def page_round_up(n):
 
 def parse_ret(tail):
     """The return value in the text after a call's `)`, or None (the call blocked, or the text is cut)."""
-    r = RET_TAIL.search(tail)
+    r = RET_TAIL.match(tail)
     if not r:
         return None
     v = r.group(1)
@@ -501,6 +520,63 @@ def errno_in(ret, errno, allowed, what, cite):
     if ret is None or ret >= 0:
         return None
     return errno_only(ret, errno, allowed, what, cite)
+
+
+def refused(ret, errno, errnos, what, cite):
+    """The reason a FAILED call carries an errno outside `errnos`, or None (also for a success or no return)."""
+    if ret is None or ret >= 0 or errno in errnos:
+        return None
+    if not errnos:
+        return f"{what} returned {ret_text(ret, errno)}: the model answers no errno there ({cite})"
+    return errno_only(ret, errno, errnos, what, cite)
+
+
+def answered(ret, errno, values, errnos, what, cite):
+    """The reason a call answered neither an errno of `errnos` nor a success in `values`, or None. A call with no
+    return (it blocked) is judged on its arguments."""
+    if ret is None or (ret >= 0 and ret in values):
+        return None
+    if ret < 0:
+        return refused(ret, errno, errnos, what, cite)
+    shown = "/".join(str(v) for v in sorted(values)) or "no success"
+    return f"{what} returned {ret_text(ret, errno)}: the model's success there is {shown} ({cite})"
+
+
+def counted(ret, errno, count, errnos, what, cite, shape="upto"):
+    """The reason a read- or write-like call answered neither an errno of `errnos` nor a byte count its arm gives, or
+    None. `count` is the call's count (an Arg); the arm's success is, by `shape`: "upto", any of 0..rw_count_clamp
+    count; "positive", the same but at least 1 when the count is not 0; "exact", exactly rw_count_clamp count (State.v
+    rw_count_clamp caps at MAX_RW_COUNT). `count` None is a total the trace does not show (an iovec array), which the
+    model caps at MAX_RW_COUNT (State.v cap_iovecs). A count qemu printed in 32 bits is some v + k * 2**32, so an
+    answer that only some of those counts give is undecided."""
+    if ret is None:
+        return None
+    if ret < 0:
+        return refused(ret, errno, errnos, what, cite)
+    if count is None:
+        if ret <= MAX_RW_COUNT:
+            return None
+        return f"{what} returned {ret}, more than MAX_RW_COUNT ({MAX_RW_COUNT}), which caps it ({cite})"
+    least = min(count.v, MAX_RW_COUNT)
+    pinned = count.exact or count.v >= MAX_RW_COUNT
+    if shape == "exact":
+        if ret == least and pinned:
+            return None
+        if not pinned and ret in (least, MAX_RW_COUNT):
+            return undecided(f"the count of {what}")
+        want = least if pinned else f"{least} or {MAX_RW_COUNT}"
+        return f"{what} returned {ret}: the model answers exactly the clamped count, {want} ({cite})"
+    if ret > MAX_RW_COUNT or (pinned and ret > least):
+        return f"{what} returned {ret}, more than the {least} bytes it asked for ({cite}: State.v rw_count_clamp)"
+    if ret > least:
+        return undecided(f"the count of {what}")
+    if shape == "positive" and ret == 0:
+        zero = count.is_zero()
+        if zero is False:
+            return f"{what} of {count.v} bytes returned 0: the model moves at least one byte or fails ({cite})"
+        if zero is None:
+            return undecided(f"the count of {what}")
+    return None
 
 
 class Undecided(str):
@@ -615,8 +691,23 @@ HOST_LINE = re.compile(r"(" + "|".join(HOST_NAMES) + r") (-?\d+)((?: [0-9a-fA-F]
 EXEC_LINE = "exec"
 
 
+class _Bucket:
+    """The lines of one host-call name that agree with one projection of the keys, in the log's order: `rows` their
+    indexes, `head` the first that may be unused, `answers` the wanted values of the unused ones, counted."""
+
+    __slots__ = ("rows", "head", "answers")
+
+    def __init__(self):
+        self.rows, self.head, self.answers = [], 0, {}
+
+
 class HostLog:
-    """The host calls of one run, in the log's order, with the lines a guest call has already taken removed."""
+    """The host calls of one run, in the log's order, with the lines a guest call has already taken removed.
+
+    A guest call's keys are each pinned in full (exact) or in their low 32 bits, so the lines that agree with them are
+    exactly the lines whose projection (each keyed argument in full or in its low 32 bits, as the key is) equals the
+    keys'. take builds one index per (name, which keys and how pinned, wanted), once, and keeps in each bucket the
+    count of every wanted value among its unused lines, so a run's matching costs time linear in its two logs."""
 
     def __init__(self, text):
         self.started = False
@@ -630,22 +721,60 @@ class HostLog:
             if m:
                 self.lines.append([m.group(1), int(m.group(2)), tuple(int(a, 16) for a in m.group(3).split()), False])
         self.given = text is not None
+        self._by_name = {}         # name -> [line index]
+        for n, row in enumerate(self.lines):
+            self._by_name.setdefault(row[0], []).append(n)
+        self._indexes = {}         # (name, shape, wanted) -> {projection: _Bucket}
+
+    @staticmethod
+    def _project(values, shape):
+        return tuple(values[i] if exact else values[i] % TWO_POW_32 for i, exact in shape)
+
+    def _index(self, name, shape, wanted):
+        key = (name, shape, wanted)
+        index = self._indexes.get(key)
+        if index is None:
+            index = {}
+            for n in self._by_name.get(name, ()):
+                row = self.lines[n]
+                if row[3]:
+                    continue
+                bucket = index.setdefault(self._project(row[2], shape), _Bucket())
+                bucket.rows.append(n)
+                answer = tuple(row[2][i] for i in wanted)
+                bucket.answers[answer] = bucket.answers.get(answer, 0) + 1
+            self._indexes[key] = index
+        return index
+
+    def _use(self, n):
+        """Mark line n taken, and drop it from every index built for its name."""
+        row = self.lines[n]
+        row[3] = True
+        for (name, shape, wanted), index in self._indexes.items():
+            if name != row[0]:
+                continue
+            answers = index[self._project(row[2], shape)].answers
+            answer = tuple(row[2][i] for i in wanted)
+            answers[answer] -= 1
+            if not answers[answer]:
+                del answers[answer]
 
     def take(self, name, keys, wanted):
         """The full values of the arguments `wanted` (indexes) of one host call of `name`, or None. `keys` is
         {index: Arg} that the host line must agree with. The first unused agreeing line is taken, and None comes back
         when the agreeing lines disagree on a wanted value."""
-        hits = [row for row in self.lines
-                if row[0] == name and not row[3]
-                and all((row[2][i] == a.v) if a.exact else ((row[2][i] - a.v) % TWO_POW_32 == 0)
-                        for i, a in keys.items())]
-        if not hits:
+        shape = tuple(sorted((i, a.exact) for i, a in keys.items()))
+        wanted = tuple(wanted)
+        probe = tuple(keys[i].v if exact else keys[i].v % TWO_POW_32 for i, exact in shape)
+        bucket = self._index(name, shape, wanted).get(probe)
+        if bucket is None or len(bucket.answers) != 1:
             return None
-        answers = {tuple(row[2][i] for i in wanted) for row in hits}
-        if len(answers) != 1:
-            return None
-        hits[0][3] = True
-        return dict(zip(wanted, answers.pop()))
+        while self.lines[bucket.rows[bucket.head]][3]:
+            bucket.head += 1
+        n = bucket.rows[bucket.head]
+        answer = tuple(self.lines[n][2][i] for i in wanted)
+        self._use(n)
+        return dict(zip(wanted, answer))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -772,8 +901,10 @@ class Ledger:
         self.pipe_fds_unknown = False
         self.tid = None                     # m_tid
         self.rlimit_core_read = False       # m_rlimit_core is no longer None
+        self.rlimit_core_hard = None        # rlim64_hard of the successful read print, or None when qemu omitted it
         self.sigaltstack_installed = False  # m_sigaltstack_installed
         self.cloned = False                 # a clone or clone3 answered a child's pid
+        self.setsid_done = False            # m_setsid_succeeded
 
     # -- the address space ------------------------------------------------------------------------------------------
     def image_clear(self, addr, n):
@@ -1367,7 +1498,7 @@ def kind_reason(fd, ret, errno, what, cite):
 
 def bad_fd_only(run, fd, ret, errno, what, cite):
     """The reason a call on a descriptor the model's table does not hold is outside the model, or None. Every arm
-    starts with fd_lookup, and None is -EBADF."""
+    starts with fd_lookup, and None is -EBADF, the arm's whole answer: a caller stops when the descriptor is ABSENT."""
     kind = run.led.kind(fd)
     if kind is not ABSENT:
         return None
@@ -1559,11 +1690,12 @@ def _close(run, args, ret, errno, tid):
     why = bad_fd_only(run, fd, ret, errno, "close", "Sys/Fs/Open.v close_spec")
     if why:
         return why
-    if ret in (None, 0):
+    maybe_absent = run.led.kind(fd) in (None, ABSENT)
+    why = answered(ret, errno, {0}, {EBADF} if maybe_absent else set(), "close of an open descriptor",
+                   "Sys/Fs/Open.v close_spec")
+    if why is None and ret in (None, 0):
         run.led.fds.pop(fd, None)
-    elif ret < 0 and errno != EBADF:
-        return errno_only(ret, errno, {EBADF}, "close", "Sys/Fs/Open.v close_spec")
-    return None
+    return why
 
 
 def _unlinkat(run, args, ret, errno, tid):
@@ -1693,7 +1825,8 @@ def urandom_read(count, ret, errno, extra=()):
 def _read(run, args, ret, errno, tid):
     """Sys/Fs/ReadWrite.v read_spec. Every arm starts with the descriptor: a write-only file, a write pipe end and a
     channel other than standard input are -EBADF; a directory is -EISDIR after access_okb; a socket or pipe end is
-    gated by modeled_rw_range; the rest by access_okb, which answers -EFAULT when it fails."""
+    gated by modeled_rw_range; the rest by access_okb, which answers -EFAULT when it fails. A success is a byte count
+    up to rw_count_clamp count; /dev/null delivers 0, and a socket no connect has reached answers -ENOTCONN."""
     if len(args) < 3:
         return und("unparseable argument list")
     fd, buf, count = rw_args(run, "read", args, ret, buf_full=run.wide_buffers)
@@ -1701,7 +1834,7 @@ def _read(run, args, ret, errno, tid):
         return und("unparseable argument list")
     cite = "Sys/Fs/ReadWrite.v read_spec"
     why = bad_fd_only(run, fd, ret, errno, "read", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
@@ -1715,14 +1848,30 @@ def _read(run, args, ret, errno, tid):
                           f"{cite}: only standard input is readable")
     if kind[0] == "devnull" and not kind[1]:
         return errno_only(ret, errno, {EBADF}, "a read on a write-only /dev/null descriptor", cite)
+    if kind[0] == "pipe" and kind[1]:
+        return errno_only(ret, errno, {EBADF}, "a read on the write end of a pipe", cite)
+    what = f"a read on a {kind_name(kind)}"
     if kind[0] in ("socket", "pipe"):
         gate = modeled_rw_range(buf, count)
-        if gate is True:
-            return None
         if gate is False:
             return (f"a read on a {kind_name(kind)}: Sys/Uaccess.v modeled_rw_range does not hold, so the model "
                     f"declines ({cite})")
-        return undecided(f"the read's buffer and count on a {kind_name(kind)}")
+        if gate is None:
+            return undecided(f"the read's buffer and count on a {kind_name(kind)}")
+        if kind[0] == "pipe":
+            return counted(ret, errno, count, {EFAULT}, what, cite)
+        if kind[1]:
+            # A fresh socket (SkFresh) answers -ENOTCONN, or -EFAULT, to any count but 0, which reads 0.
+            if ret is not None and ret >= 0:
+                zero = count.is_zero()
+                if ret == 0 and zero is True:
+                    return None
+                if ret == 0 and zero is None:
+                    return undecided("the count of a read on a fresh socket")
+                return (f"a read on a socket no connect has reached returned {ret}: the model answers -ENOTCONN or "
+                        f"-EFAULT, and 0 only for a count of 0 ({cite})")
+            return refused(ret, errno, {EFAULT, ENOTCONN}, what, cite)
+        return counted(ret, errno, count, {EFAULT, ENOTCONN, ECONNRESET, ETIMEDOUT}, what, cite)
     ok = access_ok(buf, count)
     if ok is False:
         return errno_only(ret, errno, {EFAULT}, "a read whose range runs past TASK_SIZE",
@@ -1731,13 +1880,17 @@ def _read(run, args, ret, errno, tid):
         return undecided("the read's buffer and count")
     if kind[0] == "dir":
         return errno_only(ret, errno, {EISDIR, EFAULT}, "a read on a directory descriptor", cite)
-    return None
+    if kind[0] == "devnull":
+        return answered(ret, errno, {0}, {EFAULT}, "a read on /dev/null", cite)
+    return counted(ret, errno, count, {EFAULT}, what, cite)
 
 
 def _write(run, args, ret, errno, tid):
     """Sys/Fs/ReadWrite.v write_spec. A read-only file, /dev/urandom, a directory, a read pipe end and channel 0 are
     -EBADF; a socket is unmodeled (sendto is its arm); every writable kind is gated by write_range_gate, which is
-    Sys/Uaccess.v modeled_rw_range."""
+    Sys/Uaccess.v modeled_rw_range. /dev/null takes the whole clamped count; a pipe takes the whole count or is
+    unmodeled; a channel or file takes 1..rw_count_clamp count (0 for a count of 0), and an append file may answer
+    -EINVAL (rw_pos_einvalb)."""
     if len(args) < 3:
         return und("unparseable argument list")
     fd, buf, count = rw_args(run, "write", args, ret, buf_full=run.wide_buffers)
@@ -1745,7 +1898,7 @@ def _write(run, args, ret, errno, tid):
         return und("unparseable argument list")
     cite = "Sys/Fs/ReadWrite.v write_spec"
     why = bad_fd_only(run, fd, ret, errno, "write", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
@@ -1758,21 +1911,34 @@ def _write(run, args, ret, errno, tid):
         return errno_only(ret, errno, {EBADF}, "a write on channel 0", f"{cite}: standard input is not writable")
     if kind[0] == "devnull" and not kind[2]:
         return errno_only(ret, errno, {EBADF}, "a write on a read-only /dev/null descriptor", cite)
+    if kind[0] == "pipe" and not kind[1]:
+        return errno_only(ret, errno, {EBADF}, "a write on the read end of a pipe", cite)
     gate = modeled_rw_range(buf, count)
-    if gate is True:
-        return None
     if gate is False:
         return (f"a write of {count.v} bytes from {buf.v:#x}: Sys/Uaccess.v modeled_rw_range does not hold, so the "
                 f"model declines ({cite}: write_range_gate)")
-    return undecided("the write's buffer and count")
+    if gate is None:
+        return undecided("the write's buffer and count")
+    what = f"a write on a {kind_name(kind)}"
+    if kind[0] == "devnull":
+        return counted(ret, errno, count, {EFAULT}, what, cite, shape="exact")
+    if kind[0] == "pipe":
+        # A count of 0 reads 0 or -EFAULT (access_ok_zero); any other count is written whole (pipe_write_room
+        # keeps it far below MAX_RW_COUNT), or the model declines.
+        zero = count.is_zero()
+        return counted(ret, errno, count, {EFAULT} if zero is not False else set(), what, cite, shape="exact")
+    errnos = {EFAULT, EINVAL} if kind[0] == "filea" else {EFAULT}
+    return counted(ret, errno, count, errnos, what, cite, shape="positive")
 
 
 def _readv(run, args, ret, errno, tid):
-    """Sys/Fs/ReadWrite.v readv_spec: an iovcnt in (UIO_FASTIOV, IOV_MAX] takes the heap path, which is unmodeled
-    (readv_heap_iovecb, readv_heap_gap); above IOV_MAX the import answers -EINVAL, or -EBADF first. On /dev/urandom a
-    read that delivers bytes is unmodeled (readv_buf_gap). The array's contents are not in the trace. qemu prints
-    readv through its generic format, so its iovcnt is not cut, and the model reads only its low 32 bits
-    (iovcnt32)."""
+    """Sys/Fs/ReadWrite.v readv_spec: a descriptor readable_fd rejects (a write-only or append file, a write pipe end,
+    a channel other than 0, a write-only /dev/null) is -EBADF; an iovcnt in (UIO_FASTIOV, IOV_MAX] takes the heap
+    path, which is unmodeled (readv_heap_iovecb, readv_heap_gap); the import answers -EFAULT or -EINVAL (above
+    IOV_MAX). A total of 0 reads 0 on every kind. Then readv_imported: a pipe end or /dev/urandom that would deliver is
+    unmodeled (readv_buf_gap), /dev/null delivers 0, a directory is -EISDIR, and a channel, socket or file delivers up
+    to the total, which cap_iovecs keeps at MAX_RW_COUNT. The array's contents are not in the trace. qemu prints readv
+    through its generic format, so its iovcnt is not cut, and the model reads only its low 32 bits (iovcnt32)."""
     if len(args) < 3:
         return und("unparseable argument list")
     fd, cnt = num(args[0]), low32(num(args[2]))
@@ -1780,110 +1946,201 @@ def _readv(run, args, ret, errno, tid):
         return und(f"unparseable iovcnt {args[2]}")
     cite = "Sys/Fs/ReadWrite.v readv_spec"
     why = bad_fd_only(run, fd, ret, errno, "readv", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
+    kind = run.led.kind(fd)
+    if kind is not None and (kind[0] in ("filew", "filea") or (kind[0] == "channel" and kind[1] != 0)
+                             or (kind[0] == "pipe" and kind[1]) or (kind[0] == "devnull" and not kind[1])):
+        return errno_only(ret, errno, {EBADF}, f"readv on a {kind_name(kind)} descriptor",
+                          f"{cite}: readable_fd")
+    # A descriptor the replay cannot name (a pipe end this run may have made) is -EBADF or a readable pipe end.
+    maybe_bad = {EBADF} if kind is None else set()
     if UIO_FASTIOV < cnt <= IOV_MAX:
+        if maybe_bad and ret is not None and ret < 0 and errno == EBADF:
+            return None
         return (f"iovcnt {cnt} is above UIO_FASTIOV ({UIO_FASTIOV}): the heap path is unmodeled "
                 "(Sys/Fs/ReadWrite.v readv_heap_iovecb, readv_heap_gap)")
     if cnt > IOV_MAX:
-        return errno_only(ret, errno, {EINVAL, EBADF}, "readv with iovcnt above IOV_MAX", cite)
-    kind = run.led.kind(fd)
+        return errno_only(ret, errno, {EINVAL} | maybe_bad, "readv with iovcnt above IOV_MAX",
+                          f"{cite}: import_iovecs")
     if kind is None:
         return kind_reason(fd, ret, errno, "readv", cite)
-    if kind[0] == "urandom" and ret is not None and ret > 0:
-        return (f"readv of /dev/urandom returned {ret}: a vectored read of the device is unmodeled "
-                f"({cite}, readv_buf_gap)")
-    return None
+    what = f"readv on a {kind_name(kind)}"
+    if kind[0] == "socket" and kind[1]:
+        return answered(ret, errno, {0}, {EFAULT, EINVAL, ENOTCONN}, what, f"{cite}: readv_imported")
+    if kind[0] in ("pipe", "urandom", "devnull"):
+        if kind[0] != "devnull" and ret is not None and ret > 0:
+            return (f"readv of a {kind_name(kind)} returned {ret}: a vectored read that delivers bytes there is "
+                    f"unmodeled ({cite}, readv_buf_gap)")
+        return answered(ret, errno, {0}, {EFAULT, EINVAL}, what, cite)
+    if kind[0] == "dir":
+        return answered(ret, errno, {0}, {EFAULT, EINVAL, EISDIR}, what, cite)
+    errnos = {EFAULT, EINVAL}
+    if kind[0] == "socket":
+        errnos |= {ENOTCONN, ECONNRESET, ETIMEDOUT}
+    return counted(ret, errno, None, errnos, what, cite)
 
 
 def _writev(run, args, ret, errno, tid):
-    """Sys/Fs/ReadWrite.v writev_spec: a read-only file, a directory, /dev/urandom and a read pipe end are -EBADF; a
-    socket is unmodeled (writev_buf_gap); an iovcnt above IOV_MAX makes the import answer -EINVAL. qemu prints the
-    iovcnt through `%#x`, and the model reads only its low 32 bits (iovcnt32)."""
+    """Sys/Fs/ReadWrite.v writev_spec: a read-only file, a directory, /dev/urandom, a read pipe end, channel 0 and a
+    read-only /dev/null are -EBADF; a socket is unmodeled (writev_buf_gap); the import answers -EFAULT or -EINVAL (an
+    iovcnt above IOV_MAX). A total of 0 writes 0. /dev/null takes the capped total; a pipe end that would take bytes
+    is unmodeled; a channel or file takes at least one byte, and a file may answer -EINVAL (rw_pos_einvalb). qemu
+    prints the iovcnt through `%#x`, and the model reads only its low 32 bits (iovcnt32)."""
     if len(args) < 3:
         return und("unparseable argument list")
     fd, cnt = num(args[0]), low32(num(args[2]))
     cite = "Sys/Fs/ReadWrite.v writev_spec"
     why = bad_fd_only(run, fd, ret, errno, "writev", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
         return kind_reason(fd, ret, errno, "writev", cite)
     if kind[0] == "socket":
         return f"writev on a socket is unmodeled ({cite}: writev_buf_gap)"
-    if kind[0] in ("file", "dir", "urandom"):
+    if (kind[0] in ("file", "dir", "urandom") or (kind[0] == "channel" and kind[1] == 0)
+            or (kind[0] == "pipe" and not kind[1]) or (kind[0] == "devnull" and not kind[2])):
         return errno_only(ret, errno, {EBADF}, f"writev on a {kind_name(kind)} descriptor", cite)
     if cnt is not None and cnt > IOV_MAX:
-        return errno_only(ret, errno, {EINVAL, EBADF}, "writev with iovcnt above IOV_MAX", cite)
-    return None
+        return errno_only(ret, errno, {EINVAL}, "writev with iovcnt above IOV_MAX", f"{cite}: import_iovecs")
+    what = f"writev on a {kind_name(kind)}"
+    if kind[0] == "pipe":
+        if ret is not None and ret > 0:
+            return f"writev on a pipe end returned {ret}: a vectored write that moves bytes is unmodeled ({cite})"
+        return answered(ret, errno, {0}, {EFAULT, EINVAL}, what, cite)
+    if kind[0] == "channel":
+        # The channel arm's count is bounded only by the gathered bytes (below 2**64 and not an error address).
+        return refused(ret, errno, {EFAULT, EINVAL}, what, cite)
+    if kind[0] == "devnull":
+        return counted(ret, errno, None, {EFAULT, EINVAL}, what, cite)
+    return counted(ret, errno, None, {EFAULT, EINVAL}, what, f"{cite}: writev_file_arm")
+
+
+def negative_position(arg):
+    """True when a position qemu printed in full is negative as the model reads it (ppos_einvalb: bv_signed < 0),
+    False when it is not, None when it does not parse."""
+    pos = num(arg)
+    if pos is None:
+        return None
+    return pos < 0 or pos >= TWO_POW_64 >> 1
 
 
 def _pread64(run, args, ret, errno, tid):
-    """Sys/Fs/ReadWrite.v pread64_spec: a negative position is -EINVAL (ppos_einvalb) before the descriptor; on
-    /dev/urandom the read is urandom_read's. qemu prints pread64's buffer in full and its count through `%d`."""
+    """Sys/Fs/ReadWrite.v pread64_spec: a negative position is -EINVAL (ppos_einvalb) before the descriptor; a
+    channel, pipe end or socket is -ESPIPE; a write-only or append file and a write-only /dev/null are -EBADF; every
+    other kind is -EFAULT past access_okb, then -EINVAL past rw_pos_einvalb; /dev/null delivers 0, a directory is
+    -EISDIR, /dev/urandom is urandom_read's, and a file delivers up to rw_count_clamp count. qemu prints pread64's
+    buffer and position in full and its count through `%d`."""
     if len(args) < 4:
         return und("unparseable argument list")
-    pos = num(args[3])
-    if pos is not None and sint32(pos) < 0 and pos >= TWO_POW_64 >> 1:
+    cite = "Sys/Fs/ReadWrite.v pread64_spec"
+    neg = negative_position(args[3])
+    if neg is None:
+        return und(f"unparseable position {args[3]}")
+    if neg:
         return errno_only(ret, errno, {EINVAL}, "pread64 at a negative position", "Sys/Fs/ReadWrite.v ppos_einvalb")
     fd, buf, count = rw_args(run, "pread64", args, ret, buf_full=True)
     if fd is None:
         return und("unparseable argument list")
-    cite = "Sys/Fs/ReadWrite.v pread64_spec"
     why = bad_fd_only(run, fd, ret, errno, "pread64", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
         return kind_reason(fd, ret, errno, "pread64", cite)
+    if kind[0] in ("channel", "pipe", "socket"):
+        return errno_only(ret, errno, {ESPIPE}, f"pread64 on a {kind_name(kind)}", cite)
+    if kind[0] in ("filew", "filea") or (kind[0] == "devnull" and not kind[1]):
+        return errno_only(ret, errno, {EBADF}, f"pread64 on a {kind_name(kind)} descriptor", cite)
     if kind[0] == "urandom":
         return urandom_read(count, ret, errno, extra=(EINVAL,))
-    return None
+    what = f"pread64 on a {kind_name(kind)}"
+    if kind[0] == "devnull":
+        return answered(ret, errno, {0}, {EFAULT, EINVAL}, what, cite)
+    if kind[0] == "dir":
+        return errno_only(ret, errno, {EFAULT, EINVAL, EISDIR}, what, cite)
+    return counted(ret, errno, count, {EFAULT, EINVAL}, what, cite)
 
 
 def _pwrite64(run, args, ret, errno, tid):
-    """Sys/Fs/ReadWrite.v pwrite64_spec: a negative position is -EINVAL; on a file created with O_APPEND the call is
-    unmodeled. The other declines need the file's length, which the trace does not show."""
+    """Sys/Fs/ReadWrite.v pwrite64_spec: a negative position is -EINVAL (ppos_einvalb) before the descriptor; a
+    channel, pipe end or socket is -ESPIPE; a read-only file, /dev/urandom, a directory and a read-only /dev/null are
+    -EBADF; a file created with O_APPEND is unmodeled. The rest are -EFAULT past access_okb and -EINVAL past
+    rw_pos_einvalb; /dev/null takes the whole clamped count, and a file up to rw_count_clamp count (the bytes it could
+    read). qemu prints the count through `%d`."""
     if len(args) < 4:
         return und("unparseable argument list")
-    fd = num(args[0])
     cite = "Sys/Fs/ReadWrite.v pwrite64_spec"
+    neg = negative_position(args[3])
+    if neg is None:
+        return und(f"unparseable position {args[3]}")
+    if neg:
+        return errno_only(ret, errno, {EINVAL}, "pwrite64 at a negative position",
+                          "Sys/Fs/ReadWrite.v ppos_einvalb")
+    fd, _, count = rw_args(run, "pwrite64", args, ret)
+    if fd is None:
+        return und("unparseable argument list")
     why = bad_fd_only(run, fd, ret, errno, "pwrite64", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
         return kind_reason(fd, ret, errno, "pwrite64", cite)
+    if kind[0] in ("channel", "pipe", "socket"):
+        return errno_only(ret, errno, {ESPIPE}, f"pwrite64 on a {kind_name(kind)}", cite)
+    if kind[0] in ("file", "urandom", "dir") or (kind[0] == "devnull" and not kind[2]):
+        return errno_only(ret, errno, {EBADF}, f"pwrite64 on a {kind_name(kind)} descriptor", cite)
     if kind[0] == "filea":
         return f"pwrite64 on a file created with O_APPEND is unmodeled ({cite})"
-    return None
+    what = f"pwrite64 on a {kind_name(kind)}"
+    if kind[0] == "devnull":
+        return counted(ret, errno, count, {EFAULT, EINVAL}, what, cite, shape="exact")
+    return counted(ret, errno, count, {EFAULT, EINVAL}, what, cite, shape="positive")
 
 
 def _lseek(run, args, ret, errno, tid):
-    """Sys/Fs/ReadWrite.v lseek_spec: a descriptor the table does not hold is -EBADF; a whence above 4 is -EINVAL;
-    SEEK_DATA and SEEK_HOLE reach lseek_base = None, unmodeled; a directory is unmodeled. qemu prints the offset in
-    full."""
+    """Sys/Fs/ReadWrite.v lseek_spec: a descriptor the table does not hold is -EBADF; a whence above SEEK_MAX (4) is
+    -EINVAL; a channel, socket or pipe end is -ESPIPE; /dev/null and /dev/urandom answer 0; a directory is unmodeled;
+    on a file SEEK_DATA and SEEK_HOLE reach lseek_base = None, unmodeled, and otherwise the answer is the new position
+    (lseek_dest: base + the signed offset, in [0, 2^63)) or -EINVAL. SEEK_SET's base is 0, so its answer is pinned;
+    SEEK_CUR's and SEEK_END's are the file's, which the trace does not show. qemu prints the offset in full."""
     if len(args) < 3:
         return und("unparseable argument list")
     cite = "Sys/Fs/ReadWrite.v lseek_spec"
     fd = num(args[0])
     why = bad_fd_only(run, fd, ret, errno, "lseek", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
+    names = {"SEEK_SET": 0, "SEEK_CUR": 1, "SEEK_END": 2, "SEEK_DATA": 3, "SEEK_HOLE": 4}
     w = args[2].strip()
-    if w in ("SEEK_DATA", "SEEK_HOLE"):
-        return f"whence {w} is unmodeled (Sys/Fs/ReadWrite.v lseek_base)"
-    if w not in ("SEEK_SET", "SEEK_CUR", "SEEK_END"):
-        n = num(w)
-        if n is None or low32(n) <= 4:
-            return f"whence {w} is not SEEK_SET, SEEK_CUR or SEEK_END ({cite})"
+    whence = sym(w, names)
+    if whence is None:
+        return und(f"unparseable whence {w}")
+    whence = low32(whence)
+    if whence > 4:
+        return errno_only(ret, errno, {EINVAL}, f"lseek with whence {w}", f"{cite}: SEEK_MAX")
     kind = run.led.kind(fd)
     if kind is None:
         return kind_reason(fd, ret, errno, "lseek", cite)
+    what = f"lseek on a {kind_name(kind)}"
+    if kind[0] in ("channel", "socket", "pipe"):
+        return errno_only(ret, errno, {ESPIPE}, what, cite)
+    if kind[0] in ("devnull", "urandom"):
+        return answered(ret, errno, {0}, set(), what, cite)
     if kind[0] == "dir":
         return f"lseek on a directory descriptor is unmodeled ({cite})"
-    return None
+    if whence in (3, 4):
+        return f"whence {w} is unmodeled (Sys/Fs/ReadWrite.v lseek_base)"
+    if whence == 0:
+        off = num(args[1])
+        if off is None:
+            return und(f"unparseable offset {args[1]}")
+        off = off - TWO_POW_64 if off >= TWO_POW_64 >> 1 else off
+        if off < 0:
+            return errno_only(ret, errno, {EINVAL}, f"lseek(SEEK_SET) to {off}", "Sys/Fs/ReadWrite.v lseek_dest")
+        return answered(ret, errno, {off}, set(), f"lseek(SEEK_SET) to {off}", "Sys/Fs/ReadWrite.v lseek_dest")
+    return refused(ret, errno, {EINVAL}, what, "Sys/Fs/ReadWrite.v lseek_dest")
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1987,14 +2244,15 @@ def _fstat(run, args, ret, errno, tid):
     fd = num(args[0])
     cite = "Sys/Fs/Stat.v fstat_spec"
     why = bad_fd_only(run, fd, ret, errno, "fstat", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
         return kind_reason(fd, ret, errno, "fstat", cite)
     if kind[0] in ("channel", "dir", "socket", "pipe"):
         return f"fstat of a {kind_name(kind)} descriptor is unmodeled ({cite})"
-    return None
+    return answered(ret, errno, {0}, {EFAULT}, f"fstat of a {kind_name(kind)} descriptor",
+                    f"{cite}: fstat_file_spec, fstat_chrdev_spec")
 
 
 STATAT_FLAGS = {"AT_SYMLINK_NOFOLLOW": 0x100, "AT_EMPTY_PATH": 0x1000, "AT_NO_AUTOMOUNT": 0x800}
@@ -2046,7 +2304,7 @@ def _ioctl(run, args, ret, errno, tid):
     cite = "Sys/Fs/Ioctl.v ioctl_spec"
     fd, req = num(args[0]), args[1].strip()
     why = bad_fd_only(run, fd, ret, errno, "ioctl", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
@@ -2076,11 +2334,11 @@ def _fcntl(run, args, ret, errno, tid):
     cite = "Sys/Fs/Fcntl.v fcntl_spec"
     fd, cmd = num(args[0]), args[1].strip()
     why = bad_fd_only(run, fd, ret, errno, "fcntl", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if cmd in ("F_SETFD", "2"):
-        return None
+        return answered(ret, errno, {0}, {EBADF} if kind in (None, ABSENT) else set(), "fcntl(F_SETFD)", cite)
     if kind is None:
         return kind_reason(fd, ret, errno, f"fcntl({cmd})", cite)
     if cmd in ("F_SETFL", "4"):
@@ -2103,7 +2361,7 @@ def _fcntl(run, args, ret, errno, tid):
         if acted:
             return (f"F_SETFL {arg} would change {'|'.join(sorted(acted))}: only an F_SETFL that changes nothing is "
                     "modeled (Sys/Fs/Fcntl.v setfl_noop_on, setfl_acted_on)")
-        return None
+        return answered(ret, errno, {0}, set(), f"fcntl(F_SETFL, {arg})", "Sys/Fs/Fcntl.v setfl_noop_on")
     if cmd in ("F_GETFL", "3"):
         if kind[0] != "socket":
             return "F_GETFL on a descriptor that is not a socket is unmodeled (Sys/Fs/Fcntl.v getfl_f_flags)"
@@ -2131,16 +2389,18 @@ def _flock(run, args, ret, errno, tid):
         return und(f"unparseable operation {args[1]}")
     cmd = low32(cmd)
     if cmd & 32:
-        return None
+        return answered(ret, errno, {0}, set(), f"flock({args[1]})", "Sys/Fs/Locks.v flock_mand_b")
     base = cmd & ~4
     if base not in (1, 2, 8):
         return errno_only(ret, errno, {EINVAL}, f"flock({args[1]})", "Sys/Fs/Locks.v flock_cmd_ok_b")
     fd = num(args[0])
     why = bad_fd_only(run, fd, ret, errno, "flock", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     if base == 8:
-        return None
+        maybe_absent = run.led.kind(fd) in (None, ABSENT)
+        return answered(ret, errno, {0}, {EBADF} if maybe_absent else set(), "flock(LOCK_UN)",
+                        f"{cite}: flock_unlock_b")
     kind = run.led.kind(fd)
     if kind is None:
         return kind_reason(fd, ret, errno, "flock", cite)
@@ -2150,7 +2410,8 @@ def _flock(run, args, ret, errno, tid):
     if openers != 1:
         return (f"flock(LOCK_SH or LOCK_EX) while {openers} descriptors name the file: answered for the one opener "
                 "only (Sys/Fs/Locks.v flock_sole_opener)")
-    return None
+    return answered(ret, errno, {0}, set(), "flock(LOCK_SH or LOCK_EX) of the file's one opener",
+                    f"{cite}: flock_sole_opener")
 
 
 def _getdents64(run, args, ret, errno, tid):
@@ -2163,7 +2424,7 @@ def _getdents64(run, args, ret, errno, tid):
     cite = "Sys/Fs/Readdir.v getdents64_spec"
     fd, count = num(args[0]), num(args[2])
     why = bad_fd_only(run, fd, ret, errno, "getdents64", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is None:
@@ -2319,8 +2580,9 @@ def _set_tid_address(run, args, ret, errno, tid):
     led = run.led
     if ret is None:
         return None
-    if ret <= 0 or ret >= PID_MAX:
-        return f"the task's id {ret} is outside (0, 2^31) (Sys/Kernel/Fork.v set_tid_address_spec)"
+    if ret <= 0 or ret >= PID_MAX_ENVELOPE:
+        return (f"the task's id {ret} is outside (0, 2^22) (Sys/Kernel/Fork.v set_tid_address_spec, "
+                "PID_MAX_ENVELOPE)")
     if led.tid is None:
         led.tid = ret
     elif ret != led.tid:
@@ -2335,7 +2597,43 @@ def _setsid(run, args, ret, errno, tid):
     led = run.led
     if ret is None or ret < 0:
         return errno_only(ret, errno, {EPERM}, "setsid", "Sys/Kernel/Sys.v setsid_spec")
-    return _set_tid_address(run, args, ret, errno, tid)
+    if led.setsid_done:
+        return (f"setsid returned {ret} after an earlier setsid succeeded: the model answers -EPERM "
+                "(Sys/Kernel/Sys.v setsid_spec, m_setsid_succeeded)")
+    why = _set_tid_address(run, args, ret, errno, tid)
+    if why is None:
+        led.setsid_done = True
+    return why
+
+
+def _sched_yield(run, args, ret, errno, tid):
+    """Sys/Kernel/Sched/Syscalls.v sched_yield_spec: 0, and nothing else."""
+    return answered(ret, errno, {0}, set(), "sched_yield", "Sys/Kernel/Sched/Syscalls.v sched_yield_spec")
+
+
+def _uname(run, args, ret, errno, tid):
+    """Sys/Kernel/Sys.v uname_spec: -EFAULT past access_okb, else 0 with the structure written (a buffer the model
+    cannot write is unmodeled)."""
+    return answered(ret, errno, {0}, {EFAULT}, "uname", "Sys/Kernel/Sys.v uname_spec")
+
+
+def _setid(run, args, ret, errno, tid, name):
+    """Sys/Kernel/Sys.v setid_spec, which SyscallTable.v reads through uid32: an id of ID_MINUS_ONE (the low 32 bits
+    all set) is -EINVAL; otherwise 0, -EPERM, or an errno of setid_errnos (ENOMEM, and EAGAIN for setuid)."""
+    v = num(args[0]) if args else None
+    if v is None:
+        return und("unparseable argument list")
+    cite = "Sys/Kernel/Sys.v setid_spec"
+    if low32(v) == 0xFFFFFFFF:
+        return errno_only(ret, errno, {EINVAL}, f"{name}(-1)", f"{cite}: ID_MINUS_ONE")
+    errnos = {EPERM, ENOMEM, EAGAIN} if name == "setuid" else {EPERM, ENOMEM}
+    return answered(ret, errno, {0}, errnos, name, f"{cite}, setid_errnos")
+
+
+def _setresid(run, args, ret, errno, tid, name):
+    """Sys/Kernel/Sys.v setresid_spec: 0, -EPERM, or an errno of setid_errnos (ENOMEM, and EAGAIN for setresuid)."""
+    errnos = {EPERM, ENOMEM, EAGAIN} if name == "setresuid" else {EPERM, ENOMEM}
+    return answered(ret, errno, {0}, errnos, name, "Sys/Kernel/Sys.v setresid_spec, setid_errnos")
 
 
 def _prctl(run, args, ret, errno, tid):
@@ -2417,7 +2715,7 @@ def _dup(run, args, ret, errno, tid):
     cite = "Sys/Fs/File.v dup_spec"
     fd = num(args[0])
     why = bad_fd_only(run, fd, ret, errno, "dup", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     led = run.led
     kind = led.kind(fd)
@@ -2515,10 +2813,12 @@ RLIM = re.compile(r"\{rlim_cur=(-?\d+),\s*rlim_max=(-?\d+)\}")
 
 
 def _prlimit64(run, args, ret, errno, tid):
-    """Sys/Kernel/Sys.v prlimit64_spec: pid 0, RLIMIT_CORE (4), and exactly one of new and old non-NULL. A read
-    answers the limit and records it (m_rlimit_core). A write is unmodeled until a read has recorded one; then a soft
-    limit above the hard limit is -EINVAL, a hard limit other than the recorded one is unmodeled, and anything else
-    answers 0. qemu prints the new limit as `{rlim_cur=..,rlim_max=..}` (print_rlimit64)."""
+    """Sys/Kernel/Sys.v prlimit64_spec: pid 0, RLIMIT_CORE (4), and exactly one of new and old non-NULL. A successful
+    read answers the limit and records it (m_rlimit_core); qemu's print_syscall_ret_prlimit64 prints that old limit
+    after the 0 return as `{rlim_cur=..,rlim_max=..}`, so the replay records rlim_max too. A write is unmodeled until
+    a read has recorded one; then a soft limit above the hard limit is -EINVAL, a hard limit other than the recorded
+    one is unmodeled, and anything else answers 0. If qemu did not print the successful read's old limit, the hard
+    limit is not known and a later write is undecided rather than accepted."""
     if len(args) < 4:
         return und("unparseable argument list")
     cite = "Sys/Kernel/Sys.v prlimit64_spec"
@@ -2536,6 +2836,10 @@ def _prlimit64(run, args, ret, errno, tid):
             return why
         if ret == 0:
             led.rlimit_core_read = True
+            old = RLIM.search(run.tail)
+            if not old:
+                return und("a successful prlimit64 read whose old limit qemu did not print, so rlim_max is not known")
+            led.rlimit_core_hard = int(old.group(2)) % TWO_POW_64
         return None
     if not led.rlimit_core_read:
         return (f"a prlimit64 write before any read: the model's m_rlimit_core is None until a read records one, and "
@@ -2547,6 +2851,11 @@ def _prlimit64(run, args, ret, errno, tid):
     if hard < soft:
         return errno_only(ret, errno, {EINVAL}, "a prlimit64 write whose hard limit is below its soft limit",
                           f"{cite}: rlim64_hard < rlim64_soft")
+    if led.rlimit_core_hard is None:
+        return und("the prlimit64 read did not show rlim_max, so the write's hard limit cannot be compared")
+    if hard != led.rlimit_core_hard:
+        return (f"a prlimit64 write changed rlim_max from {led.rlimit_core_hard} to {hard}: the model answers "
+                f"unmodeled when rlim64_hard differs from the recorded limit ({cite})")
     if ret not in (None, 0):
         return (f"a prlimit64 write returned {ret_text(ret, errno)}: the model answers 0 or -EINVAL, and a hard limit "
                 f"other than the recorded one is unmodeled ({cite})")
@@ -2629,6 +2938,17 @@ def clone_shared(run):
     return None
 
 
+def clone_pid(run, ret, name):
+    """Sys/Kernel/Fork.v clone_pid_ok_b: the reason a successful fork's answer is not a child's pid, or None. The pid
+    is in (0, PID_MAX_ENVELOPE) and is not the task's own id (State.v m_tid), so 0, the child's own answer, is
+    outside the model."""
+    if not 0 < ret < PID_MAX_ENVELOPE:
+        return f"{name} returned {ret}: a child's pid is in (0, 2^22) (Sys/Kernel/Fork.v clone_pid_ok_b)"
+    if run.led.tid is not None and ret == run.led.tid:
+        return f"{name} returned the task's own id {ret} (Sys/Kernel/Fork.v clone_pid_ok_b)"
+    return None
+
+
 def _clone(run, args, ret, errno, tid):
     """Sys/Kernel/Fork.v clone_spec: exactly the flag word SIGCHLD (clone_fork_flags_b, the whole register), then
     clone_resolve: unmodeled while a shared-file descriptor is open, else a child's pid or an errno of
@@ -2646,6 +2966,9 @@ def _clone(run, args, ret, errno, tid):
     if ret is not None and ret < 0:
         return errno_only(ret, errno, CLONE_ERRNOS, "clone", "Sys/Kernel/Fork.v clone_errnos")
     if ret is not None:
+        why = clone_pid(run, ret, "clone")
+        if why:
+            return why
         run.led.cloned = True
     return None
 
@@ -2663,6 +2986,9 @@ def _clone3(run, args, ret, errno, tid):
     if ret is not None and ret < 0:
         return errno_only(ret, errno, CLONE_ERRNOS, "clone3", "Sys/Kernel/Fork.v clone_errnos")
     if ret is not None:
+        why = clone_pid(run, ret, "clone3")
+        if why:
+            return why
         run.led.cloned = True
     return None
 
@@ -2930,7 +3256,7 @@ def _connect(run, args, ret, errno, tid):
     cite = "Sys/Net/Socket.v connect_spec"
     fd = num(args[0])
     why = bad_fd_only(run, fd, ret, errno, "connect", cite)
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     alen = sint32(num(args[2]))
     if alen is None:
@@ -3039,7 +3365,7 @@ def _sendto(run, args, ret, errno, tid):
         return why
     kind = run.led.kind(num(args[0]))
     if kind is None:
-        return kind_reason(num(args[0]), "sendto", cite)
+        return kind_reason(num(args[0]), ret, errno, "sendto", cite)
     if kind[0] != "socket":
         return errno_only(ret, errno, {ENOTSOCK, EFAULT}, f"sendto on a {kind_name(kind)} descriptor", cite)
     return None
@@ -3082,7 +3408,7 @@ def _bind_listen(run, args, ret, errno, name):
     address, which the trace does not show. A success takes the socket out of SkFresh."""
     fd = num(args[0]) if args else None
     why = bad_fd_only(run, fd, ret, errno, name, f"Sys/Net/Socket.v {name}_spec")
-    if why:
+    if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
     if kind is not None and kind[0] == "socket" and ret is not None and ret >= 0:
@@ -3111,7 +3437,11 @@ GATES = {
     "rt_sigaction": _rt_sigaction, "rt_sigprocmask": _rt_sigprocmask, "sigaltstack": _sigaltstack,
     "tkill": _tkill, "tgkill": _tgkill, "futex": _futex, "clone": _clone, "clone3": _clone3, "wait4": _wait4,
     "prctl": _prctl, "prlimit64": _prlimit64, "set_tid_address": _set_tid_address, "getpid": _set_tid_address,
-    "gettid": _set_tid_address, "setsid": _setsid,
+    "gettid": _set_tid_address, "setsid": _setsid, "sched_yield": _sched_yield, "uname": _uname,
+    **{n: (lambda run, args, ret, errno, tid, n=n: _setid(run, args, ret, errno, tid, n))
+       for n in ("setuid", "setgid")},
+    **{n: (lambda run, args, ret, errno, tid, n=n: _setresid(run, args, ret, errno, tid, n))
+       for n in ("setresuid", "setresgid")},
     "sched_getaffinity": _sched_getaffinity, "sched_setscheduler": _sched_setscheduler,
     "getgroups": _getgroups, "setgroups": _setgroups,
     "socket": _socket, "socketpair": _socketpair, "accept": _accept, "accept4": _accept4, "connect": _connect,
@@ -3119,12 +3449,10 @@ GATES = {
     "shutdown": _shutdown, "sendto": _sendto, "sendmsg": _sendmsg, "recvfrom": _recvfrom, "recvmsg": _recvmsg,
     "bind": _bind, "listen": _listen,
 }
-# The modeled names whose arms read nothing the trace shows, and so pass on the name: exit and exit_group
-# (Sys/Kernel/Exit.v exit_spec), uname (the buffer is the only gate) and the uid and gid calls (Sys/Kernel/Sys.v
-# getid_spec, setid_spec, setresid_spec), and sched_yield (no argument, Sys/Kernel/Sched/Syscalls.v
-# sched_yield_spec).
-NAME_ONLY = frozenset("""exit exit_group uname getuid geteuid getgid getegid setuid setgid setresuid setresgid
-sched_yield""".split())
+# The modeled names whose arms read nothing the trace shows and answer any value, and so pass on the name: exit and
+# exit_group (Sys/Kernel/Exit.v exit_spec, which ends the run) and the uid and gid reads (Sys/Kernel/Sys.v getid_spec,
+# which answers the credentials the run starts with).
+NAME_ONLY = frozenset("exit exit_group getuid geteuid getgid getegid".split())
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -3139,6 +3467,7 @@ class _Run:
         self.led = Ledger(reserved)
         self.host = HostLog(lengths)
         self.self_kill = False      # a tkill or tgkill of SIGABRT to the caller's own task was decided
+        self.tail = ""              # text after the current record's `)`: qemu prints prlimit64's old limit here
         # qemu 10 prints the buffer of read and write with `%p` (in full); qemu 8.2.2 with `%#x` (the low 32 bits).
         # A buffer printed with more than 32 bits can only be the wide format, and the narrow reading of a wide print
         # is never wrong about the low bits, so the checker starts narrow and widens at the first wide print.
@@ -3151,30 +3480,43 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
     that saw nothing has no unmodeled call in it either. `binary` is the fuzz target the trace is of, for its image.
     `lengths` is the text of the same run's host-call log (tools/checks/host-calls.c).
 
-    Returns {"verdict": "pass", "fail" or "undecided", "calls": the records read, "names": the sorted distinct call
-    names, "unmodeled": [{"call": name, "why": one line}] in trace order, one per distinct (call, why), "undecided":
-    the same shape for the calls the trace does not decide, "exited": whether the trace holds the run's end,
-    "host_log": "present" or "missing"}. A call is undecided when only a value the trace cannot show would change the
-    model's answer: a register qemu printed in 32 bits that no host line recovers, a range an earlier failed
-    MAP_FIXED may or may not have destroyed, a descriptor this run's pipe2 may have made, a path qemu cut short, a
-    record whose arguments do not parse. A host log with no `exec` line is of a run that never started, and no log at
-    all leaves every cut argument unrecoverable: both are "missing". The verdict is "fail" when a call is unmodeled,
-    else "undecided" when the log is missing or a call was not decided, else "pass".
+    Returns {"verdict": "pass", "fail" or "undecided", "calls": the run's records read, "names": the sorted distinct
+    call names, "unmodeled": [{"call": name, "why": one line}] in trace order, one per distinct (call, why),
+    "undecided": the same shape for the calls the trace does not decide, "exited": whether the trace holds the run's
+    end, "host_log": "present" or "missing", "image": "present" or "missing", "image_error": a one-line cause or null,
+    "child_records": the records of a forked child, which are not checked}.
+    A call is undecided when only a value the trace cannot show would change the model's answer: a register qemu
+    printed in 32 bits that no host line recovers, a range an earlier failed MAP_FIXED may or may not have destroyed,
+    a descriptor this run's pipe2 may have made, a path qemu cut short, a record whose arguments do not parse. A host
+    log with no `exec` line is of a run that never started, and no log at all leaves every cut argument unrecoverable:
+    both are "missing". If the binary is not a readable 64-bit RISC-V ELF with a LOAD segment, its image is "missing";
+    the checker carries on as with binary=None, and image-dependent calls are undecided rather than raising.
 
-    The run is the task of the trace's first record. The model has one task (State.v m_tid), and "the child is not
-    executed by this model" (Sys/Kernel/Fork.v), so a record from another task is itself unmodeled, changes nothing in
-    the replay, and is not the run's exit. The run's end is an exit or exit_group record of that task, or qemu's
+    The run is the task of the trace's first record. The model has one task (State.v m_tid). A fork it answers
+    (clone_spec, clone3_spec) makes a child that "is not executed by this model ([clone] describes the parent)"
+    (Sys/Kernel/Fork.v), so once the run's task has made one, another task's record is the child's: it is counted in
+    child_records and not checked. Before any such fork, another task's record is unmodeled. Neither changes the
+    replay or is the run's exit. The run's end is an exit or exit_group record of that task, or qemu's
     SIGABRT death line after a self-kill this check decided: accepted under stance abort or either
     (Sys/Kernel/Signal.v send_sigabrt ends the run with State.v KillEv), or refused under stance off (the trace then
     covers the whole run, and the refusal is its one cause)."""
     if stance not in STANCES:
         raise ValueError(f"abort stance {stance!r} is not one of {', '.join(STANCES)}")
-    run = _Run(model, stance, image_spans(binary) if binary is not None else None, lengths)
+    reserved, image, image_error = None, "missing", None
+    if binary is not None:
+        try:
+            reserved = image_spans(binary)
+            image = "present"
+        except Exception as e:
+            image_error = f"could not read the binary image {binary}: {e}".replace("\n", " ")
+    run = _Run(model, stance, reserved, lengths)
     unmodeled, unsure, seen = [], [], set()
     names = set()
     calls = 0
     saw_exit = saw_death = False
     owner = None
+    forked = False          # the run's task made a fork the model answers, so a child may write records too
+    child_records = 0
 
     def report(call, why):
         if (call, why) not in seen:
@@ -3182,7 +3524,7 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
             (unsure if isinstance(why, Undecided) else unmodeled).append({"call": call, "why": str(why)})
 
     for line in text.splitlines():
-        if KILL_LINE.search(line):
+        if kill_line(line):
             saw_death = True
         for unknown in UNKNOWN_RECORD.finditer(line):
             calls += 1
@@ -3198,14 +3540,20 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
                              f"{name} arm cannot be decided (the call reached the guest as -ENOSYS, which that arm "
                              "does not answer)")
         for tid, name, args, tail, closed in split_records(line):
-            calls += 1
-            names.add(name)
             if owner is None:
                 owner = tid
             if tid != owner:
-                report(name, f"a record of task {tid}, which is not the run's task {owner}: the model has one task "
-                             "and does not execute a child (State.v m_tid; Sys/Kernel/Fork.v clone_resolve)")
+                if forked:
+                    # Sys/Kernel/Fork.v: "the child is not executed by this model ([clone] describes the parent)".
+                    child_records += 1
+                    continue
+                calls += 1
+                names.add(name)
+                report(name, f"a record of task {tid}, which is not the run's task {owner}, and no fork the model "
+                             "answers came before it: the model has one task (State.v m_tid)")
                 continue
+            calls += 1
+            names.add(name)
             if not closed:
                 report(name, und("the record has no closing parenthesis, so its arguments cannot be read (a guest "
                                  "string can hold any byte: qemu's print_string escapes nothing)"))
@@ -3217,13 +3565,16 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
                              "unmodeled (Specs.v syscall_spec)")
                 continue
             ret = parse_ret(tail)
-            e = ERRNO_TAIL.search(tail)
+            e = ERRNO_TAIL.match(tail)
             errno = int(e.group(1)) if e else None
+            run.tail = tail
             if name in ("read", "write") and len(args) > 1 and (num(args[1]) or 0) >= TWO_POW_32:
                 run.wide_buffers = True
             gate = GATES.get(name)
             if gate is not None:
                 why = gate(run, args, ret, errno, tid)
+                if why is None and name in ("clone", "clone3") and (ret is None or ret > 0):
+                    forked = True
             elif name in NAME_ONLY:
                 why = None
             else:
@@ -3239,4 +3590,5 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
     else:
         verdict = "fail" if (require_exit and not exited) else "pass"
     return {"verdict": verdict, "calls": calls, "names": sorted(names), "unmodeled": unmodeled, "undecided": unsure,
-            "exited": exited, "host_log": host_log}
+            "exited": exited, "host_log": host_log, "image": image, "image_error": image_error,
+            "child_records": child_records}

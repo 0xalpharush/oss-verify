@@ -277,9 +277,10 @@ ACCEPT = [
     ("rt_sigprocmask", "1 rt_sigprocmask(SIG_BLOCK,0x40007ff8b0,NULL,8) = 0\n" + EXIT),
     ("sigaltstack with a NULL old stack", "1 sigaltstack(0x40007ff8b0,NULL) = 0\n" + EXIT),
     ("prctl PR_CAPBSET_READ", "1 prctl(23,40,0,7517016,0,-8606760485637849041) = 1\n" + EXIT),
-    ("prlimit64 reading RLIMIT_CORE", "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0\n" + EXIT),
+    ("prlimit64 reading RLIMIT_CORE",
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0, rlim_max=0})\n" + EXIT),
     ("prlimit64 writing RLIMIT_CORE after a read",
-     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0\n"
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0, rlim_max=0})\n"
      "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=0, rlim_max=0},NULL) = 0\n" + EXIT),
     ("set_tid_address, then getpid with the same answer", TID + "1 getpid() = 1\n" + EXIT),
     ("a plain fork with no file open", "1 clone(SIGCHLD,0,0,0,0) = 1234\n" + EXIT),
@@ -307,6 +308,16 @@ ACCEPT = [
     ("getsockopt at a level the model refuses", SOCKET3 + "1 getsockopt(3,999,2,0x40007ff8b0,0x40007ff8c8) = -1 "
                                                           "errno=95\n" + EXIT),
     ("shutdown(SHUT_WR)", SOCKET3 + "1 shutdown(3,1,0,0,0,0) = 0\n" + EXIT),
+    # -- the answers the model gives ---------------------------------------------------------------------------------
+    ("a write to /dev/null that took the whole count",
+     '1 openat(AT_FDCWD,"/dev/null",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n1 write(3,0x1000,64) = 64\n' + EXIT),
+    ("a short read of a file", OPEN3 + "1 read(3,0x1000,64) = 10\n" + EXIT),
+    ("a short write to standard output", "1 write(1,0x1000,64) = 1\n" + EXIT),
+    ("lseek SEEK_SET to 10", OPEN3 + "1 lseek(3,10,SEEK_SET) = 10\n" + EXIT),
+    ("lseek SEEK_END on a file", OPEN3 + "1 lseek(3,0,SEEK_END) = 4096\n" + EXIT),
+    ("setuid answered -EPERM", "1 setuid(0) = -1 errno=1\n" + EXIT),
+    ("a fork, and the records of its child (Fork.v: the child is not executed by this model)",
+     "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n99 exit_group(0)\n" + EXIT),
     # -- the parser --------------------------------------------------------------------------------------------------
     ("two modeled records on one interleaved line", "1 write(1,0x1000,2)1 close(9) = -1 errno=9\n" + EXIT),
     ("a quoted path that looks like a record", '1 openat(AT_FDCWD,"12 evil(x",O_RDONLY) = 3\n' + EXIT),
@@ -528,6 +539,48 @@ REJECT = [
     ("sendto on a file", OPEN3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
     ("a write on a socket", SOCKET3 + "1 write(3,0x1000,2) = 2\n" + EXIT),
     ("shutdown(SHUT_RD) that succeeded", SOCKET3 + "1 shutdown(3,0,0,0,0,0) = 0\n" + EXIT),
+    # -- answers the model does not give -----------------------------------------------------------------------------
+    ("a read of a file that returned more than its count", OPEN3 + "1 read(3,0x1000,4) = 8\n" + EXIT),
+    ("a read of a file answered -EIO", OPEN3 + "1 read(3,0x1000,64) = -1 errno=5\n" + EXIT),
+    ("a read of a fresh socket that delivered bytes", SOCKET3 + "1 read(3,0x1000,64) = 64\n" + EXIT),
+    ("a write to standard output that returned more than its count", "1 write(1,0x1000,2) = 3\n" + EXIT),
+    ("a write of 2 bytes to standard output that returned 0", "1 write(1,0x1000,2) = 0\n" + EXIT),
+    ("a write to standard output answered -EIO", "1 write(1,0x1000,2) = -1 errno=5\n" + EXIT),
+    ("a short write to /dev/null",
+     '1 openat(AT_FDCWD,"/dev/null",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n1 write(3,0x1000,64) = 32\n' + EXIT),
+    ("readv of a write-only file", '1 openat(AT_FDCWD,"f",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n'
+                                   "1 readv(3,274886295728,2,0,0,0) = 8\n" + EXIT),
+    ("writev to standard input", "1 writev(0,0x40007ff8b0,0x2) = 4\n" + EXIT),
+    ("writev to standard output answered -EIO", "1 writev(1,0x40007ff8b0,0x2) = -1 errno=5\n" + EXIT),
+    ("pread64 at a negative position that succeeded", OPEN3 + "1 pread64(3,0x1000,64,-1) = 64\n" + EXIT),
+    ("pread64 of standard input that succeeded", "1 pread64(0,0x1000,64,0) = 64\n" + EXIT),
+    ("pread64 of a file that returned more than its count", OPEN3 + "1 pread64(3,0x1000,64,0) = 65\n" + EXIT),
+    ("pwrite64 at a negative position that succeeded", '1 openat(AT_FDCWD,"f",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n'
+                                                       "1 pwrite64(3,0x1000,64,-1) = 64\n" + EXIT),
+    ("pwrite64 to a read-only file", OPEN3 + "1 pwrite64(3,0x1000,64,0) = 64\n" + EXIT),
+    ("lseek SEEK_SET that landed elsewhere", OPEN3 + "1 lseek(3,10,SEEK_SET) = 11\n" + EXIT),
+    ("lseek with whence 9 that succeeded", OPEN3 + "1 lseek(3,0,9) = 0\n" + EXIT),
+    ("lseek on standard input that succeeded", "1 lseek(0,0,SEEK_SET) = 0\n" + EXIT),
+    ("lseek on a file answered -EIO", OPEN3 + "1 lseek(3,0,SEEK_CUR) = -1 errno=5\n" + EXIT),
+    ("fstat of a file that returned 1", OPEN3 + "1 fstat(3,0x40007ff8b0) = 1\n" + EXIT),
+    ("fstat of a file answered -EIO", OPEN3 + "1 fstat(3,0x40007ff8b0) = -1 errno=5\n" + EXIT),
+    ("fcntl F_SETFD that returned 1", OPEN3 + "1 fcntl(3,F_SETFD,FD_CLOEXEC) = 1\n" + EXIT),
+    ("fcntl F_SETFD on an open file answered -EBADF", OPEN3 + "1 fcntl(3,F_SETFD,FD_CLOEXEC) = -1 errno=9\n" + EXIT),
+    ("fcntl F_SETFL that changes nothing answered -EINVAL",
+     OPEN3 + "1 fcntl(3,F_SETFL,O_RDONLY|O_LARGEFILE) = -1 errno=22\n" + EXIT),
+    ("flock LOCK_UN that returned 3", OPEN3 + "1 flock(3,LOCK_UN) = 3\n" + EXIT),
+    ("flock LOCK_MAND answered -EBADF", "1 flock(9,LOCK_MAND) = -1 errno=9\n" + EXIT),
+    ("flock LOCK_EX of the one opener answered -EAGAIN", OPEN3 + "1 flock(3,LOCK_EX) = -1 errno=11\n" + EXIT),
+    ("sched_yield that returned 1", "1 sched_yield() = 1\n" + EXIT),
+    ("uname answered -EPERM", "1 uname(0x40007ff8b0) = -1 errno=1\n" + EXIT),
+    ("setuid that returned 5", "1 setuid(0) = 5\n" + EXIT),
+    ("setresgid answered -EAGAIN", "1 setresgid(0,0,0) = -1 errno=11\n" + EXIT),
+    ("close of an open file that returned 5", OPEN3 + "1 close(3) = 5\n" + EXIT),
+    ("close of an open file answered -EBADF", OPEN3 + "1 close(3) = -1 errno=9\n" + EXIT),
+    ("a fork that returned 0", "1 clone(SIGCHLD,0,0,0,0) = 0\n" + EXIT),
+    ("a fork that returned the task's own id", TID + "1 clone(SIGCHLD,0,0,0,0) = 1\n" + EXIT),
+    ("a task id of 2^22", "1 set_tid_address(0x64dbf0) = 4194304\n" + EXIT),
+    ("a second setsid that succeeded", "1 setsid() = 1\n1 setsid() = 1\n" + EXIT),
     # -- the parser ----------------------------------------------------------------------------------------------
     ("an unmodeled call behind a blocked modeled one", OPEN3 + "1 read(3,0x1000,64)1 getppid() = 1\n = 64\n" + EXIT),
     ("an unmodeled call behind a modeled one", "1 write(1,0x1000,2)1 kill(1234,SIGTERM) = 0\n" + EXIT),
@@ -749,7 +802,8 @@ def test_dup3_overwrites_the_new_descriptor(model, image):
 
 @needs_model
 @pytest.mark.parametrize("call", ["fstat(5,0x40007ff8b0) = 0", "flock(5,LOCK_EX) = 0", "dup(5) = 6",
-                                  "fcntl(5,F_SETFL,O_RDONLY) = 0", "read(5,0x1000,64) = 64"])
+                                  "fcntl(5,F_SETFL,O_RDONLY) = 0", "read(5,0x1000,64) = 64",
+                                  "sendto(5,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2"])
 def test_after_a_pipe2_an_untracked_descriptor_declines(model, image, call):
     text = "1 pipe2(0x40007ff8b0,0) = 0\n1 " + call + "\n" + EXIT
     assert "pipe2 may have made" in one_undecided(check(model, image, text))
@@ -757,6 +811,21 @@ def test_after_a_pipe2_an_untracked_descriptor_declines(model, image, call):
     assert "never opened" in one_why(check(model, image, "1 " + call + "\n" + EXIT))
     bad = "1 pipe2(0x40007ff8b0,0) = 0\n1 " + call.split(" = ")[0] + " = -1 errno=9\n" + EXIT
     assert check(model, image, bad)["verdict"] == "pass"
+
+
+@needs_model
+def test_prlimit64_carries_the_hard_limit_from_the_read(model, image):
+    read = "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=1, rlim_max=4096})\n"
+    same = read + "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2, rlim_max=4096},NULL) = 0\n" + EXIT
+    assert check(model, image, same)["verdict"] == "pass"
+    changed = read + "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2, rlim_max=8192},NULL) = 0\n" + EXIT
+    assert "changed rlim_max" in one_why(check(model, image, changed), "prlimit64")
+    omitted = "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0\n" \
+              "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2, rlim_max=4096},NULL) = 0\n" + EXIT
+    result = check(model, image, omitted)
+    assert result["verdict"] == "undecided" and result["unmodeled"] == []
+    assert [u["call"] for u in result["undecided"]] == ["prlimit64", "prlimit64"]
+    assert "did not show rlim_max" in result["undecided"][1]["why"]
 
 
 @needs_model
@@ -835,22 +904,82 @@ def test_stance_spellings(model, image):
 
 
 def test_the_kill_line_is_qemus_spelling():
-    assert S.KILL_LINE.search(DEATH)
-    assert S.KILL_LINE.search("1 write(1,0x1000,2)" + DEATH)
-    assert S.KILL_LINE.search("--- SIGABRT {si_signo=SIGABRT, si_code=SI_TKILL, si_pid=1, si_uid=0} ---")
-    assert not S.KILL_LINE.search("--- SIGIOT {si_signo=SIGIOT, si_code=SI_USER, si_pid=1, si_uid=0} ---")
-    assert not S.KILL_LINE.search("--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0} ---")
-    assert not S.KILL_LINE.search("7 tkill(7,SIGIOT) = 0")
+    assert S.kill_line(DEATH)
+    assert S.kill_line("1 write(1,0x1000,2)" + DEATH)
+    assert S.kill_line("--- SIGABRT {si_signo=SIGABRT, si_code=SI_TKILL, si_pid=1, si_uid=0} ---")
+    assert not S.kill_line("--- SIGIOT {si_signo=SIGIOT, si_code=SI_USER, si_pid=1, si_uid=0} ---")
+    assert not S.kill_line("--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0} ---")
+    assert not S.kill_line("7 tkill(7,SIGIOT) = 0")
+    # A head whose braces do not hold SI_TKILL does not hide a later one that does.
+    assert S.kill_line("--- SIGIOT {si_code=SI_USER} --- --- SIGIOT {si_code=SI_TKILL} ---")
+    assert not S.kill_line("--- SIGIOT {si_signo=SIGIOT, si_code=SI_TKILL")
+
+
+# One long trace line, or a long host-call log, is the guest's to write: each reader must take time linear in it. The
+# two slowest cases here took more than two minutes with the quadratic readers; the bound leaves room for a slow
+# machine.
+LINEAR_SECONDS = 10
+
+
+def _timed(fn):
+    import time
+    start = time.monotonic()
+    value = fn()
+    return value, time.monotonic() - start
+
+
+def test_a_line_of_many_kill_heads_is_read_in_linear_time():
+    line = "--- SIGIOT {" * 200_000
+    found, took = _timed(lambda: S.kill_line(line))
+    assert not found and took < LINEAR_SECONDS, took
+
+
+def test_a_line_of_many_records_is_split_in_linear_time():
+    line = "1 write(1,0x1000,2)" * 100_000
+    records, took = _timed(lambda: list(S.split_records(line)))
+    assert len(records) == 100_000 and took < LINEAR_SECONDS, took
+    assert records[0][:3] == (1, "write", ["1", "0x1000", "2"]) and records[-1][3] == ""
+
+
+def test_a_long_run_of_digits_after_a_record_is_read_in_linear_time():
+    line = "1 getpid()" + "9" * 300_000
+    records, took = _timed(lambda: list(S.split_records(line)))
+    assert [r[1] for r in records] == ["getpid"] and took < LINEAR_SECONDS, took
+
+
+def test_matching_a_long_host_log_takes_linear_time():
+    n = 30_000
+    log = S.HostLog("exec\n" + "".join(f"read 2 3 {0x100000 + 16 * i:x} 2 0 0 0\n" for i in range(n)))
+
+    def take_all():
+        return [log.take("read", {0: S.Arg.full(3), 1: S.Arg.cut(0x100000 + 16 * i), 2: S.Arg.cut(2)}, (1, 2))
+                for i in range(n)]
+    taken, took = _timed(take_all)
+    assert all(t == {1: 0x100000 + 16 * i, 2: 2} for i, t in enumerate(taken)) and took < LINEAR_SECONDS, took
+    assert all(row[3] for row in log.lines)
 
 
 @needs_model
 def test_only_the_first_records_task_is_the_run(model, image):
-    # The model has one task and does not execute a child: a record of another task is unmodeled, changes no state,
-    # and is not the run's exit.
-    child = "1 clone(SIGCHLD,0,0,0,0) = 99\n99 exit_group(0)\n"
-    result = check(model, image, child)
+    # The model has one task. Before a fork it answers, a record of another task is unmodeled, changes no state, and
+    # is not the run's exit.
+    stray = "1 write(1,0x1000,2) = 2\n99 exit_group(0)\n"
+    result = check(model, image, stray)
     assert result["verdict"] == "fail" and not result["exited"]
     assert any("not the run's task" in why for why in whys(result))
+    # After one, another task's records are the child's, which "is not executed by this model" (Sys/Kernel/Fork.v):
+    # they are counted, not checked, and the child's exit is not the run's.
+    child = "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n99 exit_group(0)\n"
+    result = check(model, image, child)
+    assert (result["verdict"], result["exited"], result["child_records"]) == ("fail", False, 2), result
+    assert result["unmodeled"] == [] and result["names"] == ["clone"]
+    result = check(model, image, child + EXIT)
+    assert (result["verdict"], result["child_records"]) == ("pass", 2), result
+    # A fork qemu logged with no return yet (the child's records landed on its line) is a fork too.
+    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0)99 getppid() = 1\n = 99\n" + EXIT)["verdict"] == "pass"
+    # A fork the model refuses makes no child the run may have.
+    refused = check(model, image, OPEN3 + "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n" + EXIT)
+    assert any("not the run's task" in why for why in whys(refused)), whys(refused)
     # The child's calls change neither the ledger nor the descriptor table.
     text = ("1 clone(SIGCHLD,0,0,0,0) = 99\n"
             "99 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x100000\n"
@@ -859,6 +988,18 @@ def test_only_the_first_records_task_is_the_run(model, image):
                                             if u["call"] == "madvise"][0]
     # The first record's task is the run, whatever its number.
     assert check(model, image, "77 write(1,0x1000,2) = 2\n77 exit_group(0)")["verdict"] == "pass"
+
+
+@needs_model
+def test_a_count_qemu_cut_decides_only_what_every_register_agrees_on(model, image):
+    # With no host line, pread64's count is some 2 + k * 2**32: 3 bytes is more than 2 but not more than the others.
+    text = OPEN3 + "1 pread64(3,0x1000,2,0) = 3\n" + EXIT
+    assert "the count of pread64" in one_undecided(check(model, image, text, lengths="exec\n"), "pread64")
+    # More than MAX_RW_COUNT is more than every candidate's clamp.
+    text = OPEN3 + "1 pread64(3,0x1000,2,0) = 2147479553\n" + EXIT
+    assert "rw_count_clamp" in one_why(check(model, image, text, lengths="exec\n"), "pread64")
+    # Up to the printed count, every candidate agrees.
+    assert check(model, image, OPEN3 + "1 pread64(3,0x1000,2,0) = 2\n" + EXIT, lengths="exec\n")["verdict"] == "pass"
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1116,6 +1257,22 @@ def test_image_spans_refuse_what_they_cannot_read(tmp_path, data, needle):
         S.image_spans(path)
 
 
+@needs_model
+def test_an_unreadable_binary_leaves_the_image_missing_not_an_exception(model):
+    # A wrong x86 build is what the binary checks need to report, not a reason to discard every binary's report.
+    text = "1 write(1,0x1000,2) = 2\n" + EXIT
+    result = S.check_trace(model, text, stance="off", binary="/bin/sh", lengths=faithful_log(text))
+    assert result["verdict"] == "pass"
+    assert result["image"] == "missing" and "not a RISC-V" in result["image_error"]
+    image_dependent = "1 brk(NULL) = 0x100000\n" \
+                      "1 mmap(0x80000,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0) = 0x80000\n" \
+                      + EXIT
+    result = S.check_trace(model, image_dependent, stance="off", binary="/bin/sh",
+                           lengths=faithful_log(image_dependent))
+    assert result["verdict"] == "undecided"
+    assert result["image"] == "missing" and S.IMAGE_UNKNOWN in one_undecided(result, "mmap")
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # A forged trace
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1161,8 +1318,9 @@ def test_the_report_shape(model, image):
     text = ("1 getppid() = 1\n1 getppid() = 1\n1 kill(1,SIGTERM) = 0\n1 getppid() = 1\n"
             "1 write(1,0x1000,2) = 2\n" + EXIT)
     result = check(model, image, text)
-    assert set(result) == {"verdict", "calls", "names", "unmodeled", "undecided", "exited", "host_log"}
-    assert result["undecided"] == []
+    assert set(result) == {"verdict", "calls", "names", "unmodeled", "undecided", "exited", "host_log", "image",
+                           "image_error", "child_records"}
+    assert (result["image"], result["image_error"]) == ("present", None)
     assert result["calls"] == 6
     assert result["names"] == ["exit_group", "getppid", "kill", "write"]
     assert [u["call"] for u in result["unmodeled"]] == ["getppid", "kill"]

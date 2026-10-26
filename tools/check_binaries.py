@@ -116,6 +116,43 @@ def dwarf_reader(image, labels):
     return units
 
 
+def assembly_reader(tag, checkouts, labels):
+    """assembly_sources for check_links.analyse: for each (object name, the functions it defines), the project's own
+    assembly source that carries the object's name and names every one of them, relative to its checkout, or None.
+    An object assembled without -g carries no DWARF and no other mark, so its source is what says it is assembly.
+    The search runs in a container of the project image with no network, over the checkouts the build left."""
+    def sources(wanted):
+        if not wanted or not checkouts:
+            return [None] * len(wanted)
+        job = "".join(f"{name}\t{pathlib.PurePosixPath(name).stem}\t{' '.join(sorted(set(defined)))}\n"
+                      for name, defined in wanted)
+        script = (
+            'while IFS="\t" read -r name stem globals; do\n'
+            '  hit=""\n'
+            '  [ -n "$globals" ] || { printf "%s\\t\\n" "$name"; continue; }\n'
+            '  for root in "$@"; do\n'
+            '    for source in $(find "$root" -type f \\( -name "$stem.S" -o -name "$stem.s" -o -name "$stem.sx" '
+            '-o -name "$stem.asm" \\) 2>/dev/null | head -20); do\n'
+            '      ok=1\n'
+            '      for g in $globals; do grep -qw -- "$g" "$source" || { ok=0; break; }; done\n'
+            '      [ "$ok" = 1 ] && { hit=$source; break; }\n'
+            '    done\n'
+            '    [ -z "$hit" ] || break\n'
+            '  done\n'
+            '  printf "%s\\t%s\\n" "$name" "$hit"\n'
+            'done\n')
+        done = subprocess.run(["docker", "run", "--rm", "-i", "--network=none", *labels, "--entrypoint", "sh", tag,
+                               "-c", script, "sh", *checkouts], input=job, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, text=True, errors="replace")
+        found = {}
+        for line in done.stdout.splitlines():
+            name, _, path = line.partition("\t")
+            if path:
+                found[name] = check_links.relative_source(path, checkouts)
+        return [found.get(name) for name, _ in wanted]
+    return sources
+
+
 def record_of(raw, target):
     """The link record of a fuzz target in one build's $OUT `raw`: a check_links.Record, or the reason there is none.
     Also its quiet twin's bytes, or None."""
@@ -199,7 +236,7 @@ def system_calls(model, stale, qemu, binary, inputs, results):
     if not QEMU_VERSIONS.match(qemu):
         return {"result": "error", "detail": f"{qemu or 'no qemu version'}: tools/syscall_shapes.py reads the -strace "
                                              "formats of qemu 8.2 and 10.0 only"}
-    statuses, unmodeled, undecided, calls = {}, {}, [], 0
+    statuses, unmodeled, undecided, calls, whole, children = {}, {}, [], 0, set(), 0
     for n, (name, _) in enumerate(inputs):
         status = read_number(results, f"l{n}.status")
         statuses[name] = status
@@ -207,23 +244,31 @@ def system_calls(model, stale, qemu, binary, inputs, results):
         if status is None or text is None:
             undecided.append(f"{name}: {describe_status(status)}" if status is None else f"{name}: no trace")
             continue
-        verdict = syscall_shapes.check_trace(model, text, stance=STANCE, require_exit=True, binary=str(binary),
-                                             lengths=log)
+        try:
+            verdict = syscall_shapes.check_trace(model, text, stance=STANCE, require_exit=True, binary=str(binary),
+                                                 lengths=log)
+        # One trace must not take the step's other results with it.
+        except Exception as failure:
+            return {"result": "error", "detail": f"{name}: the trace could not be read: "
+                                                 f"{type(failure).__name__}: {failure}"}
         calls += verdict["calls"]
-        if verdict.get("host_log") == "missing" or verdict["verdict"] == "undecided":
-            undecided.append(f"{name}: {describe_status(status)}, and the host-side log of its calls is missing")
-            continue
+        children += verdict["child_records"]
         for item in verdict["unmodeled"]:
             unmodeled.setdefault((item["call"], item["why"]), []).append(name)
         # A call whose answer depends on a value that neither qemu's log nor the host's call shows.
         undecided += [f"{name}: {item['call']}: {item['why']}" for item in verdict.get("undecided", [])]
-        if not verdict["exited"]:
+        if verdict.get("host_log") == "missing":
+            undecided.append(f"{name}: {describe_status(status)}, and the host-side log of its calls is missing")
+        elif not verdict["exited"]:
             undecided.append(f"{name}: {describe_status(status)}, and its trace holds no end of the run")
         elif verdict["calls"] < MIN_CALLS:
             undecided.append(f"{name}: its trace holds {verdict['calls']} calls, fewer than {MIN_CALLS}")
         elif not INPUT_OPEN.search(text) or "read" not in verdict["names"]:
             undecided.append(f"{name}: {describe_status(status)}, and its trace does not open and read input.bin")
-    result = {"stance": STANCE, "qemu": qemu, "statuses": statuses, "calls": calls,
+        else:
+            whole.add(name)
+    result = {"stance": STANCE, "qemu": qemu, "statuses": statuses, "calls": calls, "whole": sorted(whole),
+              "child_records": children,
               "unmodeled": [{"call": call, "why": reason, "inputs": names}
                             for (call, reason), names in unmodeled.items()]}
     if stale:
@@ -237,11 +282,16 @@ def system_calls(model, stale, qemu, binary, inputs, results):
         result.update(result="pass", detail=f"{calls} calls on {len(inputs)} inputs, all covered")
     if undecided and result["result"] != "error":
         result["detail"] += "; not decided: " + "; ".join(undecided[:MAX_LISTED])
+    if children:
+        # Sys/Kernel/Fork.v: a forked child "is not executed by this model", so its records are not checked.
+        result["detail"] += f"; {children} records of forked children, which the model does not execute, not checked"
     return result
 
 
-def quiet_loud(has_quiet, why_none, inputs, results):
-    """Check 3 for one binary from its runs. Return its result."""
+def quiet_loud(has_quiet, why_none, inputs, results, whole=None):
+    """Check 3 for one binary from its runs. `whole` holds the names of the inputs whose loud run was a whole run of
+    that input (system_calls); None means every run counts. A run that died before it reached its input writes
+    nothing either, so it decides nothing here."""
     if not has_quiet:
         return {"result": "not-run", "detail": f"no quiet twin: {why_none}"}
     differ, noisy, undecided, agreed = [], [], [], 0
@@ -258,7 +308,10 @@ def quiet_loud(has_quiet, why_none, inputs, results):
             differ.append(f"{name}: the binary exits {loud}, the quiet twin {silent}")
         if written:
             noisy.append(f"{name}: the quiet twin wrote {written} bytes")
-        agreed += loud == silent and not written
+        if whole is not None and name not in whole:
+            undecided.append(f"{name}: the binary's run was not a whole run of the input")
+        elif loud == silent and not written:
+            agreed += 1
     if differ or noisy:
         return {"result": "fail", "detail": "; ".join((differ + noisy)[:MAX_LISTED])}
     if not agreed:
@@ -269,10 +322,20 @@ def quiet_loud(has_quiet, why_none, inputs, results):
     return {"result": "pass", "detail": detail}
 
 
+def guarded(check, *arguments):
+    """One check's result, or an error that names what went wrong: a binary or a trace that a check cannot read gives
+    that binary an error, and the step's other results stand."""
+    try:
+        return check(*arguments)
+    except Exception as failure:
+        return {"result": "error", "detail": f"{check.__name__}: {type(failure).__name__}: {failure}"}
+
+
 def elf_check(binary, stale):
-    """Check 1 for one binary."""
+    """Check 1 for one binary. With a stale model there is no verdict either way: the rules that say which
+    instructions the model executes may not be the release's."""
     result = binary_isa.check(str(binary))
-    if stale and result["result"] == "pass":
+    if stale and result["result"] in ("pass", "fail"):
         result = {**result, "result": "stale", "detail": f"{result['detail']}; {stale}"}
     return result
 
@@ -288,9 +351,10 @@ def staleness(root, module, release):
             f"the release's, the code of {', '.join(changed)} differs")
 
 
-def binary_checks(job, toolchain, targets, entries, sources, work, *, labels):
-    """Run the four checks on every binary. `sources` are the git checkouts of the project image (the manifest's
-    sources). Return (the manifest's binary_checks block, {target: {build: uninstrumented list or None}})."""
+def binary_checks(job, tag, toolchain, targets, entries, sources, work, *, labels):
+    """Run the four checks on every binary. `tag` is the project image, whose checkouts `sources` names (the
+    manifest's sources); the runs are in the toolchain image. Return (the manifest's binary_checks block, {target:
+    {build: uninstrumented list or None}})."""
     home = work / "binaries"
     check_build.empty_directory(home, toolchain, labels=labels)
 
@@ -320,7 +384,8 @@ def binary_checks(job, toolchain, targets, entries, sources, work, *, labels):
             wanted |= {original for original, _ in record.renamed.values() if original.startswith("/opt/")}
     image = image_hashes(toolchain, wanted, labels=labels)
     links = {target: check_links.analyse({build: records[(target, build)] for build in job.builds}, image,
-                                         dwarf_reader(toolchain, labels), sorted(sources))
+                                         dwarf_reader(toolchain, labels), sorted(sources),
+                                         assembly_reader(tag, sorted(sources), labels))
              for target in targets}
 
     step(f"--checks: each binary on its inputs, under qemu-riscv64 (at most {RUN_SECONDS} seconds a run, "
@@ -372,10 +437,12 @@ def binary_checks(job, toolchain, targets, entries, sources, work, *, labels):
             record = records[(target, build)]
             why_none = ("one of the driver's objects has no quiet build" if isinstance(record, check_links.Record)
                         else record)
+            # A check that cannot read one binary gives that binary an error, never the whole step.
             if (target, build) in results:
-                calls = system_calls(model, shape_stale, version, binary, inputs[target], results[(target, build)])
-                agreement = quiet_loud(quiet[(target, build)] is not None, why_none, inputs[target],
-                                       results[(target, build)])
+                calls = guarded(system_calls, model, shape_stale, version, binary, inputs[target],
+                                results[(target, build)])
+                agreement = guarded(quiet_loud, quiet[(target, build)] is not None, why_none, inputs[target],
+                                    results[(target, build)], set(calls.get("whole", [])))
             else:
                 why = failures.get((target, build), "not run")
                 calls = {"result": "error", "detail": why}
@@ -383,7 +450,7 @@ def binary_checks(job, toolchain, targets, entries, sources, work, *, labels):
             link = links[target][build]
             uninstrumented[target][build] = link["uninstrumented"]
             block["targets"][target][build] = {
-                "elf": elf_check(binary, isa_stale),
+                "elf": guarded(elf_check, binary, isa_stale),
                 "system_calls": calls,
                 "quiet_loud": agreement,
                 "instrumented": link["instrumented"],
@@ -393,8 +460,10 @@ def binary_checks(job, toolchain, targets, entries, sources, work, *, labels):
 
 # ── the report ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
+# A check that did not run decided nothing, so it reads as such: only pass and the plain build's "nothing to
+# instrument" are results a reader may take as good.
 RESULT_WORDS = {"pass": "pass", "fail": "**fail**", "error": "**not decided**", "stale": "**stale model**",
-                "not-run": "not run", "plain": "not instrumented (plain)"}
+                "not-run": "**not decided** (not run)", "plain": "not instrumented (plain)"}
 
 
 def report(block, uninstrumented, builds):
@@ -427,7 +496,7 @@ def report(block, uninstrumented, builds):
             lines.append(f"| {check_checks.cell(name)} | {' | '.join(cells)} | {files} |")
             for key, title in (("elf", "ELF and instructions"), ("system_calls", "system calls"),
                                ("quiet_loud", "quiet and loud"), ("instrumented", "instrumented")):
-                if results[key]["result"] not in ("pass", "plain", "not-run"):
+                if results[key]["result"] not in ("pass", "plain"):
                     problems.append(f"- {code(name)}, {title}: {code(results[key]['detail'], 600)}")
     lines.append("")
     if problems:

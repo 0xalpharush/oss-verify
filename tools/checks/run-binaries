@@ -12,7 +12,7 @@
 # /job/runs has one run on each line: <id> <binary> <input> <name>, the binary and the input relative to /job, and the
 # name the program gets as its argv[0] (the fuzz target's name). The runs are made one after the other, each as the
 # process model's environment has it: in an empty working directory, /ovb, that holds the input as input.bin, named by
-# that relative name; with an empty /tmp; with an /etc that holds only the three files below, so that no file of the
+# that relative name; with an empty /tmp; with an /etc that holds only the files written below, so that no file of the
 # image's /etc decides what a run does; with no environment; and as user 65534, so that the program cannot write what
 # the next run, or the host, reads. Each run is stopped after <seconds>, and no run starts after <total> seconds.
 #
@@ -25,10 +25,11 @@ set -eu
 seconds=$1 total=$2
 end=$(($(date +%s) + total))
 guest=65534
+# The tracer, compiled with the image's own C compiler before /etc is emptied.
 cc -static -O2 -o /ovc-host-calls /ovc/host-calls.c
-
-# The guest's /etc: these three files and nothing else. Docker mounts its own hosts, hostname and resolv.conf; their
-# text is replaced, in this container only. resolv.conf names no search domain, which changes what a resolver asks.
+# The guest's /etc: hosts, resolv.conf and nsswitch.conf as written below, an empty hostname, and nothing else. Docker
+# mounts its own hosts, hostname and resolv.conf over the image's; their text is replaced here, in this container only.
+# resolv.conf names no search domain, which changes what a resolver asks.
 for f in /etc/* /etc/.[!.]*; do
   case "$f" in /etc/hosts|/etc/hostname|/etc/resolv.conf) ;; *) rm -rf -- "$f" ;; esac
 done
@@ -36,13 +37,15 @@ printf '127.0.0.1 localhost\n::1 localhost\n' > /etc/hosts
 printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
 printf 'passwd: files\ngroup: files\nshadow: files\nhosts: files dns\nnetworks: files\nprotocols: files\nservices: files\n' \
   > /etc/nsswitch.conf
+: > /etc/hostname   # docker mounts this file, so it cannot be removed; it is emptied instead
 
 while read -r id binary input name; do
   now=$(date +%s)
   [ "$now" -lt "$end" ] || break
   limit=$seconds
   [ $((end - now)) -ge "$limit" ] || limit=$((end - now))
-  rm -rf /ovb /ovt /tmp/* /tmp/.[!.]* 2>/dev/null || true
+  # Each run starts afresh: no run leaves state for the next, in the working directory or anywhere a program writes.
+  rm -rf /ovb /ovt /tmp/* /tmp/.[!.]* /var/tmp/* /var/tmp/.[!.]* /dev/shm/* /dev/shm/.[!.]* 2>/dev/null || true
   mkdir /ovb /ovt
   cp -- "/job/$input" /ovb/input.bin
   chown -R "$guest:$guest" /ovb /ovt

@@ -305,6 +305,40 @@ class Analyse(unittest.TestCase):
         self.assertEqual(self.analyse({"asan": record}, dwarf_units=units, checkouts=["/src/lib"])["asan"]
                          ["instrumented"]["result"], "fail")
 
+    def test_a_file_of_the_image_with_no_kind_leaves_no_list(self):
+        """A list that leaves a file out would say that the build links less uninstrumented code than it does."""
+        unknown = "/opt/musl-sysroot/usr/lib64/libmystery.a"
+        self.IMAGE[unknown] = "b" * 64
+        try:
+            for build in ("plain", "asan"):
+                record = self.record({"/work/l.a": {"a.o": good()}}, runtimes=(self.LIBC, self.CRT1, unknown))
+                result = self.analyse({build: record})[build]
+                self.assertIsNone(result["uninstrumented"], build)
+                self.assertEqual(result["instrumented"]["result"], "error", build)
+                self.assertIn("libmystery.a", result["instrumented"]["detail"])
+                # The report shows an error, so nobody reads the missing list as a clean one.
+                block = {"model": {"name": "m", "commit": "f" * 40, "release": "x"}, "inputs": {"t": ["a"]},
+                         "targets": {"t": {build: {"elf": {"result": "pass"}, "system_calls": {"result": "pass"},
+                                                   "quiet_loud": {"result": "pass"},
+                                                   "instrumented": result["instrumented"]}}}}
+                text = check_binaries.report(block, {"t": {build: None}}, [build])
+                self.assertIn("**not decided**", text)
+                self.assertIn("not recorded", text)
+        finally:
+            del self.IMAGE[unknown]
+
+    def test_a_link_that_took_no_file_of_the_image_leaves_no_list(self):
+        """Every static link takes the C library, and the facts hold a list of at least one entry."""
+        record = self.record({"/work/l.a": {"a.o": good()}}, runtimes=())
+        result = self.analyse({"asan": record})["asan"]
+        self.assertIsNone(result["uninstrumented"])
+        self.assertEqual(result["instrumented"]["result"], "error")
+        self.assertIn("C library", result["instrumented"]["detail"])
+
+    def test_the_fortran_runtime_has_a_kind(self):
+        for name in ("libFortranRuntime.a", "libgfortran.a", "libflang_rt.runtime.a"):
+            self.assertEqual(check_links.runtime_kind("/opt/fortran/lib/" + name), "fortran-runtime", name)
+
     def test_one_rust_allocator_shim_is_exempt(self):
         shim = elf_object(NOP, defined=["__rust_alloc", "__rust_dealloc"], comment=True)
         result = self.analyse({"asan": self.record({"/work/l.a": {"a.o": good(), "shim.o": shim}})})["asan"]
@@ -333,6 +367,45 @@ class Analyse(unittest.TestCase):
         result = self.analyse({"plain": plain, "ubsan": partly})["ubsan"]["instrumented"]
         self.assertEqual(result["result"], "fail")
         self.assertIn("libdep.a: 0", result["detail"])
+
+    def test_ubsan_compares_each_loose_object_too(self):
+        def build(fuzzer, other):
+            return self.record({"/work/l.a": {"a.o": elf_object(NOP * 4, defined=["f"], comment=True)}},
+                               loose={"/work/b/fuzzer.o": elf_object(fuzzer, defined=["g"], comment=True),
+                                      "/work/b/other.o": elf_object(other, defined=["h"], comment=True)})
+        plain = build(NOP * 4, NOP * 4)
+        # Only the fuzz target's own object got the sanitizer: its traps must not stand for the other object's.
+        partly = build(NOP + UNIMP * 3, NOP * 4)
+        result = self.analyse({"plain": plain, "ubsan": partly})["ubsan"]["instrumented"]
+        self.assertEqual(result["result"], "fail")
+        self.assertIn("other.o: 0", result["detail"])
+
+    def test_ubsan_without_a_plain_build_decides_nothing(self):
+        ubsan = self.record({"/work/l.a": {"a.o": elf_object(NOP + UNIMP, defined=["f"], comment=True)}})
+        result = self.analyse({"ubsan": ubsan})["ubsan"]["instrumented"]
+        self.assertEqual(result["result"], "error")
+        self.assertIn("no plain build", result["detail"])
+
+    def test_assembly_without_dwarf_is_named_by_its_source(self):
+        """The toolchain assembles a .S without -g, so the object carries no DWARF and no other mark."""
+        asm = elf_object(NOP, defined=["memcpy_fast"])
+        record = self.record({"/work/l.a": {"a.o": good(), "memcpy.S.o": asm}})
+        asked = []
+
+        def sources(wanted):
+            asked.extend(wanted)
+            return ["src/arch/memcpy.S"] * len(wanted)
+
+        result = self.analyse({"asan": record}, dwarf_units=lambda objects: [None], assembly_sources=sources)["asan"]
+        self.assertEqual(asked, [("memcpy.S.o", ["memcpy_fast"])])
+        self.assertEqual(result["instrumented"]["result"], "pass", result)
+        self.assertIn({"name": "memcpy.S.o", "kind": "assembly", "source": "src/arch/memcpy.S"},
+                      result["uninstrumented"])
+        # No source of the project carries its name and its functions: the object is not shown to be assembly.
+        result = self.analyse({"asan": record}, dwarf_units=lambda objects: [None],
+                              assembly_sources=lambda wanted: [None] * len(wanted))["asan"]
+        self.assertEqual(result["instrumented"]["result"], "fail")
+        self.assertIn("no DWARF", result["instrumented"]["detail"])
 
     def test_an_allocation_failure_copy_stands_for_its_original(self):
         copy = "/tmp/ov/af.abc/3-libz.a"
@@ -459,10 +532,35 @@ class Runs(unittest.TestCase):
         self.write("q0.out", 0)
         self.assertEqual(check_binaries.quiet_loud(False, "no adapter", self.inputs, self.results)["result"],
                          "not-run")
+        # A check that did not run must not read as a clean one.
+        block = {"model": {"name": "m", "commit": "f" * 40, "release": "x"}, "inputs": {"t": ["a"]},
+                 "targets": {"t": {"plain": {"elf": {"result": "pass"}, "system_calls": {"result": "pass"},
+                                             "quiet_loud": {"result": "not-run", "detail": "no quiet twin: a Go "
+                                                                                           "program"},
+                                             "instrumented": {"result": "plain"}}}}}
+        text = check_binaries.report(block, {"t": {"plain": [{"name": "libc.a", "kind": "libc"}]}}, ["plain"])
+        self.assertIn("**not decided** (not run)", text)
+        self.assertIn("quiet and loud: `no quiet twin: a Go program`", text)
         # A run that never started: its status is the tracer's, and decides nothing.
         self.write("l0.calls", "")
         self.write("l1.calls", "")
         self.assertEqual(check_binaries.quiet_loud(True, "", self.inputs, self.results)["result"], "error")
+
+    def test_a_run_that_never_reached_its_input_decides_nothing(self):
+        """Two binaries that both die before main agree on every status and write nothing."""
+        for n in range(2):
+            self.write(f"l{n}.status", 2)
+            self.write(f"q{n}.status", 2)
+            self.write(f"q{n}.out", 0)
+            self.write(f"q{n}.err", 0)
+        whole = {check_binaries.EMPTY, "seed1"}
+        self.assertEqual(check_binaries.quiet_loud(True, "", self.inputs, self.results, whole)["result"], "pass")
+        result = check_binaries.quiet_loud(True, "", self.inputs, self.results, set())
+        self.assertEqual(result["result"], "error")
+        self.assertIn("not a whole run of the input", result["detail"])
+        # A difference still fails, whether or not the run reached its input.
+        self.write("q0.status", 0)
+        self.assertEqual(check_binaries.quiet_loud(True, "", self.inputs, self.results, set())["result"], "fail")
 
     def test_a_linked_result_is_not_read(self):
         secret = self.results / "secret"
@@ -477,7 +575,7 @@ class Runs(unittest.TestCase):
             self.write(f"l{n}.status", 0)
             (self.results / f"l{n}.trace").write_text(text)
         verdicts = {"calls": 12, "names": ["openat", "read", "exit_group"], "unmodeled": [], "exited": True,
-                    "verdict": "pass", "host_log": "present"}
+                    "verdict": "pass", "host_log": "present", "child_records": 0}
         seen = {}
 
         def check_trace(model, text, *, stance, require_exit, binary, lengths):
@@ -495,9 +593,15 @@ class Runs(unittest.TestCase):
             verdicts["calls"] = 3
             self.assertEqual(run()["result"], "error")
             verdicts["calls"] = 12
-            verdicts.update(host_log="missing", verdict="undecided")
+            # A call the trace cannot decide is reported with its own reason, and a failure is still a failure when
+            # the host-side log is missing.
+            verdicts.update(verdict="undecided", undecided=[{"call": "connect", "why": "the address is not printed"}])
+            self.assertIn("connect: the address is not printed", run()["detail"])
+            verdicts.update(host_log="missing")
             self.assertIn("host-side log", run()["detail"])
-            verdicts.update(host_log="present", verdict="pass")
+            verdicts.update(unmodeled=[{"call": "uname", "why": "not in the model's table"}])
+            self.assertEqual(run()["result"], "fail")
+            verdicts.update(host_log="present", verdict="pass", undecided=[], unmodeled=[])
             (self.results / "l1.trace").write_text("7 read(3,0x1,65536) = 7\n")
             result = run()
             self.assertEqual(result["result"], "error")
@@ -509,6 +613,27 @@ class Runs(unittest.TestCase):
             self.assertEqual(run(stale="the rules are old")["result"], "stale")
         finally:
             check_binaries.syscall_shapes.check_trace = saved
+
+    def test_a_trace_that_cannot_be_read_fails_one_binary_only(self):
+        self.write("l0.status", 0)
+        (self.results / "l0.trace").write_text("7 exit_group(0)\n")
+        saved = check_binaries.syscall_shapes.check_trace
+
+        def raises(*arguments, **options):
+            raise TypeError("kind_reason() missing 2 required positional arguments")
+
+        check_binaries.syscall_shapes.check_trace = raises
+        try:
+            result = check_binaries.system_calls(object(), "", self.QEMU, "bin", self.inputs, self.results)
+        finally:
+            check_binaries.syscall_shapes.check_trace = saved
+        self.assertEqual(result["result"], "error")
+        self.assertIn("kind_reason", result["detail"])
+        # And a check that raises anywhere gives that binary an error, not the step.
+        def fails(binary, stale):
+            raise ValueError("not a RISC-V program")
+        self.assertEqual(check_binaries.guarded(fails, "bin", ""),
+                         {"result": "error", "detail": "fails: ValueError: not a RISC-V program"})
 
     def test_report_names_the_four_checks_per_binary(self):
         block = {"model": {"name": "m", "commit": "f" * 40, "release": "2026.10.0"}, "inputs": {"t": ["a", "b"]},
