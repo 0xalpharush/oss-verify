@@ -219,6 +219,29 @@ class ReviewComment(unittest.TestCase):
         self.assertEqual(self.meta(third).group("head"), "a" * 40)
         self.assertIn(f"this is the review of `{'a' * 7}`. The review of `{'c' * 7}` did not finish", third)
         self.assertIn("1. Fix X.", third)
+        self.assertEqual(third.count("Claude wrote this review"), 1)
+
+    def test_a_kept_comment_gets_its_footer_written_before_the_old_text(self):
+        # The footer is written again above the kept comment, where nothing in the old text can hide it, and the old
+        # comment's own footer, first as this script writes it, is not kept as well.
+        footer = review_comment.FOOTER.format(of=f"It is the review of `{'a' * 7}`. ")
+        first = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
+        second = self.kept(first, "b" * 40)
+        blocks = second.split("\n\n")
+        self.assertTrue(blocks[2].startswith("**Not current:**"))
+        self.assertEqual(blocks[3], footer)
+        self.assertEqual(second.count("Claude wrote this review"), 1)
+        self.assertLess(second.index("### report"), second.index("1. Fix X."))
+        # A comment of main's renderer, footer last after a tag the review left open, which hid it: the footer is
+        # written again before the old text (rendered through GitHub for the pull request: visible), and the old one
+        # stays where it was, inside the old text.
+        base = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
+                f"{review_comment.HEADING}\n\nThanks.\n\n<div title=\"x >\n\n{review_comment.CHECKS_SUMMARY}\n\n"
+                f"### report\n\n</details>\n\n{footer}\n")
+        blocks = self.kept(base, "b" * 40).strip().split("\n\n")
+        self.assertEqual(blocks[3], footer)
+        self.assertEqual(blocks[4], "Thanks.")
+        self.assertEqual(blocks[-1], footer)
 
     def test_a_legacy_comment_has_an_unknown_commit(self):
         # No metadata line, and a commit in the prose: the prose is never read as the commit.
@@ -326,26 +349,39 @@ class ReviewComment(unittest.TestCase):
     def test_neutralize_is_linear_and_a_fixed_point(self):
         # It removes only a comment that is complete and names this script; it never rewrites anything else.
         hostile = "<!--oss-verify" * 5_000  # 70,000 characters, no -->
-        started = time.monotonic()
-        self.assertEqual(review_comment.neutralize(hostile), hostile)
-        self.assertLess(time.monotonic() - started, 1.0)
+        # Many closed comments, and the other ending only at the very end: a scan that looked for each ending afresh
+        # at each comment would read the rest of the text each time.
+        closed = "<!-- x -->" * 60_000
+        for text in (hostile, closed + "--!>", "<!-- x --!>" * 60_000 + "-->"):
+            started = time.monotonic()
+            self.assertEqual(review_comment.neutralize(text), text)
+            self.assertLess(time.monotonic() - started, 1.0, text[:20])
         for sample in (hostile, "<!-- oss-<!-- oss-verify-junk -->verify-meta v=1 status=none -->",
-                       "a <!-- keep --> b <!-- oss-verify-x --> c <!-- tail", "<!-<!--oss-verify-->- oss-verify-x -->"):
+                       "a <!-- keep --> b <!-- oss-verify-x --> c <!-- tail", "<!-<!--oss-verify-->- oss-verify-x -->",
+                       "<!--> <!-- oss-verify --!> x", "<!-- a --!> <!-- oss-verify-meta --> b"):
             once = review_comment.neutralize(sample)
             self.assertEqual(review_comment.neutralize(once), once, sample)
             self.assertFalse(self.holds_a_complete_marker(once), sample)
 
     def holds_a_complete_marker(self, text):
-        """Whether a complete HTML comment naming this script is left. A forward scan, not a regular expression: the
-        obvious one backtracks for minutes on 70,000 characters that hold no -->."""
+        """Whether a complete HTML comment naming this script is left: from each <!-- to where HTML ends it (<!-->,
+        <!--->, or the first --> or --!>). A forward scan, not a regular expression: the obvious one backtracks for
+        minutes on 70,000 characters that hold no -->."""
         at = 0
         while (start := text.find("<!--", at)) != -1:
-            end = text.find("-->", start + 4)
-            if end == -1:
-                return False
-            if "oss-verify" in text[start:end + 3].lower():
+            if text.startswith(">", start + 4):
+                end = start + 5
+            elif text.startswith("->", start + 4):
+                end = start + 6
+            else:
+                ends = [found + len(close) for close in ("-->", "--!>")
+                        if (found := text.find(close, start + 4)) != -1]
+                if not ends:
+                    return False
+                end = min(ends)
+            if "oss-verify" in text[start:end].lower():
                 return True
-            at = end + 3
+            at = end
         return False
 
 
@@ -425,7 +461,7 @@ class PostingStep(unittest.TestCase):
     """build.yaml's own "Post the comment" step, run with a fake gh: what it sends GitHub."""
     OLD = "Thanks.\n\n1. Fix X.\n"
 
-    def post(self, review, existing=True):
+    def post(self, review, existing=True, previous=None):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
         name = "Post the comment, or update the one already there"
         matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
@@ -436,9 +472,10 @@ class PostingStep(unittest.TestCase):
             directory = pathlib.Path(directory)
             bin = directory / "bin"
             bin.mkdir()
-            first = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head", "a" * 40],
-                                   input=self.OLD, capture_output=True, text=True, check=True).stdout
-            (directory / "existing.md").write_text(first)
+            if previous is None:
+                previous = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head",
+                                           "a" * 40], input=self.OLD, capture_output=True, text=True, check=True).stdout
+            (directory / "existing.md").write_text(previous)
             (bin / "gh").write_text(
                 "#!/bin/bash\n"
                 f'case "$*" in\n'
@@ -480,6 +517,24 @@ class PostingStep(unittest.TestCase):
 
     def test_without_a_posted_comment_it_posts_one(self):
         self.assertEqual(self.status(self.post(" \n", existing=False)), "none")
+
+    def test_keeping_the_same_comment_again_and_again_changes_nothing(self):
+        # A posted review just under GitHub's limit, kept by three runs of the step for the same push: the first keep
+        # cuts it to make room for the notice and the footer; the second and the third post that same comment, with
+        # one cut note and every character of the review that the first kept.
+        big = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
+               f"{review_comment.HEADING}\n\n" + "R" * 64_800 + "\n")
+        once = self.post("", previous=big)
+        twice = self.post("", previous=once)
+        thrice = self.post("", previous=twice)
+        self.assertEqual(self.status(once), "stale")
+        self.assertIn("The review is cut at", once)
+        self.assertEqual(twice, once)
+        self.assertEqual(thrice, once)
+        self.assertEqual(thrice.count("The review is cut at"), 1)
+        self.assertEqual(thrice.count("**Not current:**"), 1)
+        self.assertEqual(thrice.count("Claude wrote this review"), 1)
+        self.assertLessEqual(len(thrice), 65_536)
 
 
 class Screening(unittest.TestCase):
@@ -535,6 +590,15 @@ class Screening(unittest.TestCase):
                      review_comment.CHECKS_SUMMARY, "### report"):
             self.assertIn(mine, head, mine)
 
+    def report(self, text):
+        """The checks report as posted: the code block between the summary and </details>, every line of it four spaces
+        in (so that no line of it can end the block), with those four spaces taken off."""
+        block = text.split(review_comment.CHECKS_SUMMARY + "\n\n", 1)[1].split("\n\n</details>\n\n", 1)[0]
+        lines = block.split("\n")
+        for line in lines:
+            self.assertTrue(line.startswith("    "), line)
+        return "\n".join(line[4:] for line in lines)
+
     def test_no_character_of_the_review_or_the_checks_is_changed(self):
         # Markdown code holds characters that look like markup, spaced and unspaced. Each must arrive as written.
         for text in ("Use `a<b` here.", "Use `a < b` here.", "```c\nif (a<b) return a;\n```",
@@ -542,24 +606,33 @@ class Screening(unittest.TestCase):
             posted = self.comment(text, "### report\n")
             self.assertIn(text, posted, text)
             posted = self.comment("Thanks.", text)
-            self.assertIn(text, posted, text)
+            self.assertEqual(self.report(posted), text, text)
 
-    def test_nothing_in_the_checks_can_close_its_fence(self):
-        # The fence is longer than any run of backticks in the report, so the report cannot end it early.
-        for report in ("```\nnot a close\n", "`````\nlonger\n", "a ``` b ```` c", "<!-- open", '<div title="x >'):
+    def test_nothing_in_the_checks_can_end_its_code_block(self):
+        # Every line of the report is indented into the code block, so nothing in it ends the block early.
+        for report in ("```\nnot a close\n", "`````\nlonger\n", "a ``` b ```` c", "<!-- open", '<div title="x >',
+                       "line\n\n\n    deeper\n\n<!--"):
             text = self.comment("Thanks.", report)
-            bar = re.search(r"\n(`{3,})text\n", text).group(1)
-            self.assertNotIn(bar, report)
-            self.assertIn(report.strip(), text)
-            # The report is between the fences, and the review follows the closing one.
-            after = text.split(f"\n{bar}\n", 1)[1]
-            self.assertIn("Thanks.", after)
+            self.assertEqual(self.report(text), report.strip())
+            # The review follows the block.
+            self.assertTrue(text.rstrip().endswith("\n\n</details>\n\nThanks."))
+
+    def test_a_carriage_return_ends_a_line_of_the_block_too(self):
+        # CommonMark ends a line at a carriage return alone, so each such line is indented as well.
+        block, whole = review_comment.code_block("a\r<!--\r\nb\nc", 100)
+        self.assertTrue(whole)
+        self.assertEqual(block, "    a\n    <!--\n    b\n    c")
 
     def test_the_whole_comment_stays_within_githubs_limit(self):
+        # The indent adds four characters a line, so a report of many short lines is the one that grows most.
         for review, checks in ((("<!--" * 11_000 + "-->"), "### report\n" + "<!--" * 2_000),
-                               ("x" * 90_000, "y" * 90_000), ("`" * 30_000, "`" * 30_000)):
+                               ("x" * 90_000, "y" * 90_000), ("`" * 30_000, "`" * 30_000),
+                               ("x" * 90_000, "a\n" * 30_000), ("x" * 90_000, "a" + "\n" * 60_000 + "b")):
             text = self.comment(review, checks)
             self.assertLessEqual(len(text), 65_536, (len(review), len(checks)))
+            block = text.split(review_comment.CHECKS_SUMMARY + "\n\n", 1)[1].split("\n\n</details>\n\n", 1)[0]
+            self.assertLessEqual(len(block), review_comment.MAX_CHECKS)
+            self.report(text)
             self.assertIn("Claude wrote this review", text)
 
     def test_nothing_generated_ever_follows_the_review(self):
@@ -579,19 +652,19 @@ class Screening(unittest.TestCase):
         text = self.comment(long, "### report\n")
         self.assertLess(text.index("The review is cut at"), text.index("R" * 100))
 
-    def test_nothing_in_the_report_can_end_the_fence(self):
-        # A closing fence must use the same character as the opening one and be at least as long, so a tilde line
-        # cannot end a backtick fence, and a backtick line cannot either, because the fence is longer than any run.
-        for report in ("~~~\nstill inside\n~~~\n", "```   \nstill inside\n", "   ```\nstill inside\n",
-                       "``````\nstill inside\n", "a``````b\nstill inside\n", "~~~text\nstill inside\n"):
+    def test_nothing_in_the_report_can_end_the_code_block(self):
+        # GitHub's renderer closes a fence of more than 255 backticks at any backtick line of 255 or more, so no fence
+        # holds a report with such a line: the reviewer's case was 255 backticks and then <!--, which hid the review.
+        # An indented code block has no length to beat. These are that boundary and the six fence cases of the last
+        # round, each rendered through GitHub's Markdown endpoint for the pull request (the review, the footer and the
+        # report all visible); here, the structure that rendering rests on.
+        for report in ("`" * 254 + "\n<!--\n", "`" * 255 + "\n<!--\n", "`" * 256 + "\n<!--\n",
+                       "`" * 1000 + "\n<!--\n", "~~~\nstill inside\n~~~\n", "```   \nstill inside\n",
+                       "   ```\nstill inside\n", "``````\nstill inside\n", "a``````b\nstill inside\n",
+                       "~~~text\nstill inside\n"):
             text = self.comment("REVIEW_SENTINEL", report)
-            bar = re.search(r"\n(`{3,})text\n", text).group(1)
-            inside = text.split(f"{bar}text\n", 1)[1].split(f"\n{bar}\n", 1)[0]
-            self.assertIn("still inside", inside)
-            for line in report.split("\n"):
-                if line.strip() and set(line.strip()) == {"`"}:
-                    self.assertLess(len(line.strip()), len(bar), line)
-            self.assertTrue(text.strip().endswith("REVIEW_SENTINEL"))
+            self.assertEqual(self.report(text), report.strip(), report[:20])
+            self.assertTrue(text.endswith("\n\n</details>\n\nREVIEW_SENTINEL\n"), report[:20])
 
     def test_a_marker_spanning_a_blank_line_is_removed_whole(self):
         # GitHub ends an HTML comment at its -->, as the scan does, even across a blank line: rendering the case
@@ -616,24 +689,43 @@ class Screening(unittest.TestCase):
 
     def test_neutralize_removes_only_a_complete_marker_of_this_script(self):
         # An independent implementation of the rule, by regular expression rather than by scan, on inputs small enough
-        # that its backtracking does not matter.
+        # that its backtracking does not matter: as HTML's tokenizer reads a comment, <!--> and <!---> are whole
+        # comments, and any other ends at the first --> or --!> after its <!--.
         def expected(text):
-            return re.sub(r"<!--.*?-->", lambda m: " " if "oss-verify" in m.group().lower() else m.group(), text,
-                          flags=re.S)
+            return re.sub(r"<!--(?:>|->|.*?(?:-->|--!>))",
+                          lambda m: " " if "oss-verify" in m.group().lower() else m.group(), text, flags=re.S)
         rng = random.Random(37)
-        pieces = ["<!--", "-->", "oss-verify", "OSS-Verify", "<!", "x", " ", "\n", "-", ">", "`"]
+        pieces = ["<!--", "-->", "--!>", "<!-->", "<!--->", "oss-verify", "OSS-Verify", "<!", "x", " ", "\n", "-", "!",
+                  ">", "`"]
         for _ in range(20_000):
             text = "".join(rng.choice(pieces) for _ in range(rng.randrange(0, 12)))
             got = review_comment.neutralize(text)
             self.assertEqual(got, expected(text), text)
             self.assertEqual(review_comment.neutralize(got), got, text)
-            # Nothing but those spans goes: what is left, with spaces put back, is a subsequence of the input.
             if "oss-verify" not in text.lower():
                 self.assertEqual(got, text, text)
 
+    def test_a_comment_that_html_ends_early_keeps_the_prose_after_it(self):
+        # GitHub ends a comment at <!-->, <!---> and --!>, and shows what follows. The scan ends it there too, so it
+        # never runs on to a later --> and takes the visible prose between. Each case was rendered through GitHub's
+        # Markdown endpoint for the pull request: CRITICAL_FINDING and AFTER_VISIBLE both visible.
+        for opener in ("<!-->", "<!--->", "<!-- plain --!>"):
+            review = f"BEFORE\n\n{opener} CRITICAL_FINDING about oss-verify here.\n\nAFTER_VISIBLE -->\n\nEND"
+            self.assertEqual(review_comment.neutralize(review), review, opener)
+            text = self.comment(review)
+            self.assertEqual(review_comment.META.match(text.split("\n")[1]).group("status"), "review")
+            self.assertTrue(text.endswith(review + "\n"), opener)
+        # A review that is all one such case is a review, not an empty one that would keep the last.
+        whole = "<!--> CRITICAL_FINDING in oss-verify. -->"
+        text = self.comment(whole)
+        self.assertEqual(review_comment.META.match(text.split("\n")[1]).group("status"), "review")
+        self.assertTrue(text.endswith(whole + "\n"))
+        # A marker that --!> ends goes, and the text after it stays.
+        self.assertEqual(review_comment.neutralize("a <!-- oss-verify-meta --!> AFTER -->"), "a   AFTER -->")
+
     def test_a_cut_says_so_before_the_text_it_cut(self):
         text = self.comment("x" * (review_comment.MAX_REVIEW + 10), "y" * (review_comment.MAX_CHECKS + 10))
-        for note in ("The checks report is cut at 20,000 characters", "The review is cut at 40,000 characters"):
+        for note in ("The checks report is cut to fit in 20,000 characters", "The review is cut at 40,000 characters"):
             self.assertIn(note, text)
             self.assertLess(text.index(note), text.rindex("x" * 100), note)
 
