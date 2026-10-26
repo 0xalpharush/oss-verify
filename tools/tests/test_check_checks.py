@@ -713,7 +713,7 @@ class WorkflowArguments(unittest.TestCase):
         `environment: comment` (agent-infra bootstrap/, declareOssvCI). GitHub accepts an environment as a string,
         as an object with `name`, and through an expression, and compares names without regard to case, so another
         job's `environment` is refused if its text names `comment` in any case and in any shape (the review job's
-        own, enroll-review or enroll-review-test by an expression, does not), and the comment job's must be exactly
+        own, enroll-review, does not), and the comment job's must be exactly
         the string `comment`."""
         problems = []
         for name, job in jobs.items():
@@ -1898,8 +1898,8 @@ class ReviewSession(unittest.TestCase):
         sealed = self.directory / "sealed"
         out = self.run_session("seal", str(self.session), str(sealed), REVIEW_CONVERSATION_KEY="")
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("::warning::The secret REVIEW_CONVERSATION_KEY of the review job's environment (enroll-review, "
-                      "or enroll-review-test on a ci-test/ branch) is not set", out.stdout)
+        self.assertIn("::warning::The secret REVIEW_CONVERSATION_KEY of the review job's environment (enroll-review) "
+                      "is not set", out.stdout)
         self.assertFalse(sealed.exists())
         stdout, files, _ = self.restored(REVIEW_CONVERSATION_KEY="")
         self.assertIn("::warning::", stdout)
@@ -1926,9 +1926,7 @@ class ReviewSession(unittest.TestCase):
                          if "REVIEW_CONVERSATION_KEY" in json.dumps(step.get("env", {})))
         self.assertEqual(holders, ["Restore the last review's conversation",
                                    "Seal this review's conversation for the next push's review"])
-        self.assertEqual(review["environment"], {
-            "name": "${{ startsWith(github.ref, 'refs/heads/ci-test/') && 'enroll-review-test' || 'enroll-review' }}",
-            "deployment": False})
+        self.assertEqual(review["environment"], {"name": "enroll-review", "deployment": False})
         upload = steps["Keep the sealed conversation for the next push's review"]
         # Without the key, Seal writes no file, so nothing is uploaded and no step fails.
         self.assertEqual(upload["if"], "${{ steps.seal.outputs.sealed != '' }}")
@@ -1957,7 +1955,9 @@ class ReviewStep(unittest.TestCase):
             # What review-run leaves after exit status 3: the review is written.
             (directory / ".review" / "comment.md").write_text("Thanks.\n")
             script = directory / ".github" / "scripts" / "review-run"
-            script.write_text(f"#!/bin/bash\nexit {code}\n")
+            # It says what it inherited: never the Google access token, always the collector's token.
+            script.write_text("#!/bin/bash\necho \"review-run: gcp=${GCP_ACCESS_TOKEN-unset} "
+                              f"otel=${{OTEL_COLLECTOR_TOKEN:+set}}\"\nexit {code}\n")
             script.chmod(0o755)
             for name, text in (("failure.txt", failure), ("failure-detail.txt", detail), ("served", served)):
                 if text is not None:
@@ -1994,6 +1994,7 @@ class ReviewStep(unittest.TestCase):
         code, out, summary = self.run_step(0)
         self.assertEqual(code, 0, out)
         self.assertIn(f"::add-mask::{self.TOKEN}\n", out)
+        self.assertIn("review-run: gcp=unset otel=set\n", out)
 
     def test_a_review_that_did_not_finish_says_why_in_the_summary(self):
         code, out, summary = self.run_step(1, WHY_401 + ", on both tries\n", API_401[0]["result"] + "\n")

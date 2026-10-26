@@ -80,29 +80,22 @@ name: "Build"
 # Runs do not wait for a maintainer's approval. To build only on request, remove pull_request_target below.
 #
 # The review reaches Claude by workload identity federation, with no stored key: the review job's GitHub identity token
-# is traded for an Anthropic token, by the federation rule whose ids the Review step gives (ids, not secrets). Two rules,
-# made in the Claude Console of Anthropic's organization "Theorem - HDO", grant Claude calls only:
+# is traded for an Anthropic token, by the federation rule whose ids the Review step gives (ids, not secrets). A rule,
+# made in the Claude Console of Anthropic's organization "Theorem - HDO", grants Claude calls only:
 #   issuer   fdis_01JvJ1UhZ8X2HHgcmXqjkJbc: https://token.actions.githubusercontent.com, keys by discovery
 #   main     fdrl_019restxFx3PhpLhbziQoQKf: subject_prefix "repo:theorem-labs@212152656/oss-verify@1429568498:*",
 #            audience "https://api.anthropic.com", claims {"repository_id": "1429568498",
 #            "ref": "refs/heads/main", "workflow": "Build"}
-#   test     fdrl_019NVessgKqckm7owmasqfm7: subject_prefix
-#            "repo:theorem-labs@212152656/oss-verify@1429568498:environment:enroll-review-test" (an exact match: the
-#            review job runs in that environment on a ci-test/ branch), audience "https://api.anthropic.com", claims:
-#            repository_id 1429568498, workflow "Build", event_name workflow_dispatch, and a workflow_ref of
-#            .github/workflows/build.yaml on a ci-test/ branch
 #   target   the service account oss-verify-ci (svac_01WdHTLcJPEfiPttcuLK1hGT), with the developer role
 #   scope    workspace:inference, in the workspace Default+CVP, with a token lifetime of 3600 seconds
-# The numbers are the immutable ids of theorem-labs and of this repository. The Review step takes the test rule when
-# the run's ref is a ci-test/ branch, and the main rule otherwise. The main rule does not check which workflow file the
-# run is: `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So it
-# gives a token to any workflow named "Build" that runs on main, from any event. The test rule checks the file and the
-# event (workflow_ref and event_name): only this file, started by hand on a ci-test/ branch, in the environment
-# enroll-review-test. The review and comment jobs of this file ask for an identity token; no other job of it does.
-# A ci-test/ branch cannot run a review any more: the review job also signs in to Google for the collector's token,
-# and Google's provider admits refs/heads/main alone, so `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>`
-# fails at that step. A change to the review is tested by running this file on main against a test pull request
-# (`gh workflow run build.yaml -f pr=<n>`, one opened by this repository, not a maintainer's open enrollment).
+# The numbers are the immutable ids of theorem-labs and of this repository. The rule does not check which workflow file
+# the run is: `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So it
+# gives a token to any workflow named "Build" that runs on main, from any event. The review and comment jobs of this
+# file ask for an identity token; no other job of it does.
+# A review runs only on main: Google's provider, which the review job signs in to for the collector's token, admits
+# refs/heads/main alone, so no other branch can run one. A change to the review is tested by running this file on
+# main against a test pull request: `gh workflow run build.yaml -f pr=<n>`, with a pull request opened by this
+# repository, never a maintainer's open enrollment, because the run posts its comment there.
 #
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, at the public URL below
 # (agent-infra spend/'s stack output publicCollectorUrl, a literal here because it is public), with the collector's
@@ -128,9 +121,8 @@ name: "Build"
 # Only the review job holds the key: the environment's deployment branch rule allows main alone, and GitHub checks it
 # against the run's ref, which is main for pull_request_target and refs/pull/<n>/merge for a pull request's own run
 # (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
-# A run on a ci-test/ branch uses the environment enroll-review-test instead, which holds no key unless someone gives it
-# one, so it reviews fresh. Without the key the review runs fresh on each push, with a warning. An artifact lasts as
-# long as the repository's artifact retention (90 days by default). The environments, their deployment branch rule and
+# Without the key the review runs fresh on each push, with a warning. An artifact lasts as
+# long as the repository's artifact retention (90 days by default). The environment, its deployment branch rule and
 # the key are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand, which
 # the next apply would undo or fail on. A new key, or a new seal version in review-session, discards every kept
 # conversation.
@@ -308,7 +300,7 @@ jobs:
     # For the key that seals the review's conversation, which only a run on main gets (the top of this file). No
     # deployment: the environment holds a secret, and the pull request shows no deployment.
     environment:
-      name: ${{ startsWith(github.ref, 'refs/heads/ci-test/') && 'enroll-review-test' || 'enroll-review' }}
+      name: enroll-review
       deployment: false
     permissions:
       contents: read
@@ -435,8 +427,8 @@ jobs:
           # token into it every minute, through the request URL and token the runner gives this step, so that each
           # exchange reads one that is not expired and not used before.
           ANTHROPIC_IDENTITY_TOKEN_FILE: ${{ runner.temp }}/oidc/jwt
-          # The federation rule above, in Anthropic's organization "Theorem - HDO": the test rule for a ci-test/ branch.
-          ANTHROPIC_FEDERATION_RULE_ID: ${{ startsWith(github.ref, 'refs/heads/ci-test/') && 'fdrl_019NVessgKqckm7owmasqfm7' || 'fdrl_019restxFx3PhpLhbziQoQKf' }}
+          # The federation rule above, in Anthropic's organization "Theorem - HDO".
+          ANTHROPIC_FEDERATION_RULE_ID: fdrl_019restxFx3PhpLhbziQoQKf
           ANTHROPIC_ORGANIZATION_ID: 5fd73c3e-8a2c-4166-b80d-fb5ce0c1b4a6
           ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01WdHTLcJPEfiPttcuLK1hGT
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Qr1iUVcow4jdgQM7Amfks5
@@ -464,6 +456,8 @@ jobs:
             echo "::error::Could not read the cost collector's token (Secret Manager agent-spend-otel-token in theorem-agent-infra), so the review's usage would not reach Theorem's cost collector."
             exit 1
           fi
+          # The Google access token is needed for nothing else, so review-run and Claude Code never inherit it.
+          unset GCP_ACCESS_TOKEN
           # One mask command covers one line, so each line of the value is masked: the declared token is one line of
           # 48 characters, and a replacement that is not stays out of the log this way too.
           while IFS= read -r line; do
