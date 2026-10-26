@@ -94,9 +94,11 @@ name: "Build"
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, with the repository variable
 # OTEL_EXPORTER_OTLP_ENDPOINT (the collector's public URL) and the repository secret OTEL_COLLECTOR_TOKEN (its bearer
 # token), tagged theorem.project=oss-verify, theorem.subproject=<name>, theorem.lane=enroll-review-ci and
-# theorem.credential=oss-verify-ci (.github/scripts/review-run sets them). The review fails if either is not set, or if
-# the collector does not answer 200 to an empty export with the token before the review starts, rather than lose the
-# review's spend in silence. If it refuses one after the review, the comment is still posted and the review job fails.
+# theorem.credential=oss-verify-ci (.github/scripts/review-run sets them). The export is a measurement and never
+# decides whether an enrollment gets its review: if either value is unset, or the collector refuses the token or does
+# not answer (before the review or after it), the run's page carries one warning saying that this review's usage is
+# not exported, and the review runs to its end and its comment is posted. A lost export is read from that warning,
+# never from a red check.
 #
 # The review's conversation goes from one push to the next as an artifact of the review's run, named
 # enroll-review-<pull request>-<project>, sealed (AES-256-GCM) by .github/scripts/review-session under a key derived
@@ -404,7 +406,8 @@ jobs:
           ANTHROPIC_ORGANIZATION_ID: 5fd73c3e-8a2c-4166-b80d-fb5ce0c1b4a6
           ANTHROPIC_SERVICE_ACCOUNT_ID: svac_01WdHTLcJPEfiPttcuLK1hGT
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Qr1iUVcow4jdgQM7Amfks5
-          # Usage, to Theorem's cost collector. review-run checks that the collector takes the token.
+          # Usage, to Theorem's cost collector. review-run checks that the collector takes the token, and runs the
+          # review without the export if it does not.
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_COLLECTOR_TOKEN: ${{ secrets.OTEL_COLLECTOR_TOKEN }}
           # The conversation of the last review, which review-run resumes, and the commit this review is of. After a
@@ -412,12 +415,10 @@ jobs:
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
           REVIEW_SESSION: ${{ runner.temp }}/review-session
         run: |
-          # Without the two, review-run exports nothing, which is for a person's own run: here it would lose the
-          # review's spend in silence.
+          # Without the two, review-run exports nothing. The export is a measurement: it never decides whether an
+          # enrollment gets its review, so this is a warning on the run's page and the review goes ahead.
           if [ -z "$OTEL_EXPORTER_OTLP_ENDPOINT" ] || [ -z "$OTEL_COLLECTOR_TOKEN" ]; then
-            rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
-            echo "::error::The repository variable OTEL_EXPORTER_OTLP_ENDPOINT or the repository secret OTEL_COLLECTOR_TOKEN is not set, so the review's usage would not reach Theorem's cost collector."
-            exit 1
+            echo "::warning::The repository variable OTEL_EXPORTER_OTLP_ENDPOINT or the repository secret OTEL_COLLECTOR_TOKEN is not set, so this review's usage does not reach Theorem's cost collector. The review runs."
           fi
           # Until the token is printed again, the runner reads none of the review's output as a workflow command.
           resume="$(openssl rand -hex 16)"
@@ -432,11 +433,11 @@ jobs:
             { echo "served<<$delimiter"; cat .review/served; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
           fi
           echo "::$resume::"
-          # 3: the review is written, but the collector refused the token after it. The comment is still posted, and
-          # the next step fails the job.
-          if [ "$code" = 3 ]; then
-            echo "collector=refused" >> "$GITHUB_OUTPUT"
-          elif [ "$code" = 4 ]; then
+          # A lost export, on the run's page: review-run's own line, shown only if it is plain words, so it holds no
+          # command. It never changes the step's result.
+          lost=$(grep -m1 -xE '[A-Za-z0-9 ,.()-]{1,200}' .review/export-lost.txt 2> /dev/null) || lost=""
+          if [ -n "$lost" ]; then echo "::warning::Usage export: $lost. The review ran."; fi
+          if [ "$code" = 4 ]; then
             echo "refused=true" >> "$GITHUB_OUTPUT"
             # 4: another provider or model answered, or nothing shows which (review-served). The comment job posts
             # none of the review, and says what answered. review-run's line names only what review-served cleaned.
@@ -513,17 +514,9 @@ jobs:
           compression-level: 0
           overwrite: true
 
-      - name: Fail if the collector refused the token after the review
-        if: ${{ steps.review.outputs.collector == 'refused' }}
-        env:
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
-        run: |
-          echo "::error::The collector at $OTEL_EXPORTER_OTLP_ENDPOINT refused OTEL_COLLECTOR_TOKEN after the review, so the review's usage is likely lost. The comment is posted; check the token."
-          exit 1
-
   comment:
     needs: [project-builds, review]
-    # After a review that wrote a comment, it posts it, also when the collector refused the token after the review.
+    # After a review that wrote a comment, it posts it, whatever happened to the usage export.
     # After a review that wrote none, it marks the comment already there as not current, naming the commit it is of,
     # or posts that the review did not run if there is none.
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' && (needs.review.result != 'success' || needs.review.outputs.comment != '') }}

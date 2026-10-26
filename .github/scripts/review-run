@@ -26,10 +26,11 @@
 # Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name> and
 # theorem.lane=enroll-review-ci, and theorem.credential=oss-verify-ci when the run trades an identity token for that
 # service account (build.yaml's review job does; a person's own login does not). Before the review it sends the
-# collector an export of no records with the token, and stops if the collector does not answer 200: a wrong or revoked
-# token would otherwise lose the usage in silence. After the review it sends one again: if the collector refuses it
-# then, the review's comment.md is still written, and review-run exits 3 (not 0) and says that its usage may be lost.
-# Without the two variables it exports nothing.
+# collector an export of no records with the token. If the collector does not answer 200, it says so, writes the
+# reason to export-lost.txt (build.yaml shows it as a warning on the run's page), and runs the review with no export:
+# the export is a measurement, and a wrong or revoked token must never decide whether an enrollment gets its review.
+# After the review it sends one again: if the collector refuses it then, it writes the same file, and the review's
+# result stands. Without the two variables it exports nothing.
 # No value of that environment is ever an argument of a process: another user on the machine can read a process's
 # arguments, but not its environment.
 # In CI it keeps Claude Code's workload identity usable for a review of any length, and runs Claude Code once more when
@@ -109,24 +110,26 @@ telemetry=()
 if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "${OTEL_COLLECTOR_TOKEN:-}" ]; then
   answer=$(collector)
   if [ "$answer" != 200 ]; then
+    # Fail-soft: the export is a measurement, so it never decides whether an enrollment gets its review. The review
+    # runs with no export, and export-lost.txt is the line build.yaml shows as a warning on the run's page.
     echo "review-run: the collector at $OTEL_EXPORTER_OTLP_ENDPOINT answered ${answer:-nothing} to an empty export" \
-      "with OTEL_COLLECTOR_TOKEN, not 200: the review's usage would be lost. Check the token and the endpoint." >&2
-    echo "the cost collector answered ${answer:-nothing}, not 200, to an empty export with OTEL_COLLECTOR_TOKEN" \
-      "before the review" > "$in/failure.txt"
-    exit 1
+      "with OTEL_COLLECTOR_TOKEN, not 200: this review's usage is not exported. Check the token and the endpoint." >&2
+    echo "the cost collector answered ${answer:-nothing}, not 200, before the review, so its usage is not exported" \
+      > "$in/export-lost.txt"
+  else
+    # The CI service account's label only on the identity that build.yaml's review job gets for it.
+    credential=""
+    if [ "${ANTHROPIC_SERVICE_ACCOUNT_ID:-}" = svac_01WdHTLcJPEfiPttcuLK1hGT ] \
+      && [ -n "${ANTHROPIC_IDENTITY_TOKEN_FILE:-}" ]; then
+      credential=,theorem.credential=oss-verify-ci
+    fi
+    # Claude Code sends the header value as it is (measured with 2.1.309): a literal space after Bearer.
+    telemetry=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=none
+               OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
+               "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $OTEL_COLLECTOR_TOKEN"
+               "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci$credential")
+    echo "review-run: the collector took the token; exporting usage to $OTEL_EXPORTER_OTLP_ENDPOINT"
   fi
-  # The CI service account's label only on the identity that build.yaml's review job gets for it.
-  credential=""
-  if [ "${ANTHROPIC_SERVICE_ACCOUNT_ID:-}" = svac_01WdHTLcJPEfiPttcuLK1hGT ] \
-    && [ -n "${ANTHROPIC_IDENTITY_TOKEN_FILE:-}" ]; then
-    credential=,theorem.credential=oss-verify-ci
-  fi
-  # Claude Code sends the header value as it is (measured with 2.1.309): a literal space after Bearer.
-  telemetry=(CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_LOGS_EXPORTER=otlp OTEL_METRICS_EXPORTER=none
-             OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"
-             "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer $OTEL_COLLECTOR_TOKEN"
-             "OTEL_RESOURCE_ATTRIBUTES=theorem.project=oss-verify,theorem.subproject=$NAME,theorem.lane=enroll-review-ci$credential")
-  echo "review-run: the collector took the token; exporting usage to $OTEL_EXPORTER_OTLP_ENDPOINT"
 else
   echo "review-run: no OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN: usage is not exported"
 fi
@@ -154,7 +157,7 @@ new_identity_token() {
 }
 rotating=""
 # The loop is stopped and waited for, so that no new token is written once this script has ended. Nothing here may
-# change the exit status: it runs as the EXIT trap, after exit 3 too.
+# change the exit status: it runs as the EXIT trap, whatever the status.
 stop_rotating() {
   [ -z "$rotating" ] || { kill "$rotating" && wait "$rotating"; } 2> /dev/null || true
   rm -f "$token_file".new.* || true
@@ -351,9 +354,11 @@ fi
 if [ ${#telemetry[@]} != 0 ]; then
   answer=$(collector)
   if [ "$answer" != 200 ]; then
+    # Fail-soft again: the review is written, so the job keeps its result, and export-lost.txt is the warning.
     echo "review-run: the review is in $in/comment.md, but the collector at $OTEL_EXPORTER_OTLP_ENDPOINT answered" \
       "${answer:-nothing}, not 200, to an empty export with OTEL_COLLECTOR_TOKEN after it: the token was refused or" \
       "the collector went away during the review, so its usage is likely lost." >&2
-    exit 3
+    echo "the cost collector answered ${answer:-nothing}, not 200, after the review, so its usage is likely lost" \
+      > "$in/export-lost.txt"
   fi
 fi
