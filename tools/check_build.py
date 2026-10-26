@@ -312,10 +312,12 @@ def empty_directory(path, tag, *, labels):
 DOCKER_FAILED = 125
 
 
-def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels):
+def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels, record=False):
     """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`. `ubsan`, if given,
     is (checks, left out[, left out of C compiles]): the UBSan checks of the build, those that trap mode leaves out,
-    and those that its C compiles leave out. `labels`: docker run arguments for the container, work_label()."""
+    and those that its C compiles leave out. `labels`: docker run arguments for the container, work_label(). With
+    `record`, compile records each fuzz target's link in $OUT/.records/ for the checks of the binaries
+    (tools/check_links.py); the binaries are the same."""
     step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
     empty_directory(out, tag, labels=labels)
     owner = f"{os.getuid()}:{os.getgid()}"
@@ -326,6 +328,8 @@ def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels):
         checks = ["-e", f"OV_UBSAN_CHECKS={','.join(ubsan[0])}", "-e", f"OV_UBSAN_EXCLUDE={','.join(ubsan[1])}"]
         if len(ubsan) > 2 and ubsan[2]:
             checks += ["-e", f"OV_UBSAN_C_EXCLUDE={','.join(ubsan[2])}"]
+    if record:
+        checks += ["-e", "OV_RECORD=1"]
     command = ["docker", "run", "--rm", "--init", "--network=none", *labels, "-e", f"SANITIZER={sanitizer}",
                "-e", f"OV_OWNER={owner}", *jobs, *checks, "-v", f"{out}:/out", tag, "compile"]
     code = run(*command)

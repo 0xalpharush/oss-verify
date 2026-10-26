@@ -6,7 +6,9 @@ name: "Build"
 # time from scratch, and the two builds must have the same bytes, as they must before we pin a binary. The output is in
 # the run's log; the step summary also has one row for each binary: its target, build, file size, .text size and whether
 # it is statically linked. With --checks, tools/check also measures what the fuzz targets' checks catch on their seed
-# inputs (docs/build-contract.md, "The checks of a fuzz target"), and the step summary has that report too.
+# inputs (docs/build-contract.md, "The checks of a fuzz target"), and does four checks on each binary: its instructions,
+# its system calls against the process model of the published proofs, its quiet twin, and the code it links
+# uninstrumented (docs/build-contract.md, "The checks of the binaries"). The step summary has both reports too.
 #
 # Then two more jobs:
 #   review   Claude Code follows .claude/skills/review-enrollment/SKILL.md on what the workflow gathered: the pull
@@ -147,7 +149,8 @@ jobs:
     # 24.04, not ubuntu-latest: Ubuntu 26.04 has no qemu-user-static package, which --checks takes qemu from.
     runs-on: ubuntu-24.04
     # tools/check has no time limit of its own: this one is the runner's, the most it allows, for two builds and
-    # --checks (at most 2 x 20 minutes of seed runs on the unchanged code, and the 45-minute budget of the breakages).
+    # --checks (at most 30 minutes of runs for the checks of the binaries, 2 x 20 minutes of seed runs on the unchanged
+    # code, and the 45-minute budget of the breakages).
     timeout-minutes: 360
     permissions:
       contents: read
