@@ -9,21 +9,22 @@ It prints the comment: the marker that build.yaml's comment job finds it by, a m
 (the footer, a notice when the review is not current or did not run, a note where a text was cut), the report of
 tools/check --checks as an indented code block, and last the review's comment to the maintainer. The review's text
 comes from a model that read the pull request, and the checks text from the project's source, so each is screened on
-its own: a text that holds what looks like a credential is refused (and the other kept), each is cut to a length that
-GitHub takes, and each loses any HTML comment that names this script.
+its own: a text that holds what looks like a credential is refused (and the other kept), and each is cut to a length
+that GitHub takes. A review that is nothing but HTML comments that name this script counts as no review.
 
-Neither text is otherwise changed, character for character: Markdown code in them reaches GitHub as written. What they
-cannot reach is what this script writes. It all comes before them; the review comes last, so nothing it leaves open
-(an HTML comment, a tag, a code fence) has anything after it to hide; and every line of the checks report is indented
-four spaces into a code block, which only a line indented less can end, so nothing in the report can end it early or
-be read as HTML.
+Neither text is otherwise changed, character for character: Markdown code in them reaches GitHub as written, and so
+does an HTML comment, which hides nothing of this script's. What they cannot reach is what this script writes. It all
+comes before them; the review comes last, so nothing it leaves open (an HTML comment, a tag, a code fence) has
+anything after it to hide; and every line of the checks report is indented four spaces into a code block, which only
+a line indented less can end, so nothing in the report can end it early or be read as HTML.
 
 The commit the review is of and whether there is a review live in the metadata line only, the second line of the
-comment, which this script alone writes. They are never read from the body. So with --previous and no usable review
-(the review of this push did not finish, or wrote nothing, or wrote what is refused), it keeps the comment already
-posted, unchanged, below a metadata line, a notice that says it is not current, naming the commit it is of and the
-commit that had no review, and the footer. Keeping a kept comment again gives the same comment: what this script
-wrote above the old one is written afresh, not kept as part of it.
+comment, which this script alone writes. They are never read from the body, so a marker or a metadata line in either
+text is inert. So with --previous and no usable review (the review of this push did not finish, or wrote nothing, or
+wrote what is refused), it keeps the comment already posted, unchanged, below a metadata line, a notice that says it
+is not current, naming the commit it is of and the commit that had no review, and the footer. Keeping a kept comment
+again gives the same comment: what this script wrote above the old one is written afresh, not kept as part of it. A
+comment that is the review of this same commit is kept as it was posted.
 """
 import argparse
 import pathlib
@@ -80,12 +81,11 @@ def comment_end(text, start, closes):
 
 
 def neutralize(text):
-    """text with each HTML comment that names this script's prefix replaced by a space, so that text this script did not
-    write never reads, to a person, as one of its own lines (the metadata is read from line 2 only, so this is not what
-    keeps it safe). One forward scan, linear in the text: a comment runs from <!-- to where HTML ends it (comment_end),
-    so the scan never runs on past that end into text that GitHub shows, and the space left in its place cannot join
-    the text around it into a new one. Nothing else changes: a <!-- that nothing closes is left as it is, because the
-    review comes last and the checks are in a code block, so it hides nothing of this script's."""
+    """text with each HTML comment that names this script's prefix replaced by a space. It is used only to tell whether
+    a review is nothing but such comments (then it is no review); what is posted is the review as written, since
+    Markdown shows some of these spans as text (in code, or after a backslash) and the metadata is read from line 2
+    only. One forward scan, linear in the text: a comment runs from <!-- to where HTML ends it (comment_end), and the
+    space left in its place cannot join the text around it into a new one. A <!-- that nothing closes is left."""
     out, at, closes = [], 0, {"-->": -1, "--!>": -1}
     while (start := text.find("<!--", at)) != -1:
         end = comment_end(text, start, closes)
@@ -148,6 +148,17 @@ def meta_line(head, status):
     return f"<!-- oss-verify-meta v=1{f' head={head}' if head else ''} status={status} -->"
 
 
+# Blank lines, as CommonMark has them: nothing but spaces and tabs.
+LEADING_BLANK = re.compile(r"(?:[ \t]*\n)+")
+
+
+def trim(text):
+    """text without its leading blank lines and its trailing whitespace. Not strip(): the spaces that start the first
+    line stay, since they can make it an indented code block."""
+    found = LEADING_BLANK.match(text)
+    return text[found.end() if found else 0:].rstrip()
+
+
 def read_previous(previous):
     """The posted comment's (status, head, body): status/head from the metadata line only, None when it is legacy."""
     lines = previous.replace("\r\n", "\n").split("\n")
@@ -158,7 +169,7 @@ def read_previous(previous):
             status, head = match.group("status"), match.group("head")
     start = previous.find("\n" + HEADING + "\n")
     body = previous[start + len(HEADING) + 2:] if start != -1 else previous.replace(MARKER, "")
-    return status, head, body.strip()
+    return status, head, trim(body)
 
 
 FOOTER = ("<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
@@ -170,19 +181,21 @@ FOOTER_WRITTEN = re.compile(r"(?:It is the review of `[0-9a-f]{7}`\. )?".join(ma
 CHECKS_SUMMARY = "<details><summary>What the breakage and coverage checks measured</summary>"
 REVIEW_CUT = "The review is cut at {:,} characters: {}."
 KEPT_WHERE = "the rest is in an earlier run of the review job"
-# The note on a kept comment that says an earlier keep cut it, as this script writes it.
-KEPT_CUT = re.compile(r"The review is cut at (?P<at>[0-9]{1,3}(?:,[0-9]{3})*) characters: " + re.escape(KEPT_WHERE)
-                      + r"\.")
+# The sentence that ends the notice of a kept comment that a keep cut, as this script writes it. It is in the notice,
+# which this script alone writes, so no text of the review can be read as it.
+KEPT_CUT = re.compile(r" The review is cut at (?P<at>[0-9]{1,3}(?:,[0-9]{3})?) characters: " + re.escape(KEPT_WHERE)
+                      + r"\.\Z")
 
 
 def assemble(head, status, notes, checks="", review="", where="the rest is in the review job's log",
-             review_limit=MAX_REVIEW, cut_at=None):
+             review_limit=MAX_REVIEW, cut_at=None, cut_in_notice=False):
     """The comment, at most MAX_COMMENT characters: the marker and metadata, the heading, the notes (what this script
     writes), the checks report as a code block, and the review last. Only the checks and the review are cut, by
     slicing, and a note before them says where; nothing else in them changes. cut_at: where an earlier run cut the
-    review, said again if this run need not cut it further."""
+    review, said again if this run need not cut it further. cut_in_notice: that note ends the first note, rather than
+    being a paragraph of its own."""
     notes = list(notes)
-    checks, review = checks.strip(), review.strip()
+    checks, review = trim(checks), trim(review)
     blocks = [f"{MARKER}\n{meta_line(head, status)}", HEADING, *notes]
     if checks:
         block, whole = code_block(checks, MAX_CHECKS)
@@ -196,30 +209,35 @@ def assemble(head, status, notes, checks="", review="", where="the rest is in th
     if len(review) > limit:
         review, cut_at = review[:limit].rstrip(), limit
     if cut_at is not None:
-        blocks.insert(2 + len(notes), REVIEW_CUT.format(cut_at, where))
+        if cut_in_notice:
+            blocks[2] += " " + REVIEW_CUT.format(cut_at, where)
+        else:
+            blocks.insert(2 + len(notes), REVIEW_CUT.format(cut_at, where))
     if review:
         blocks.append(review)
     return "\n\n".join(blocks) + "\n"
 
 
 def not_current(previous, head, run):
-    """The comment already posted, kept but marked not the review of head; None when it holds no review to keep."""
+    """The comment already posted, kept: as it was posted when it is the review of head, else marked not the review
+    of head; None when it holds no review to keep."""
     status, of_head, body = read_previous(previous)
+    if status == "review" and head and of_head == head:
+        # A later run for the same commit (a rerun, or an edit of the pull request) wrote no review: this one is
+        # still the review of it.
+        return previous
     paragraphs = body.split("\n\n")
-    if status == "stale":
-        # The notice this script put first last time: it is written again below, so the marks do not stack.
-        paragraphs = paragraphs[1:]
-    # What this script writes again below, taken off the old comment's front so that keeping it again neither stacks
-    # it nor cuts the old comment further: the footer, and on a kept comment the note that an earlier keep cut it.
     cut_at = None
-    while paragraphs:
-        cut = KEPT_CUT.fullmatch(paragraphs[0]) if status == "stale" else None
-        if cut:
-            cut_at = int(cut.group("at").replace(",", ""))
-        elif not FOOTER_WRITTEN.fullmatch(paragraphs[0]):
-            break
+    if status == "stale":
+        # The notice this script put first last time, and in it where that keep cut the old comment: both are written
+        # again below, so the marks do not stack and the old comment is not cut again.
+        cut = KEPT_CUT.search(paragraphs[0])
+        cut_at = int(cut.group("at").replace(",", "")) if cut else None
         paragraphs = paragraphs[1:]
-    body = "\n\n".join(paragraphs).strip()
+    # The footer, first after the notice as this script writes it, is written again below too.
+    if paragraphs and FOOTER_WRITTEN.fullmatch(paragraphs[0]):
+        paragraphs = paragraphs[1:]
+    body = trim("\n\n".join(paragraphs))
     if status == "none" or not body:
         return None
     if status is None:
@@ -237,7 +255,7 @@ def not_current(previous, head, run):
     # The old comment, its checks and review as they were posted, goes last and unchanged, so the notice and the footer
     # above it stay visible whatever it holds; only its length is cut, if it must be.
     return assemble(of_head, "stale", [note, footer], review=body, where=KEPT_WHERE, review_limit=MAX_COMMENT,
-                    cut_at=cut_at)
+                    cut_at=cut_at, cut_in_notice=True)
 
 
 def main():
@@ -255,8 +273,10 @@ def main():
     why = ""
     if credential(review):
         review, why = "", "its text held what looks like a credential, so it was not posted"
-    review = neutralize(review).strip()
-    # No usable review (none, blank, refused, or only this script's markers): keep the one already posted, if any.
+    review = trim(review)
+    if not neutralize(review).strip():
+        review = ""
+    # No usable review (none, blank, refused, or nothing but this script's markers): keep the one already posted.
     if options.previous and not review:
         previous = options.previous.read_text(encoding="utf-8", errors="replace")
         if credential(previous):
@@ -281,7 +301,7 @@ def main():
         # The checks text comes from the project's source: refused on its own, so a safe review is still posted.
         checks = ("The report held what looks like a credential, so it was not posted. It is in the Build check's "
                   "summary.")
-    sys.stdout.write(assemble(head, status, notes, checks=neutralize(checks), review=review))
+    sys.stdout.write(assemble(head, status, notes, checks=checks, review=review))
     return 0
 
 

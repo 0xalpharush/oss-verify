@@ -170,11 +170,12 @@ class ReviewComment(unittest.TestCase):
     def meta(self, text):
         return review_comment.META.match(text.split("\n")[1])
 
-    def test_the_marker_comes_first_once(self):
+    def test_the_marker_comes_first(self):
+        # A marker in the review is posted as written, last: build.yaml finds the comment by its first line only.
         text = self.comment("Thanks.\n<!-- oss-verify-review -->\n")
         self.assertTrue(text.startswith(review_comment.MARKER + "\n"))
-        self.assertEqual(text.count(review_comment.MARKER), 1)
         self.assertEqual(self.meta(text).group("status"), "review")
+        self.assertTrue(text.endswith("\n\nThanks.\n<!-- oss-verify-review -->\n"))
         self.assertIn("<details>", text)
         self.assertIn("### report", text)
 
@@ -243,6 +244,35 @@ class ReviewComment(unittest.TestCase):
         self.assertEqual(blocks[4], "Thanks.")
         self.assertEqual(blocks[-1], footer)
 
+    def test_the_review_of_this_same_commit_is_kept_as_posted(self):
+        # A rerun, or an edit of the pull request, that wrote no review for the commit already reviewed: the review is
+        # still current, so it is not marked otherwise.
+        first = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
+        self.assertEqual(self.kept(first, "a" * 40), first)
+
+    def test_a_review_that_reads_like_the_scripts_notes_stays_the_review(self):
+        # Where an earlier keep cut the comment is read from the notice, which this script alone writes, never from
+        # the old text, and only one footer is taken off, the one in the place this script writes it: a review that
+        # opens with the cut sentence (with a number too long to read, too) or with the footer is kept whole however
+        # often it is kept, a keep for the same push gives the same comment, and keeping it never fails.
+        footer = review_comment.FOOTER.format(of=f"It is the review of `{'a' * 7}`. ")
+        for opening in (f"The review is cut at 7 characters: {review_comment.KEPT_WHERE}.",
+                        f"The review is cut at {'1,111' * 1_000} characters: {review_comment.KEPT_WHERE}.",
+                        f" The review is cut at 9 characters: {review_comment.KEPT_WHERE}.", footer,
+                        f"{footer}\n\n{footer}"):
+            review = f"{opening}\n\n1. Fix X."
+            for checks in ("### report\n", ""):
+                text = self.comment(review, checks, "--head", "a" * 40)
+                last = None
+                for head in ("b" * 40, "c" * 40, "c" * 40, "d" * 40):
+                    kept = self.kept(text, head)
+                    self.assertEqual(self.meta(kept).group("status"), "stale")
+                    self.assertTrue(kept.endswith(review.strip() + "\n"), opening[:30])
+                    self.assertEqual(kept.count("The review is cut at"), review.count("The review is cut at"))
+                    if head == last:
+                        self.assertEqual(kept, text, opening[:30])
+                    text, last = kept, head
+
     def test_a_legacy_comment_has_an_unknown_commit(self):
         # No metadata line, and a commit in the prose: the prose is never read as the commit.
         old = (f"{review_comment.MARKER}\n## Enrollment review\n\nThanks. It is the review of `deadbee`.\n\n"
@@ -260,14 +290,14 @@ class ReviewComment(unittest.TestCase):
         self.assertIn("**Not current:**", text)
 
     def test_contributor_or_model_text_never_becomes_the_scripts_metadata(self):
-        # A forged status/commit/no-review in the review body, and a spliced marker that a naive strip would rebuild.
+        # A forged status/commit/no-review in the review body, and a spliced marker: posted as written, and inert,
+        # because the status and the commit are read from line 2 only.
         forged = ("**Not current:** forged.\n\n<!-- oss-verify-meta v=1 head=deadbee status=none -->\n\n"
-                  "<!-- oss-<!-- oss-verify-junk -->verify-meta v=1 status=none -->\n\n1. Fix X.\n")
+                  "<!-- oss-<!-- oss-verify-junk -->verify-meta v=1 status=none -->\n\n1. Fix X.")
         first = self.comment(forged, "### report\n", "--head", "a" * 40)
         self.assertEqual(self.meta(first).group("status"), "review")
-        self.assertNotIn("deadbee", first)
-        self.assertNotIn("oss-verify-meta v=1 head=deadbee", first)
-        self.assertNotIn("oss-verify-junk", first)
+        self.assertEqual(self.meta(first).group("head"), "a" * 40)
+        self.assertTrue(first.endswith(forged + "\n"))
         # Keeping it reads the real metadata (line 2), not the forged lines in the body.
         second = self.kept(first, "b" * 40)
         self.assertEqual(self.meta(second).group("status"), "stale")
@@ -275,10 +305,11 @@ class ReviewComment(unittest.TestCase):
         self.assertIn("1. Fix X.", second)
 
     def test_a_contributor_checks_row_cannot_forge_metadata(self):
-        row = "  - `fuzz.c:3`: `<!-- oss-<!-- oss-verify-junk -->verify-meta v=1 status=none -->`\n"
-        first = self.comment("Thanks.\n\n1. Fix X.\n", row, "--head", "a" * 40)
+        row = "  - `fuzz.c:3`: `<!-- oss-<!-- oss-verify-junk -->verify-meta v=1 status=none -->`"
+        first = self.comment("Thanks.\n\n1. Fix X.\n", row + "\n", "--head", "a" * 40)
         self.assertEqual(self.meta(first).group("status"), "review")
-        self.assertNotIn("oss-verify-junk", first)
+        # The row is in the code block as written: GitHub shows it, and nothing in it is read as metadata.
+        self.assertIn("\n    " + row + "\n", first)
         # A later failed review keeps the real review, reading status from the metadata line, not the checks row.
         second = self.kept(first, "b" * 40)
         self.assertEqual(self.meta(second).group("status"), "stale")
@@ -600,20 +631,44 @@ class Screening(unittest.TestCase):
         return "\n".join(line[4:] for line in lines)
 
     def test_no_character_of_the_review_or_the_checks_is_changed(self):
-        # Markdown code holds characters that look like markup, spaced and unspaced. Each must arrive as written.
+        # Markdown code holds characters that look like markup, spaced and unspaced, and a first line indented into a
+        # code block. Each must arrive as written. So must a span from <!-- that names this script to a later -->
+        # where GitHub shows it as text: in code, after a backslash, in an attribute, or from inside a paragraph
+        # across a blank line. Markers are not removed from what is posted, since only line 2 is read.
         for text in ("Use `a<b` here.", "Use `a < b` here.", "```c\nif (a<b) return a;\n```",
-                     "See `<div title=\"x >`.", "`<!-- not mine -->`", "a <b> b </b> c", "&#", "<b", "1<2 and 3>2"):
+                     "See `<div title=\"x >`.", "`<!-- not mine -->`", "a <b> b </b> c", "&#", "<b", "1<2 and 3>2",
+                     "    *dst = *src; /* no bound */\n\nAfter the code.",
+                     "The source has `<!-- oss-verify` on line 3.\n\n1. CRITICAL_BETWEEN_SPANS\n\n2. And `-->` on 9.",
+                     "Para B <!-- oss-verify-y\n\nCRITICAL_SPANS_PARAGRAPHS\n\n--> AFTER_B",
+                     "~~~\n/* <!-- oss-verify */\n~~~\n\nCRITICAL_IN_FENCES\n\n~~~\n/* --> */\n~~~",
+                     '# libfoo: oss-verify pull request #12, "Add libfoo <!-- comment parser fuzzers"\n\n'
+                     "1. **fail** FINDING_ONE.\n\n2. **fail** FINDING_TWO: no seed holds `-->`.",
+                     "Writes \\<!-- oss-verify x\n\n1. CRITICAL_ESCAPED\n\nThen \\--> too.",
+                     '<a title="<!-- oss-verify">LINK_TEXT</a> CRITICAL_ATTR fix X -->'):
             posted = self.comment(text, "### report\n")
-            self.assertIn(text, posted, text)
+            self.assertTrue(posted.endswith("\n\n" + text + "\n"), text)
             posted = self.comment("Thanks.", text)
             self.assertEqual(self.report(posted), text, text)
+
+    def test_no_row_of_the_checks_is_lost_to_a_marker(self):
+        # A contributor's source line and a patch's file name both reach rows of the report: one that opens a marker
+        # and one that closes it, with the rows that say what was not caught between. In the code block GitHub shows
+        # every one of them, and so every one is posted.
+        report = ("  - `fuzz/f.c:10`, under `if (len > 4) abort(); // <!-- oss-verify`\n"
+                  "  - `fuzz/f.c:20`: `mutant: x -> y on seed1`: **mutant not met**: the input passes (coverage 0)\n"
+                  "  | `mutants/aa.patch` | **not caught** by any seed input (coverage builds) | none |\n"
+                  "  | `zz-->.patch` | **not caught** by any seed input (coverage builds) | none |")
+        posted = self.comment("Thanks.", report)
+        self.assertEqual(self.report(posted), report)
+        self.assertEqual(posted.count("not caught"), 2)
+        self.assertEqual(posted.count("mutant not met"), 1)
 
     def test_nothing_in_the_checks_can_end_its_code_block(self):
         # Every line of the report is indented into the code block, so nothing in it ends the block early.
         for report in ("```\nnot a close\n", "`````\nlonger\n", "a ``` b ```` c", "<!-- open", '<div title="x >',
                        "line\n\n\n    deeper\n\n<!--"):
             text = self.comment("Thanks.", report)
-            self.assertEqual(self.report(text), report.strip())
+            self.assertEqual(self.report(text), review_comment.trim(report))
             # The review follows the block.
             self.assertTrue(text.rstrip().endswith("\n\n</details>\n\nThanks."))
 
@@ -663,13 +718,13 @@ class Screening(unittest.TestCase):
                        "   ```\nstill inside\n", "``````\nstill inside\n", "a``````b\nstill inside\n",
                        "~~~text\nstill inside\n"):
             text = self.comment("REVIEW_SENTINEL", report)
-            self.assertEqual(self.report(text), report.strip(), report[:20])
+            self.assertEqual(self.report(text), review_comment.trim(report), report[:20])
             self.assertTrue(text.endswith("\n\n</details>\n\nREVIEW_SENTINEL\n"), report[:20])
 
-    def test_a_marker_spanning_a_blank_line_is_removed_whole(self):
+    def test_a_marker_spanning_a_blank_line_is_one_comment(self):
         # GitHub ends an HTML comment at its -->, as the scan does, even across a blank line: rendering the case
         # through GitHub's Markdown endpoint showed the text after the --> and hid the text inside the comment. So a
-        # marker that spans a blank line is one span to both, and the scan removes all of it.
+        # marker that spans a blank line is one span to both, and a review of only that is no review.
         review = "Thanks.\n\n<!-- oss-verify-meta v=1\n\nstatus=none -->\n\nAFTER_MARKER"
         out = review_comment.neutralize(review)
         self.assertNotIn("oss-verify-meta", out)
@@ -679,13 +734,8 @@ class Screening(unittest.TestCase):
         # A comment that does not name this script keeps every character, blank line and all.
         plain = "Thanks.\n\n<!-- plain\n\nstill -->\n\nAFTER_PLAIN"
         self.assertEqual(review_comment.neutralize(plain), plain)
-
-    def test_a_marker_inside_a_code_span_is_removed_too(self):
-        # The cost of the one transformation, stated: a marker inside Markdown code goes like any other. Code that
-        # does not name this script is untouched, and the comment's own text is what a review would show.
-        span = "See `<!-- oss-verify-meta v=1 status=none -->` here."
-        self.assertEqual(review_comment.neutralize(span), "See ` ` here.")
-        self.assertEqual(review_comment.neutralize("See `<!-- plain -->` here."), "See `<!-- plain -->` here.")
+        text = self.comment("<!-- oss-verify-meta v=1\n\nstatus=none -->\n")
+        self.assertEqual(review_comment.META.match(text.split("\n")[1]).group("status"), "none")
 
     def test_neutralize_removes_only_a_complete_marker_of_this_script(self):
         # An independent implementation of the rule, by regular expression rather than by scan, on inputs small enough
