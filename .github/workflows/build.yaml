@@ -73,18 +73,19 @@ name: "Build"
 #            audience "https://api.anthropic.com", claims {"repository_id": "1429568498",
 #            "ref": "refs/heads/main", "workflow": "Build"}
 #   test     fdrl_019NVessgKqckm7owmasqfm7: subject_prefix
-#            "repo:theorem-labs@212152656/oss-verify@1429568498:ref:refs/heads/ci-test/*", audience
-#            "https://api.anthropic.com", claims {"repository_id": "1429568498", "workflow": "Build"}
+#            "repo:theorem-labs@212152656/oss-verify@1429568498:environment:enroll-review-test" (an exact match: the
+#            review job runs in that environment on a ci-test/ branch), audience "https://api.anthropic.com", claims:
+#            repository_id 1429568498, workflow "Build", event_name workflow_dispatch, and a workflow_ref of
+#            .github/workflows/build.yaml on a ci-test/ branch
 #   target   the service account oss-verify-ci (svac_01WdHTLcJPEfiPttcuLK1hGT), with the developer role
 #   scope    workspace:inference, in the workspace Default+CVP, with a token lifetime of 3600 seconds
 # The numbers are the immutable ids of theorem-labs and of this repository. The Review step takes the test rule when
-# the run's ref is a ci-test/ branch, and the main rule otherwise. Neither rule checks which workflow file the run is:
-# `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So the main rule
-# gives a token to any workflow named "Build" that runs on main, from any event, and the test rule to any workflow
-# named "Build" on any ci-test/ branch, from any event: a person with write access can push a branch ci-test/<x>
-# with a workflow of that name triggered on push. GitHub's `workflow_ref` claim (the file and the ref) would tie each
-# rule to this file, and `event_name` to an event; the rules do not check them yet. Only the review job of this file
-# asks for an identity token. The way to start a review on a ci-test/ branch is
+# the run's ref is a ci-test/ branch, and the main rule otherwise. The main rule does not check which workflow file the
+# run is: `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So it
+# gives a token to any workflow named "Build" that runs on main, from any event. The test rule checks the file and the
+# event (workflow_ref and event_name): only this file, started by hand on a ci-test/ branch, in the environment
+# enroll-review-test. Only the review job of this file asks for an identity token. The way to start a review on a
+# ci-test/ branch is
 # `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>`. A ci-test run posts its comment on that pull request,
 # so point it at a test pull request (one opened by this repository, not a maintainer's open enrollment).
 #
@@ -112,12 +113,9 @@ name: "Build"
 # (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
 # A run on a ci-test/ branch uses the environment enroll-review-test instead, which holds no key unless someone gives it
 # one, so it reviews fresh. Without the key the review runs fresh on each push, with a warning. An artifact lasts as
-# long as the repository's artifact retention (90 days by default). To make the environment's rule and the key (an
-# admin of this repository; a new key discards every kept conversation):
-#   gh api -X PUT repos/theorem-labs/oss-verify/environments/enroll-review \
-#     -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
-#   gh api -X POST repos/theorem-labs/oss-verify/environments/enroll-review/deployment-branch-policies -f name=main
-#   openssl rand -base64 32 | gh secret set REVIEW_CONVERSATION_KEY --env enroll-review -R theorem-labs/oss-verify
+# long as the repository's artifact retention (90 days by default). The environments, their deployment branch rule and
+# the key are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand, which
+# the next apply would undo or fail on. A new key discards every kept conversation.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
