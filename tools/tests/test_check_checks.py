@@ -883,6 +883,7 @@ class WorkflowArguments(unittest.TestCase):
                 for line in [payload] + [line for line in key.splitlines() if line.strip()]:
                     outside = [o for o in run.stdout.splitlines() if line in o and o != f"::add-mask::{line}"]
                     self.assertEqual(outside, [], f"{workflow}: {line[:20]}… is printed outside its mask")
+                    self.assertNotIn(line, run.stderr, f"{workflow}: {line[:20]}… is on stderr")
                 self.assertIn(key.splitlines()[1], (directory / "output").read_text(), workflow)
 
     def test_every_google_sign_in_keeps_its_token_to_one_step(self):
