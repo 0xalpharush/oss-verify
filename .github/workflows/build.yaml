@@ -299,6 +299,8 @@ jobs:
       comment: ${{ steps.review.outputs.comment }}
       # What answered the review, as .github/scripts/review-served recorded it, for the comment job to check.
       served: ${{ steps.review.outputs.served }}
+      # true when review-run refused the review (exit 4): another provider or model answered, or nothing shows which.
+      refused: ${{ steps.review.outputs.refused }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
@@ -425,6 +427,7 @@ jobs:
           if [ "$code" = 3 ]; then
             echo "collector=refused" >> "$GITHUB_OUTPUT"
           elif [ "$code" = 4 ]; then
+            echo "refused=true" >> "$GITHUB_OUTPUT"
             # 4: another provider or model answered, or nothing shows which (review-served). The comment job posts
             # none of the review, and says what answered. review-run's line names only what review-served cleaned.
             failure=$(grep -m1 -xE "the review is not published: [][A-Za-z0-9 ,.:;@+?/*()'_-]{1,2100}" \
@@ -548,6 +551,7 @@ jobs:
           # The record of what answered the review: review-comment posts the review only if it shows the provider
           # asked for, and otherwise says that it is not published, and why.
           SERVED: ${{ needs.review.outputs.served }}
+          REFUSED: ${{ needs.review.outputs.refused }}
           CHECKS: ${{ needs.project-builds.outputs.checks }}
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -575,8 +579,10 @@ jobs:
             gh api "repos/$REPO/issues/comments/$existing" --jq .body > "$RUNNER_TEMP/previous.md"
             previous=(--previous "$RUNNER_TEMP/previous.md")
           fi
+          refused=()
+          [ "${REFUSED:-}" != true ] || refused=(--refused)
           python3 .github/scripts/review-comment --review "$RUNNER_TEMP/review.md" --checks "$RUNNER_TEMP/checks.md" \
-            --head "$HEAD_SHA" --run "$RUN_URL" --served "$RUNNER_TEMP/served" "${previous[@]}" \
+            --head "$HEAD_SHA" --run "$RUN_URL" --served "$RUNNER_TEMP/served" "${refused[@]}" "${previous[@]}" \
             > "$RUNNER_TEMP/comment.md"
           if [ -n "$existing" ]; then
             jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \

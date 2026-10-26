@@ -26,7 +26,8 @@ ELSEWHERE = ("ANTHROPIC_BASE_URL", "ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BAS
              "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL", "CLAUDE_CONFIG_DIR", "NODE_TLS_REJECT_UNAUTHORIZED",
              "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY",
              "ANTHROPIC_PROFILE", "ANTHROPIC_CONFIG_DIR", "XDG_CONFIG_HOME", "CLAUDE_CODE_EXTRA_BODY",
-             "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH", "CLAUDE_CODE_REMOTE_SETTINGS_PATH")
+             "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH", "CLAUDE_CODE_REMOTE_SETTINGS_PATH",
+             "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION", "CLAUDE_CODE_MOCK_REMOTE_SETTINGS", "ANTHROPIC_CUSTOM_HEADERS")
 # A stand-in agent: prints the events of the JSON list in $HOME/events.json, each on a line of its own as it comes; an
 # item {"sleep": seconds} waits, {"exit": status} ends there, {"raw": text} prints the text as it is, and {"child":
 # seconds} starts a process of its own that sleeps that long, as a tool the agent runs would. It writes its arguments
@@ -269,6 +270,9 @@ class Run(StandIn):
                                   "CLAUDE_CODE_MANAGED_SETTINGS_PATH"),
                                  ({"CLAUDE_CODE_REMOTE_SETTINGS_PATH": "/tmp/remote.json"},
                                   "CLAUDE_CODE_REMOTE_SETTINGS_PATH"),
+                                 ({"CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION": "1"}, "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION"),
+                                 ({"CLAUDE_CODE_MOCK_REMOTE_SETTINGS": "1"}, "CLAUDE_CODE_MOCK_REMOTE_SETTINGS"),
+                                 ({"ANTHROPIC_CUSTOM_HEADERS": "anthropic-beta: x"}, "ANTHROPIC_CUSTOM_HEADERS"),
                                  ({"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, "ANTHROPIC_UNIX_SOCKET"),
                                  ({"CLAUDE_CODE_API_BASE_URL": "https://proxy.example"}, "CLAUDE_CODE_API_BASE_URL"),
                                  ({"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL": "1"},
@@ -279,8 +283,8 @@ class Run(StandIn):
             with self.subTest(variables=variables):
                 code, err, _ = self.run_agent([init()] + turn(1) + [result()], **variables)
                 self.assertEqual(code, 4, err)
-                self.assertIn(f"did not start Claude Code: the tool is set to send its requests to {where}, not to "
-                              f"{HOST}", err)
+                self.assertIn(f"did not start Claude Code: the tool's environment or settings set {where}, which can "
+                              f"send its requests elsewhere than {HOST}", err)
                 self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
                 self.assertEqual(self.read("served"), f"asked {ASKED}\nendpoint {where}\n")
                 self.assertEqual(check(self.read("served"))[0], 1)
@@ -300,7 +304,7 @@ class Run(StandIn):
                     code, err, _ = self.run_agent([init()] + turn(1) + [result()])
                     os.remove(path)
                     self.assertEqual(code, 4, err)
-                    self.assertIn(f"send its requests to {where}", err)
+                    self.assertIn(f"settings set {where}, which", err)
                     self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
 
     def test_an_endpoint_the_settings_of_claude_config_dir_set_starts_no_agent(self):
@@ -310,7 +314,7 @@ class Run(StandIn):
             json.dump({"env": {"CLAUDE_CODE_USE_VERTEX": "1"}}, f)
         code, err, _ = self.run_agent([init()] + turn(1) + [result()], CLAUDE_CONFIG_DIR=config)
         self.assertEqual(code, 4, err)
-        self.assertIn("send its requests to CLAUDE_CODE_USE_VERTEX", err)
+        self.assertIn("settings set CLAUDE_CODE_USE_VERTEX, which", err)
         self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
 
     def test_the_provider_s_own_endpoint_named_or_in_settings_is_the_one_asked_for(self):
@@ -370,7 +374,8 @@ class Run(StandIn):
             json.dump({"env": {"HTTPS_PROXY": "http://proxy.example", "NODE_EXTRA_CA_CERTS": "/tmp/ca.pem"}}, f)
         code, err, _ = self.run_agent([init()] + turn(1) + [result()])
         self.assertEqual(code, 4, err)
-        self.assertIn("send its requests to HTTPS_PROXY+NODE_EXTRA_CA_CERTS, not to api.anthropic.com", err)
+        self.assertIn("settings set HTTPS_PROXY+NODE_EXTRA_CA_CERTS, which can send its requests elsewhere than "
+                      "api.anthropic.com", err)
         self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
 
     def test_the_base_url_of_the_anthropic_profile_is_an_endpoint(self):
@@ -386,7 +391,7 @@ class Run(StandIn):
         profile(home, "default", "https://proxy.example")
         code, err, _ = self.run_agent([init()] + turn(1) + [result()])
         self.assertEqual(code, 4, err)
-        self.assertIn("send its requests to https:proxy.example, not to", err)
+        self.assertIn("settings set https:proxy.example, which", err)
         profile(home, "default", f"https://{HOST}")
         self.assertEqual(self.run_agent([init()] + turn(1) + [result()])[0], 0)
         profile(home, "work", "https://work.example", active="work")
@@ -470,7 +475,8 @@ class Run(StandIn):
             json.dump({"advisorModel": "other-b-1"}, f)
         code, err, _ = self.run_agent([init()] + turn(1) + [result()])
         self.assertEqual(code, 4, err)
-        self.assertIn("send its requests to advisorModel, not to", err)
+        self.assertIn("settings set advisorModel, which can send its requests elsewhere than api.anthropic.com or "
+                      "let another model answer", err)
 
     def test_a_usage_entry_that_is_not_an_object_is_not_attributable(self):
         side = result()
@@ -496,6 +502,44 @@ class Run(StandIn):
         code, err, _ = self.run_agent([init()] + turn(1) + [result()], XDG_CONFIG_HOME=xdg)
         self.assertEqual(code, 4, err)
         self.assertIn("https:proxy.example", err)
+
+    def test_the_env_of_the_global_config_is_read(self):
+        """The tool applies the `env` of its global config, ~/.claude.json, as it starts, like a settings file's."""
+        for directory, variables in ((self.dir, {}), (os.path.join(self.dir, "config"),
+                                                      {"CLAUDE_CONFIG_DIR": os.path.join(self.dir, "config")})):
+            with self.subTest(directory=directory):
+                os.makedirs(directory, exist_ok=True)
+                path = os.path.join(directory, ".claude.json")
+                with open(path, "w") as f:
+                    json.dump({"env": {"ANTHROPIC_BASE_URL": "https://proxy.example"}, "numStartups": 3}, f)
+                code, err, _ = self.run_agent([init()] + turn(1) + [result()], **variables)
+                os.remove(path)
+                self.assertEqual(code, 4, err)
+                self.assertIn("settings set https:proxy.example, which", err)
+                self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
+        with open(os.path.join(self.dir, ".claude.json"), "w") as f:
+            json.dump({"numStartups": 3, "env": {}}, f)
+        self.assertEqual(self.run_agent([init()] + turn(1) + [result()])[0], 0)
+
+    def test_a_fallback_block_or_content_that_hides_its_model_stops_the_agent(self):
+        """A fallback block whose `to` names no model, and content that is not a list, could hide another model."""
+        for content in ([{"type": "fallback", "from": {"model": "model-a-1"}, "to": "other-b-1"}],
+                        [{"type": "fallback", "from": {"model": "model-a-1"}}], {"type": "text", "text": "..."}):
+            with self.subTest(content=content):
+                hidden = turn(1)
+                hidden[0]["message"]["content"] = content
+                code, err, seconds = self.run_agent([init()] + hidden + [{"sleep": 100}, result()])
+                self.assertEqual(code, 4, err)
+                self.assertLess(seconds, 60)
+                self.assertIn("turn 1 was answered by no model it named", err)
+
+    def test_a_stale_record_is_gone_also_when_no_agent_starts(self):
+        for name in ("served", "claude.json"):
+            with open(os.path.join(self.review, name), "w") as f:
+                f.write(f"{HEAD}usage firstParty/model-a-1\nfirstParty/model-a-1 9\n")
+        self.run_agent([init()] + turn(1) + [result()], ANTHROPIC_BASE_URL="https://proxy.example")
+        self.assertEqual(self.read("served"), f"asked {ASKED}\nendpoint https:proxy.example\n")
+        self.assertEqual(self.read("claude.json"), "")
 
     def gone(self, pid):
         """Whether the process `pid` has ended (and been reaped), waiting up to 10 seconds."""
@@ -588,8 +632,9 @@ class Check(unittest.TestCase):
     def test_a_record_that_names_another_endpoint_is_another_provider(self):
         code, line = check(f"asked {ASKED}\nendpoint https:proxy.example\nfirstParty/model-a-1 3\n")
         self.assertEqual(code, 1, line)
-        self.assertIn(f"whose API is {HOST}, but the tool was set to send its requests to https:proxy.example, where "
-                      "firstParty/model-a-1 (3 turns) answered", line)
+        self.assertIn(f"whose API is {HOST}, but the tool's environment or settings set https:proxy.example, which can "
+                      "send its requests elsewhere or let another model answer, and firstParty/model-a-1 (3 turns) "
+                      "answered", line)
         self.assertEqual(check(f"{HEAD}endpoint https:proxy.example\nfirstParty/model-a-1 3\n")[0], 1)
 
     def test_a_record_that_names_no_endpoint_is_not_attributable(self):

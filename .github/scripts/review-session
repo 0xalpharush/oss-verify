@@ -170,9 +170,13 @@ def posted_head(repo, pr):
     if not ours:
         raise Fresh(f"pull request #{pr} has no review comment")
     # review-comment's own reader of the metadata line, so that both read a comment the same way.
-    status, head, _, _ = review_comment.read_previous(str(ours[0]["body"]))
+    status, head, version, _ = review_comment.read_previous(str(ours[0]["body"]))
     if status in (None, "none") or not HEAD.fullmatch(head or ""):
         raise Fresh(f"the review comment of pull request #{pr} shows no review of a commit")
+    # A review whose comment names nothing that answered it (written before .github/scripts/review-served, metadata
+    # version 1 or 2) is not resumed: no record shows which model wrote the conversation the next review would build on.
+    if version != "3":
+        raise Fresh(f"the review comment of pull request #{pr} names nothing that answered its review")
     return head
 
 

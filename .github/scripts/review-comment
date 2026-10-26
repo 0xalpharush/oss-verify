@@ -4,7 +4,7 @@
 """Write the review comment of an enrollment pull request, as build.yaml's comment job posts it.
 
     review-comment [--review <comment.md>] [--checks <checks.md>] [--head <sha>] [--run <url>] [--previous <comment>]
-                   [--served <served>]
+                   [--served <served>] [--refused]
 
 It prints the comment: the marker that build.yaml's comment job finds it by, a metadata line, what this script writes
 (the footer, a notice when the review is not current or did not run, a note where a text was cut), the report of
@@ -26,17 +26,18 @@ wrote what is refused), it keeps the comment already posted, unchanged, below a 
 is not current, naming the commit it is of and the commit that had no review, and the footer. Keeping a kept comment
 again gives the same comment: what this script wrote above the old one is written afresh, not kept as part of it. A
 comment that is the review of this same commit stays the review: as it was posted, or, if it was kept as not current,
-written again as the review.
+written again as the review; but only when it names what answered it (metadata version 3). One posted before the
+record existed is kept as not current, with a notice that says what answered it was not recorded.
 
 --served is the record of what answered the review, which .github/scripts/review-served wrote beside it as Claude Code
 reported it. The review is posted only when `review-served check` passes that record: the provider and model asked
 for, at the provider's own API, answered every turn. Otherwise none of its text is posted, as with a review that is
-refused; and when another endpoint, provider or model answered, the comment says that the review is not published,
-also when no review text reached this script. Every comment says what answered, as that check says it: after the
-footer of a review, the providers and models with their turns, a paragraph of its own that stays with the review when
-it is kept; in the notice of a review that is not published, did not run or is not current, what answered this push's
-review, or why nothing shows it (no record, no turn, or a provider or model that is another or that Claude Code did
-not name).
+refused; and when another endpoint, provider or model answered, or the review job refused the review (--refused: in CI
+a refused review reaches this script as no text at all), the comment says that the review is not published. Every
+comment says what answered, as that check says it: after the footer of a review, the providers and models with their
+turns, a paragraph of its own that stays with the review when it is kept; in the notice of a review that is not
+published, did not run or is not current, what answered this push's review, or why nothing shows it (no record, no
+turn, or a provider or model that is another or that Claude Code did not name).
 """
 import argparse
 import pathlib
@@ -64,8 +65,11 @@ JWT = "eyJ"
 # commit the review is of, and the status (review: a review is here; none: there is none; stale: a kept review that a
 # later push's review did not replace). It is the only place the status and the commit are read from. The version is
 # the layout: 1, the review first and the footer last (before this layout); 2, what this script writes first, then
-# the checks, the review last. Only in a comment of version 2 is the first paragraph (after a notice) this script's.
-META = re.compile(r"^<!-- oss-verify-meta v=(?P<version>[12])"
+# the checks, the review last; 3, the layout of 2, in a comment whose review names what answered it (the record of
+# .github/scripts/review-served, after the footer). Only in a comment of version 2 or 3 is the first paragraph (after
+# a notice) this script's. A review is current again, or kept as posted, only in a comment of version 3: one written
+# before the record existed names nothing that answered it, whatever its text says.
+META = re.compile(r"^<!-- oss-verify-meta v=(?P<version>[123])"
                   r"(?: head=(?P<head>[0-9a-f]{7,40}))?"
                   r" status=(?P<status>review|none|stale) -->$")
 # The no-review paragraph that this script wrote before the metadata line existed, in full: a legacy comment that is
@@ -159,8 +163,8 @@ def code_block(text, limit):
     return "\n".join(lines), True
 
 
-def meta_line(head, status):
-    return f"<!-- oss-verify-meta v=2{f' head={head}' if head else ''} status={status} -->"
+def meta_line(head, status, version=3):
+    return f"<!-- oss-verify-meta v={version}{f' head={head}' if head else ''} status={status} -->"
 
 
 # Blank lines, as CommonMark has them: nothing but spaces and tabs.
@@ -199,7 +203,6 @@ NO_REVIEW_FOOTER = ("<sub>`tools/check --checks` measured the checks. No AI revi
                     "Theorem reviews the enrollment.</sub>")
 # What answered the review: after the footer of a review that is posted, and in the notice when there is none.
 ANSWERED = "<sub>Answered by `{}`, as Claude Code reported it.</sub>"
-ANSWERED_WRITTEN = re.compile(r"<sub>Answered by `[^`\n]*`, as Claude Code reported it\.</sub>")
 ANSWERED_NOTICE = "What answered it, as Claude Code reported it: `{}`."
 SERVED = pathlib.Path(__file__).resolve().with_name("review-served")
 # The characters of what `review-served check` prints: names it has cleaned, and its own words. No backtick, so the
@@ -215,7 +218,7 @@ KEPT_CUT = re.compile(r" The review is cut at (?P<at>[0-9]{1,3}(?:,[0-9]{3})?) c
 
 
 def assemble(head, status, notes, checks="", review="", where="the rest is in the review job's log",
-             review_limit=MAX_REVIEW, cut_at=None, cut_in_notice=False):
+             review_limit=MAX_REVIEW, cut_at=None, cut_in_notice=False, version=3):
     """The comment, at most MAX_COMMENT characters: the marker and metadata, the heading, the notes (what this script
     writes), the checks report as a code block, and the review last. Only the checks and the review are cut, by
     slicing, and a note before them says where; nothing else in them changes. cut_at: where an earlier run cut the
@@ -223,7 +226,7 @@ def assemble(head, status, notes, checks="", review="", where="the rest is in th
     being a paragraph of its own."""
     notes = list(notes)
     checks, review = trim(checks), trim(review)
-    blocks = [f"{MARKER}\n{meta_line(head, status)}", HEADING, *notes]
+    blocks = [f"{MARKER}\n{meta_line(head, status, version)}", HEADING, *notes]
     if checks:
         block, whole = code_block(checks, MAX_CHECKS)
         if not whole:
@@ -260,18 +263,13 @@ def served(record):
     return code, line
 
 
-def turned(record):
-    """Whether the record names a turn that answered: a line other than its asked, endpoint and usage lines."""
-    return any(line.strip() and not line.startswith(("asked ", "endpoint ", "usage ")) for line in record.splitlines())
-
-
 def not_current(previous, head, run, answered=""):
     """The comment already posted, kept: as the review of head when it is that, else marked not the review of head;
     None when it holds no review to keep. answered: what answered head's review, a sentence of the notice."""
     status, of_head, version, body = read_previous(previous)
-    # A review is the review of head only when it names what answered it: one posted before review-served existed
-    # names nothing, and is kept as not current rather than posted again as the review.
-    recorded = any(ANSWERED_WRITTEN.fullmatch(paragraph.strip()) for paragraph in body.split("\n\n")[:3])
+    # A review is the review of head only when it names what answered it (version 3): one posted before review-served
+    # existed names nothing, and is kept as not current rather than posted again as the review.
+    recorded = version == "3"
     current = bool(head) and of_head == head and status in ("review", "stale") and recorded
     if current and status == "review":
         # A later run for the same commit (a rerun, or an edit of the pull request) wrote no review: this one is
@@ -289,7 +287,7 @@ def not_current(previous, head, run, answered=""):
     # The footer, first after the notice in a comment of this layout (version 2), is written again below too. A review
     # that a keep had cut and that is current again carries the cut sentence at the end of its footer instead. In an
     # older layout the first paragraph is the review's, so nothing is read from it.
-    if version == "2" and paragraphs:
+    if version in ("2", "3") and paragraphs:
         cut = KEPT_CUT.search(paragraphs[0])
         if FOOTER_WRITTEN.fullmatch(paragraphs[0][:cut.start()] if cut else paragraphs[0]):
             cut_at = int(cut.group("at").replace(",", "")) if cut else cut_at
@@ -311,12 +309,14 @@ def not_current(previous, head, run, answered=""):
                         cut_at=cut_at, cut_in_notice=True)
     this = f"`{head[:7]}`" if head else "the last push"
     where = f" ([the run]({run}))" if run else ""
-    note = (f"**Not current:** this is the review of {of}. The review of {this} did not finish with a review that "
-            f"can be posted{where}. {answered + ' ' if answered else ''}A person at Theorem reviews the enrollment.")
+    unrecorded = "" if recorded else " What answered that review was not recorded."
+    note = (f"**Not current:** this is the review of {of}.{unrecorded} The review of {this} did not finish with a "
+            f"review that can be posted{where}. {answered + ' ' if answered else ''}A person at Theorem reviews the "
+            "enrollment.")
     # The old comment, its checks and review as they were posted, goes last and unchanged, so the notice and the footer
     # above it stay visible whatever it holds; only its length is cut, if it must be.
     return assemble(of_head, "stale", [note, footer], review=body, where=KEPT_WHERE, review_limit=MAX_COMMENT,
-                    cut_at=cut_at, cut_in_notice=True)
+                    cut_at=cut_at, cut_in_notice=True, version=3 if recorded else 2)
 
 
 def main():
@@ -331,6 +331,8 @@ def main():
                              "(any other status is an error: a caller treats it as a credential)")
     parser.add_argument("--served", type=pathlib.Path,
                         help="the record of what answered the review; without one that passes, it is not posted")
+    parser.add_argument("--refused", action="store_true",
+                        help="the review job refused the review (review-run's exit 4): it is not published")
     options = parser.parse_args()
     if options.holds_credential:
         return 0 if credential(sys.stdin.buffer.read().decode("utf-8", errors="replace")) else 3
@@ -347,10 +349,10 @@ def main():
     record = options.served.read_text(encoding="utf-8", errors="replace") if options.served \
         and options.served.is_file() else ""
     answered_status, answered = served(record)
-    # Another endpoint, provider or model answered, or nothing shows which answered a review that is here or a turn
-    # that the record names (in CI the review job then passes on no review text at all): none of its text is posted,
-    # and the comment says so.
-    withheld = answered_status == 1 or answered_status != 0 and (bool(review) or turned(record))
+    # Another endpoint, provider or model answered, the review job refused the review, or nothing shows which answered
+    # a review that is here (in CI a refused review reaches this script as no text at all): none of its text is
+    # posted, and the comment says that it is not published.
+    withheld = answered_status == 1 or options.refused or bool(review) and answered_status != 0
     if withheld:
         review = ""
     notice = ANSWERED_NOTICE.format(answered)

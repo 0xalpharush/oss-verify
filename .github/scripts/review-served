@@ -57,9 +57,10 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
 - "firstParty" does not say where the requests went: the tool reports it also when ANTHROPIC_BASE_URL names a proxy
   (its own policy code calls that a custom endpoint), which could answer with any model and name it as it likes. So
   the record names the endpoint, and run does not start the agent at another. It reads the settings files a machine
-  or a user can write; a folder named by CLAUDE_CODE_MANAGED_SETTINGS_PATH or CLAUDE_CODE_REMOTE_SETTINGS_PATH is
-  refused rather than read. Remote managed settings that the organization's admin signs (the tool applies routing
-  names only from a verified copy) are not read.
+  or a user can write, and the global config (~/.claude.json, or .claude.json in CLAUDE_CONFIG_DIR), whose `env` the
+  tool also applies as it starts; a folder named by CLAUDE_CODE_MANAGED_SETTINGS_PATH or
+  CLAUDE_CODE_REMOTE_SETTINGS_PATH is refused rather than read. Remote managed settings that the organization's admin
+  signs (the tool applies routing names only from a verified copy) are not read.
 """
 import collections
 import glob
@@ -78,11 +79,12 @@ TOOL_PROVIDER = {"anthropic": ("firstParty", "api.anthropic.com")}
 # Variables that send the tool's requests elsewhere than the provider's own API, or let another party answer for it,
 # besides an ANTHROPIC_BASE_URL of another URL and any CLAUDE_CODE_USE_* (a provider of another name, or a gateway):
 # a socket or another base URL, the TLS settings that would let a proxy answer as the API, request fields and betas
-# that could arm a server fallback, and settings folders this script does not read.
+# that could arm a server fallback, and settings sources this script does not read.
 ELSEWHERE = ("ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BASE_URL", "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
              "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
              "CLAUDE_CODE_EXTRA_BODY", "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-             "CLAUDE_CODE_REMOTE_SETTINGS_PATH")
+             "CLAUDE_CODE_REMOTE_SETTINGS_PATH", "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION",
+             "CLAUDE_CODE_MOCK_REMOTE_SETTINGS", "ANTHROPIC_CUSTOM_HEADERS")
 PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
 # Settings, outside `env`, that let another model answer part of a review.
 OTHER_MODEL_SETTINGS = ("advisorModel",)
@@ -162,12 +164,15 @@ def profile_base_url():
 def endpoint(host):
     """Where the tool will send its requests: `host` when nothing sends them elsewhere, else what does, `+`-joined: an
     ANTHROPIC_BASE_URL, or a profile's base_url, other than https://<host> (as base_url names it), or the name of
-    another variable that does. It reads the agent's environment, which is this process's, the `env` of each of the
-    tool's settings files, which the tool applies as it starts, and the Anthropic profile the tool reads; one it cannot
-    read is `unreadable-settings` or `unreadable-profile`."""
+    another variable or setting that could send them elsewhere or let another model answer. It reads the agent's
+    environment, which is this process's, the `env` of each of the tool's settings files and of its global config,
+    which the tool applies as it starts, and the Anthropic profile the tool reads; one it cannot read is
+    `unreadable-settings` or `unreadable-profile`."""
     sources = [os.environ]
     config = [os.path.join(os.environ.get("HOME", ""), ".claude"), os.environ.get("CLAUDE_CONFIG_DIR")]
-    for path in [os.path.join(d, "settings.json") for d in config if d] + [".claude/settings.json",
+    globals_ = [os.path.join(os.environ.get("HOME", ""), ".claude.json")] + \
+        [os.path.join(d, ".claude.json") for d in config[1:] if d]
+    for path in [os.path.join(d, "settings.json") for d in config if d] + globals_ + [".claude/settings.json",
                  ".claude/settings.local.json", "/etc/claude-code/managed-settings.json"] \
             + sorted(glob.glob("/etc/claude-code/managed-settings.d/*.json")):
         try:
@@ -225,8 +230,9 @@ def check(record):
     counts = ", ".join(f"{provider}/{name} ({turns(n)})" for (provider, name), n in answered)
     usage = ", ".join(f"{provider}/{name}" for provider, name in used) or "nothing"
     if any(w != host for w in where):
-        return 1, f"it asked for {asked}, whose API is {host}, but the tool was set to send its requests to " \
-                  f"{', '.join(clean(w) for w in where)}, where {counts or 'no turn'} answered"
+        return 1, f"it asked for {asked}, whose API is {host}, but the tool's environment or settings set " \
+                  f"{', '.join(clean(w) for w in where)}, which can send its requests elsewhere or let another model " \
+                  f"answer, and {counts or 'no turn'} answered"
     if any(provider not in ("none", want) or name != "none" and not is_model(name, model)
            for (provider, name) in used + [served for served, _ in answered]):
         return 1, f"it asked for {asked}, which the tool calls {want}/{model}, but {counts or 'no turn'} " \
@@ -287,17 +293,18 @@ def write_record(directory, asked, where, seen):
 
 def run(directory, asked, command):
     _, model, _, host = asked_for(asked)
-    where = endpoint(host)
     # What read has seen: message id -> the model that answered it, and the last result event, parsed and as it came.
     seen = {"answered": {}, "result": None, "result_line": None}
     stopped, status = None, 0
     for name in ("claude.json", "served"):
         if os.path.exists(f"{directory}/{name}"):
             os.remove(f"{directory}/{name}")
+    where = endpoint(host)
     try:
         with open(f"{directory}/claude.jsonl", "wb") as stream:
             if where != host:
-                stopped = f"did not start Claude Code: the tool is set to send its requests to {where}, not to {host}"
+                stopped = f"did not start Claude Code: the tool's environment or settings set {where}, " \
+                          f"which can send its requests elsewhere than {host} or let another model answer"
             else:
                 status, stopped = read(command, stream, model, seen)
     finally:

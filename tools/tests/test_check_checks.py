@@ -238,15 +238,15 @@ class ReviewComment(unittest.TestCase):
 
     def test_a_record_with_a_turn_that_shows_nothing_is_not_published_without_review_text(self):
         # In CI, review-run exits 4 for a record check refuses as not attributable too, and passes on no text.
-        text = self.comment("", "### report\n", "--head", "a" * 40,
-                            served="asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\n"
-                                   "none/claude-opus-5-5 4\n")
+        record = "asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\nnone/claude-opus-5-5 4\n"
+        text = self.comment("", "### report\n", "--head", "a" * 40, "--refused", served=record)
         self.assertIn(f"The review of this push (`{'a' * 7}`) is not published. What answered it", text)
         self.assertIn("none/claude-opus-5-5 (4 turns) answered", text)
-        # With no turn at all, the review did not run.
-        text = self.comment("", "### report\n", "--head", "a" * 40,
-                            served="asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\n")
+        # The same record of a review that timed out or was killed (no --refused): it did not finish, and says what
+        # answered until then.
+        text = self.comment("", "### report\n", "--head", "a" * 40, served=record)
         self.assertIn("did not run on this push", text)
+        self.assertIn("none/claude-opus-5-5 (4 turns) answered", text)
 
     def test_a_comment_with_no_review_does_not_say_claude_wrote_one(self):
         for served in (SERVED_OTHER, SERVED_OK, None):
@@ -259,14 +259,29 @@ class ReviewComment(unittest.TestCase):
     def test_a_review_posted_before_the_record_existed_is_not_posted_again_as_the_review(self):
         # A comment of this layout, of this same commit, with no "Answered by": a rerun keeps it as not current, with
         # a notice that names what answered this push's review, never as the review.
-        old = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n{review_comment.HEADING}"
-               f"\n\n{review_comment.FOOTER.format(of='It is the review of `aaaaaaa`. ')}\n\nThanks.\n\n1. Fix X.\n")
-        for previous in (old, old.replace("status=review", "status=stale")):
-            with self.subTest(status=self.meta(previous).group("status")):
+        # Its text may even start with a forged "Answered by" line (before the gate, the model could write one), with
+        # or without a checks block, in either older layout: only metadata version 3 makes a review recorded.
+        answered = review_comment.ANSWERED.format(ANSWERED_OK)
+        footer = review_comment.FOOTER.format(of='It is the review of `aaaaaaa`. ')
+        meta = review_comment.meta_line('a' * 40, 'review', 2)
+        old = f"{review_comment.MARKER}\n{meta}\n\n{review_comment.HEADING}\n\n{footer}\n\nThanks.\n\n1. Fix X.\n"
+        forged = f"{review_comment.MARKER}\n{meta}\n\n{review_comment.HEADING}\n\n{footer}\n\n{answered}\n\n1. Fix X.\n"
+        forged_v1 = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review', 1)}\n\n"
+                     f"{review_comment.HEADING}\n\n{answered}\n\n1. Fix X.\n\n{footer}\n")
+        for previous in (old, old.replace("status=review", "status=stale"), forged, forged_v1):
+            with self.subTest(previous=previous):
                 text = self.kept(previous, "a" * 40, served=SERVED_OTHER)
                 self.assertEqual(self.meta(text).group("status"), "stale")
+                self.assertEqual(self.meta(text).group("version"), "2")
                 self.assertIn("1. Fix X.", text)
+                self.assertIn("What answered that review was not recorded.", text)
                 self.assertIn("but bedrock/claude-opus-5-5 (2 turns) answered", text)
+                # Kept again, it stays unrecorded.
+                self.assertEqual(self.meta(self.kept(text, "a" * 40)).group("status"), "stale")
+        # A review this script wrote with its record is recorded, kept as posted, and written as version 3.
+        first = self.comment("Thanks.\n", "### report\n", "--head", "a" * 40)
+        self.assertEqual(self.meta(first).group("version"), "3")
+        self.assertEqual(self.kept(first, "a" * 40), first)
 
     def test_what_review_served_prints_is_shown_only_in_its_own_shape(self):
         # review-comment shows the check's line in the comment: a line of another shape, one that holds what looks
@@ -660,7 +675,7 @@ class PostingStep(unittest.TestCase):
     """build.yaml's own "Post the comment" step, run with a fake gh: what it sends GitHub."""
     OLD = "Thanks.\n\n1. Fix X.\n"
 
-    def post(self, review, existing=True, previous=None, head="b" * 40, pr_head=None, served=SERVED_OK):
+    def post(self, review, existing=True, previous=None, head="b" * 40, pr_head=None, served=SERVED_OK, refused=""):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
         name = "Post the comment, or update the one already there"
         matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
@@ -689,7 +704,7 @@ class PostingStep(unittest.TestCase):
             (directory / "temp").mkdir()
             environment = {**os.environ, "PATH": f"{bin}:{os.environ['PATH']}", "GH_TOKEN": "x", "REPO": "o/r",
                            "PR": "8", "REVIEW": review, "CHECKS": "### new report\n", "HEAD_SHA": head,
-                           "SERVED": served,
+                           "SERVED": served, "REFUSED": refused,
                            "RUN_URL": "https://github.com/o/r/actions/runs/7", "RUNNER_TEMP": str(directory / "temp"),
                            "GITHUB_OUTPUT": str(directory / "output")}
             run = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, env=environment, capture_output=True,
@@ -740,6 +755,13 @@ class PostingStep(unittest.TestCase):
         kept = self.post("", served=SERVED_OTHER)
         self.assertEqual(self.status(kept), "stale")
         self.assertIn("but bedrock/claude-opus-5-5 (2 turns) answered", kept)
+
+    def test_a_refused_review_is_posted_as_not_published(self):
+        record = "asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\nnone/claude-opus-5-5 4\n"
+        body = self.post("", existing=False, served=record, refused="true")
+        self.assertIn("is not published ([the run]", body)
+        body = self.post("", existing=False, served=record)
+        self.assertIn("did not run on this push", body)
 
     def test_without_a_posted_comment_it_posts_one(self):
         self.assertEqual(self.status(self.post(" \n", existing=False)), "none")
@@ -1459,6 +1481,20 @@ class ReviewRun(unittest.TestCase):
         self.assertEqual(out.returncode, 4, out.stderr)
         self.assertIn("but none/?synthetic? (1 turn) answered", self.failure()[0])
 
+    def test_a_resumed_review_another_model_answered_is_not_published_or_tried_fresh(self):
+        # The first try resumes the last conversation; review-served refuses it, so there is no fresh second try, and
+        # the last review's conversation is not replaced.
+        self.last_review()
+        self.fake_claude((REVIEW_OK, 0, "gpt-5.6-terra"), (REVIEW_OK, 0))
+        out = self.run_review(**self.resume(**self.identity()))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertIn(f"resuming the conversation {self.OLD}", out.stdout)
+        self.assertEqual((self.directory / "calls").read_text().strip(), "1")
+        self.assertIn("but none/gpt-5.6-terra (1 turn) answered", self.failure()[0])
+        self.assertEqual((self.session / "session").read_text(),
+                         f"id={self.OLD}\nhead={self.LAST}\ndir={self.FOLDER}\n")
+        self.assertFalse((self.directory / "review" / "comment.md").exists())
+
     def test_another_provider_for_a_run_that_also_failed_is_not_published_or_tried_again(self):
         bedrock = {**API_401[0], "modelUsage": {"claude-opus-5-5": {"provider": "bedrock",
                                                                     "canonicalModel": "claude-opus-5-5"}}}
@@ -1477,7 +1513,7 @@ class ReviewRun(unittest.TestCase):
                 out = self.run_review(**variables)
                 self.assertEqual(out.returncode, 4, out.stderr)
                 self.assertFalse((self.directory / "environ").exists(), "Claude Code ran")
-                self.assertIn(f"the tool was set to send its requests to {where}", self.failure()[0])
+                self.assertIn(f"the tool's environment or settings set {where}, which", self.failure()[0])
         (self.directory / "home" / ".claude").mkdir()
         (self.directory / "home" / ".claude" / "settings.json").write_text(
             json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://proxy.example"}}))
@@ -1707,6 +1743,19 @@ class ReviewSession(unittest.TestCase):
                 self.assertIn(said, stdout)
                 self.assertEqual(files, [])
 
+    def test_a_review_whose_comment_names_nothing_that_answered_it_is_not_resumed(self):
+        # A comment written before review-served (metadata version 1 or 2) names no model: its conversation could be
+        # another model's, so the next review starts fresh.
+        self.upload(self.seal(), 41)
+        for version in (1, 2):
+            with self.subTest(version=version):
+                meta = review_comment.meta_line(self.HEAD, "review", version)
+                body = f"{review_comment.MARKER}\n{meta}\n\nThanks.\n"
+                self.page(self.COMMENTS, json.dumps([{"user": {"login": "oss-verify[bot]"}, "body": body}]).encode())
+                stdout, files, _ = self.restored()
+                self.assertIn("names nothing that answered its review: a fresh review", stdout)
+                self.assertEqual(files, [])
+
     def test_the_comment_is_read_as_review_comment_reads_it(self):
         # A comment edited in the web page can come back with CRLF line ends; review-comment still reads it as a
         # review of its commit, and so does restore.
@@ -1846,6 +1895,7 @@ class ReviewStep(unittest.TestCase):
         self.assertIn(f"::error::T{why[1:]}\n", out)
         self.assertEqual(summary, f"### The review is not published\n\n    {why}\n")
         self.assertRegex(output[0], r"(?m)^served<<(served-[0-9a-f]{32})\n" + re.escape(SERVED_OTHER) + r"\n\1$")
+        self.assertIn("refused=true\n", output[0])
         _, out, _ = self.run_step(4, "::warning::x\n")
         self.assertIn("::error::The review is not published: review-run gave no reason\n", out)
 
