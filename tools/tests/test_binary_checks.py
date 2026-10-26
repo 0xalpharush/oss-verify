@@ -8,6 +8,7 @@ import pathlib
 import struct
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 
@@ -81,34 +82,40 @@ def go_function(item):
     return (item, NOP16, True) if isinstance(item, str) else item
 
 
-def gopclntab(functions):
+def gopclntab(functions, skip=0, entries=None, shared_name=False):
     """Go 1.27.1's function table (src/runtime/symtab.go pcHeader, runtime/runtime2.go _func) for `functions`
-    ([go_function items]), laid out in order from .text's start. A function with a line table gets pcfile, pcln and a
-    compilation unit; one without gets 0, 0 and no unit, as a host object's code does."""
-    names = b"".join(name.encode() + b"\0" for name, _, _ in functions)
+    ([go_function items]), laid out in order from .text's start plus `skip` bytes. A function with a line table gets
+    pcfile, pcln and a compilation unit; one without gets 0, 0 and no unit, as a host object's code does. `entries`
+    ({index: entry offset}) overrides entries of the function table; with `shared_name`, every function's name is the
+    first function's."""
+    names = b"".join(name.encode() + b"\0" for name, _, _ in (functions[:1] if shared_name else functions))
     name_offsets, at = [], 0
     for name, _, _ in functions:
-        name_offsets.append(at)
+        name_offsets.append(0 if shared_name else at)
         at += len(name) + 1
     names_at = 72
     pcln_at = names_at + len(names)
     funcs_at = (len(functions) + 1) * 8         # the _func records, after the function table, from pcln_at
-    table, records, entry = b"", b"", 0
+    offsets, records, entry = [], b"", skip
     for (name, body, lines), name_off in zip(functions, name_offsets):
-        table += struct.pack("<II", entry, funcs_at + len(records))
+        offsets.append((entry, funcs_at + len(records)))
         records += struct.pack("<IiiIIIIII", entry, name_off, 0, 0, 1 if lines else 0, 1 if lines else 0,
                                1 if lines else 0, 0, 0 if lines else 0xFFFFFFFF)
         entry += len(body)
-    table += struct.pack("<II", entry, 0)
+    offsets.append((entry, 0))
+    for index, value in (entries or {}).items():
+        offsets[index] = (value, offsets[index][1])
+    table = b"".join(struct.pack("<II", *pair) for pair in offsets)
     header = struct.pack("<IHBB", 0xFFFFFFF1, 0, 1, 8)
     header += struct.pack("<8Q", len(functions), 0, 0, names_at, pcln_at, pcln_at, pcln_at, pcln_at)
     return header + names + table + records
 
 
 def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=GO_FUNCTIONS, text_size=None,
-                  **settings):
-    """A minimal riscv64 executable with a .text section of `functions` (go_function items; then zero padding up to
-    `text_size`), their .gopclntab, and the section `section` that holds Go's build information as Go 1.27.1 writes it
+                  skip=0, entries=None, shared_name=False, **settings):
+    """A minimal riscv64 executable with a .text section of `skip` bytes of code that no function covers, then
+    `functions` (go_function items; then zero padding up to `text_size`), their .gopclntab (gopclntab: `skip`,
+    `entries`, `shared_name`), and the section `section` that holds Go's build information as Go 1.27.1 writes it
     (src/debug/buildinfo/buildinfo.go), with the `build` settings GO_SETTINGS and `settings` (None drops one)."""
     functions = [go_function(f) for f in functions]
     lines = ["path\tcommand-line-arguments"] + [f"build\t{key}={value}" for key, value in
@@ -122,9 +129,9 @@ def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=G
     body += bytes([len(version)]) + version
     size = len(module) + (1000 if truncate else 0)
     body += bytes([0x80 | (size & 0x7F), size >> 7]) + module
-    text = b"".join(code for _, code, _ in functions)
+    text = NOP16[:skip] + bytes(max(0, skip - 16)) + b"".join(code for _, code, _ in functions)
     text += bytes((text_size or len(text)) - len(text))
-    pcln = gopclntab(functions)
+    pcln = gopclntab(functions, skip, entries, shared_name)
     blobs = [(b".text", 1, 0x6, 0x11000, text), (section, 1, 0x3, 0x100000, body),
              (b".gopclntab", 1, 0x2, 0x200000, pcln)]
     shstrtab = b"\0" + b"".join(name + b"\0" for name, *_ in blobs) + b".shstrtab\0"
@@ -599,8 +606,53 @@ class Analyse(unittest.TestCase):
         stdlib = go_executable(functions=GO_FUNCTIONS + (
             "addMulVVWx", ("addMulVVWx-tramp0", TRAMPOLINE, False),
             ("crypto/rsa.f-tramp1", TRAMPOLINE + bytes(8), False),
-            ("go:textfipsstart", bytes(0), False), ("go:textfipsend", bytes(8), False)))
+            ("go:textfipsstart", bytes(0), False), ("go:textfipsend", bytes(8), False),
+            # A trampoline to a generic function: its name is longer than the bytes of a name that are read.
+            ("crypto/internal/fips140/hmac.New[go.shape." + "x" * 300 + "]-tramp2", TRAMPOLINE, False)))
         self.assertIsInstance(check_links.go_program(stdlib), check_links.GoProgram)
+
+    def test_code_outside_the_function_table_is_not_go_code(self):
+        # Go's linker lists no .L label or section container of a .syso file on riscv64, and lays host code out first:
+        # code before the table's first function is code that no Go function owns.
+        self.assertIn("does not start at .text's start", check_links.go_program(go_executable(skip=16)))
+        # A .syso symbol that an empty Go assembly TEXT also defines takes that TEXT's line table, and is listed a
+        # second time, out of address order: function 2 here starts before function 1.
+        why = check_links.go_program(go_executable(entries={2: 8}))
+        self.assertIn("not in address order", why)
+        self.assertNotIn("runs past the end", why)
+
+    def test_a_crafted_function_table_is_read_in_linear_time(self):
+        # Thousands of functions with no line table, all named by one long run of bytes: each name is read for at
+        # most NAME_MAX_GO bytes, so the work stays linear, and the program is not Go-only.
+        n = 20000
+        functions = [("x" * 400000, NOP16, False)] + [("y", NOP16, False)] * (n - 1)
+        data = go_executable(functions=functions, shared_name=True)
+        start = time.monotonic()
+        why = check_links.go_program(data)
+        self.assertLess(time.monotonic() - start, 10)
+        self.assertIn("x" * check_links.NAME_MAX_GO, why)
+        self.assertNotIn("x" * (check_links.NAME_MAX_GO + 1), why)
+        # Functions with a line table are not named at all: their names are never read.
+        plain = go_executable()
+        _, sections, _ = check_links.binary_isa.parse_elf(plain)
+        self.assertEqual({f[2] for f in check_links.go_functions(plain, sections)}, {None})
+
+    def test_a_go_program_that_cannot_be_read_fails_that_binary_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = pathlib.Path(tmp)
+            (raw / "t").write_bytes(go_executable())
+            saved = check_links.go_program
+
+            def raises(data):
+                raise MemoryError("a crafted table")
+
+            check_links.go_program = raises
+            try:
+                record, _ = check_binaries.record_of(raw, "t")
+            finally:
+                check_links.go_program = saved
+            self.assertIsInstance(record, str)
+            self.assertIn("MemoryError: a crafted table", record)
 
     def test_record_of_reads_a_go_program_and_refuses_any_other_binary_without_a_map(self):
         with tempfile.TemporaryDirectory() as tmp:

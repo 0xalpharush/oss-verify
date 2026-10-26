@@ -178,8 +178,12 @@ def record_of(raw, target):
         why = "its link has no map"
     else:
         why = "compile recorded no link of it (a link that did not go through $CC or $CXX)"
-    # Go's linker writes no map: a Go program says what it linked in its own build information.
-    program = check_links.go_program(executable)
+    # Go's linker writes no map: a Go program says what it linked in its own build information. A binary that this
+    # cannot read gives that binary an error, never the whole step.
+    try:
+        program = check_links.go_program(executable)
+    except Exception as failure:
+        program = f"its Go build information could not be read: {type(failure).__name__}: {failure}"
     if isinstance(program, check_links.GoProgram):
         return program, quiet
     return f"{why}, and it is not a Go program linked from Go code only ({program})", quiet

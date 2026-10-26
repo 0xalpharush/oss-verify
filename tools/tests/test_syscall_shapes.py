@@ -48,7 +48,7 @@ PAGED = ("mmap", "munmap", "mprotect", "madvise")
 
 
 def host_values(name, args, result):
-    """The six arguments of the host call qemu 10.0 makes for a guest call it printed with `args` (taken as its true
+    """The six arguments of the host call qemu 10.0.11 makes for a guest call it printed with `args` (taken as its true
     ones) and answered `result`, or None when qemu answers the call itself with no host call."""
     values = [(S.num(a) or 0) % (1 << 64) for a in (list(args) + ["0"] * 6)[:6]]
     if name in PAGED:
@@ -72,9 +72,9 @@ def host_values(name, args, result):
 
 def faithful_log(trace, *, started=True, extra=(), families=()):
     """The host-call log (tools/checks/host-calls.c) of a run whose printed arguments are its true ones: the `exec`
-    line, then one line per record of a call the tracer logs, with the arguments qemu 10.0 hands the host (host_values)
-    and the result (-errno for a failure). Each connect line ends with the next of `families`, its address's family,
-    or `-` once they run out. `extra` adds lines."""
+    line, then one line per record of a call the tracer logs, with the arguments qemu 10.0.11 hands the host
+    (host_values) and the result (-errno for a failure). Each connect line ends with the next of `families`, its
+    address's family, or `-` once they run out. `extra` adds lines."""
     lines = ["exec"] if started else []
     families = list(families)
     waiting = None      # a host line whose record's return comes on a later line of its own, as check_trace reads it
@@ -1802,7 +1802,7 @@ def test_a_length_that_is_not_whole_pages_is_found_by_its_rounding(model, image)
 
 @needs_model
 def test_an_anonymous_mmaps_offset_comes_from_its_host_line(model, image):
-    # qemu 10.0 hands the host the guest's offset (linux-user/mmap.c mmap_h_eq_g), so the host line that pins the
+    # qemu 10.0.11 hands the host the guest's offset (linux-user/mmap.c mmap_h_eq_g), so the host line that pins the
     # length pins the offset too. A printed 0 that the line shows as 2^32 is an offset no anonymous shape has
     # (Sys/Mm/Mmap.v mmap_modeled_b: w_is0 off).
     text = "1 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x100000\n" + EXIT
@@ -1822,7 +1822,7 @@ BOUND3 = SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n"
 
 
 def conn(ret, fd=3, alen=16):
-    """A connect record as qemu 10.0 prints it: `%s(%d,%#x,%d)`, the address a pointer cut to 32 bits."""
+    """A connect record as qemu 10.0.11 prints it: `%s(%d,%#x,%d)`, the address a pointer cut to 32 bits."""
     return f"1 connect({fd},0x7ff8b0,{alen}) = {ret}\n"
 
 
@@ -2039,7 +2039,7 @@ def test_the_message_calls(model, image, label, text, verdict):
     assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
 
 
-# The address structs qemu 10.0's print_sockaddr writes for bind, each followed by the printed addrlen.
+# The address structs qemu 10.0.11's print_sockaddr writes for bind, each followed by the printed addrlen.
 ZEROS14 = ", ".join(["00"] * 14)
 BIND_CASES = [
     # Sys/Net/Socket.v bind_spec: below a sockaddr_in -EINVAL; then any family but AF_INET (or AF_UNSPEC with
