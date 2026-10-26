@@ -64,9 +64,10 @@ The default of a `c` or `python` project is the same, less `function`, and so ar
 
 A program can run out of memory, and a statement must tell what happens then. The statements obey these rules:
 
-* **Exhaustion is part of the statement.** LPS refuses a memory request only when the build has used its budget or no address range is free, in each statement except a may-fail one. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
+* **Each statement has a reading.** The reading tells which requests LPS can refuse, and it is in the statement's name and fields. `budget` (halts statements only): LPS refuses only what the memory budget forces. `alloc-forced-only`: any system call can fail, but LPS refuses a memory request only when the build has used its budget or no address range is free. `may-fail`: any system call can fail at any time, and memory requests too. Many agrees statements are `may-fail`.
+* **Exhaustion is part of the statement.** In a `budget` or `alloc-forced-only` statement, LPS refuses a memory request only when the build has used its budget or no address range is free. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
 * **Refusals at start do not count.** A statement is not about a program that gets no memory before it gets to the fuzz target.
-* **No allocation fails at random.** No statement except a may-fail one lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
+* **Only a `may-fail` statement lets an allocation fail at random.** No other statement lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
 
 A budget is a quantity of memory that a build can allocate. It is a condition of the statement: an input that needs more memory is not in the statement. It is not a failure. These are the defaults, which the oss-fuzz-theorems 2026.10 release uses:
 
@@ -81,7 +82,7 @@ budgets:
 * `halts` is the budget of each build in its halts statement. It is always 16 GiB: a project's own halts budget is not carried into the statements yet.
 * `agrees.<sanitizer>` gives the two budgets of the agrees statement: the plain build's budget, which is the condition, and the sanitizer build's budget. The sanitizer build's budget is large, because a sanitizer needs memory of its own. `address` applies to the `asan` and `asan-ubsan` builds, and `undefined` to the `ubsan` build.
 * The plain side of `address` is 2 GiB, because the AddressSanitizer allocator limits each size class to 3.5 GiB on riscv64. The address space that the AddressSanitizer runtime reserves at start, more than 100 GiB, is not part of a budget.
-* A plain side of `address` that is more than 2 GiB can make an agrees statement false for a correct program, because the AddressSanitizer allocator limits each size class to 3.5 GiB on riscv64.
+* So a plain side of `address` that is more than 2 GiB can make an agrees statement false for a correct program.
 
 A project can set its own budgets in `project.yaml` ([project-yaml.md](project-yaml.md#budgets)).
 
@@ -91,7 +92,7 @@ A statement made under a project's own budgets names both of them. A smaller pla
 
 ## Allocation failure
 
-The halts statement does not ask a program to survive a refused allocation. A project that wants its library to survive refused allocations adds an allocation-failure fuzz target. In this fuzz target, allocations fail as the input tells them to ([build-contract.md](build-contract.md#allocation-failure-fuzz-targets)). The other fuzz targets do not get refused allocations.
+A `budget` halts statement does not ask a program to survive a refused allocation. A `may-fail` statement does: in it, any allocation can fail. A project that wants its library to survive refused allocations adds an allocation-failure fuzz target. In this fuzz target, allocations fail as the input tells them to ([build-contract.md](build-contract.md#allocation-failure-fuzz-targets)). The other fuzz targets do not get refused allocations.
 
 ## Write "correct" into the fuzz target
 

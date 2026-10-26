@@ -357,14 +357,13 @@ class Problems(unittest.TestCase):
         self.assertProblem(MINIMAL + "budgets: {agrees: {undefined: [4095, 5TiB]}}\n", "at least 4096 bytes")
         self.assertProblem(MINIMAL + "budgets: {agrees: {undefined: [5TiB, 2GiB]}}\n", "at least the plain side")
         for ok in ("[4096, 4096]", "[2GiB, 5TiB]", "[16GiB, 512GiB]"):
-            problems = check(MINIMAL + "budgets: {agrees: {undefined: %s}}\n" % ok)[0]
-            self.assertFalse(any("budgets" in problem for problem in problems), problems)
+            self.assertEqual(check(MINIMAL + "budgets: {agrees: {undefined: %s}}\n" % ok)[0], [], ok)
 
     def test_only_the_default_halts_budget(self):
-        self.assertProblem(MINIMAL + "budgets: {halts: 8GiB}\n", "only 16GiB is supported")
+        for bad in ("8GiB", "32GiB", "17179869185"):
+            self.assertProblem(MINIMAL + "budgets: {halts: %s}\n" % bad, "only 16GiB is supported")
         for ok in ("16GiB", "16384MiB", str(16 << 30)):
-            problems = check(MINIMAL + "budgets: {halts: %s}\n" % ok)[0]
-            self.assertFalse(any("budgets" in problem for problem in problems), problems)
+            self.assertEqual(check(MINIMAL + "budgets: {halts: %s}\n" % ok)[0], [], ok)
 
     def test_proofs(self):
         self.assertProblem(MINIMAL + "proofs: {branch: x}\n", "unknown field 'branch'")
