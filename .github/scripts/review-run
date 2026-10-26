@@ -74,7 +74,7 @@ uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 # write it (review-held splits the findings with the same pattern). held_mention is anything that names one: a text
 # that holds it is never shown or published, in a comment, a failed try's message or Claude Code's standard error.
 held_marker='^[[:space:]>*+-]*<!--[[:space:]]*held[[:space:]_-]*finding[[:space:]]*-->[[:space:]]*$'
-held_mention='<!--[[:space:]]*held|held[^[:alnum:]]{0,3}finding'
+held_mention='<!--[[:space:]]*held|held[[:space:]_-]+finding'
 
 prompt="You are the agent of OSS Verify's enrollment check, in CI, on pull request #$PR of theorem-labs/oss-verify, \
 which adds or changes projects/$NAME/. Read review.md, at the root of this checkout: it says what you check and how \
@@ -351,7 +351,8 @@ done
 # A held finding comes out of the result first, before anything else is cut from it: from the first held_marker line
 # on, the result goes to held-finding.md, which nothing here prints and build.yaml stores for its hold job, which sends
 # it to the disclosure route (.github/scripts/review-held). If anything that names a held finding is still in the rest,
-# nothing is published, and the held part is kept: the review job stores it all the same.
+# nothing is published, and the rest is held too, as one more finding (a marker the cut did not know, say), so that the
+# review job stores it all the same and nothing of it is lost.
 rm -f "$in/held-finding.md"
 jq -r 'if .is_error then error("the review ended with an error") else .result end' "$in/claude.json" \
   | awk -v held="$in/held-finding.md" -v marker="$held_marker" \
@@ -360,6 +361,13 @@ if [ -s "$in/held-finding.md" ]; then
   echo "review-run: the review holds back a finding for private review; no log shows it"
 fi
 if grep -qiE "$held_mention" "$in/comment.raw"; then
+  {
+    echo "<!-- held finding -->"
+    echo "title: [held] $NAME/not known: a review whose comment named a held finding outside its marker"
+    echo "why held: the workflow could not tell the finding from the comment, so it holds the whole comment"
+    echo
+    cat "$in/comment.raw"
+  } >> "$in/held-finding.md"
   echo "review-run: the comment still names a held finding outside its own part, so nothing of it is published" >&2
   echo "the comment named a held finding outside its own part, so it is not posted" > "$in/failure.txt"
   exit 1

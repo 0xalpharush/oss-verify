@@ -5,30 +5,44 @@
 # Sends every finding stored in the held-findings bucket to the disclosure route, and deletes each object once its
 # findings have their issues. It reads every object of the bucket, not only this run's own: a run that a newer push
 # cancelled after its review job stored a finding has no hold job of its own, and the next run's hold job sends that
-# finding instead. build.yaml's hold job runs it.
+# finding instead. build.yaml's hold job runs it, one at a time in the repository (its concurrency group).
 #
 #   GCP_ACCESS_TOKEN=<token of ossv-app-comment> GH_TOKEN=<App token for HELD_FINDINGS_REPO> \
 #     READ_TOKEN=<token that can read this repository's issues> HELD_FINDINGS_REPO=<owner/name> REPO=<owner/name> \
-#     .github/scripts/review-hold <work directory>
+#     [CURRENT_OBJECT=<this run's object>] .github/scripts/review-hold <work directory>
 #
 # The bucket is theorem-agent-infra-oss-verify-held-findings (Theorem's infrastructure code): build.yaml's review job,
 # as ossv-ci, can only create objects in it, named held/<run id>/<32 random hex digits>; the hold job, as
-# ossv-app-comment, can read and list them. It reads at most 20 objects in one run, each of at most 1.1 MB, and only
-# their bytes, never their metadata. An object that is not sent stays for the next run, and the bucket deletes it after
-# 7 days. An object that is sent but cannot be deleted is read again by the next run, which finds its issues and sends
-# nothing twice (review-held). It prints object names and counts, never a finding or the repository.
+# ossv-app-comment, can list, read and delete them. It reads at most 20 objects in one run, this run's first, each of
+# at most 1.1 MB, and only their bytes, never their metadata. An object another hold job deleted meanwhile (404) is
+# gone, not a failure. It fails only when CURRENT_OBJECT, this run's own finding, is not sent: the comment job then
+# posts no review that says it was. Another run's object that is not sent is a warning, and stays for the next run;
+# review-held settles every object that cannot ever be split (it sends it whole), so none fails on every run. The
+# bucket deletes any object after 7 days. It prints object names and counts, never a finding or the repository.
 set -euo pipefail
 
 work=${1:?usage: review-hold <work directory>}
 api=https://storage.googleapis.com/storage/v1/b/theorem-agent-infra-oss-verify-held-findings/o
 most=20
 held="$(dirname "$0")/review-held"
+current=${CURRENT_OBJECT:-}
 # The token reaches curl through a pipe that the builtin printf writes, not an argument.
-gcs() { curl -q -sSf --max-time 60 -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") "$@"; }
+gcs() { curl -q -sS --max-time 60 -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") "$@"; }
 
-listing=$(gcs "$api?prefix=held%2F&fields=items(name,generation,size)" \
-  | jq -r '.items // [] | .[] | [.name, .generation, .size] | map(tostring) | @tsv')
+# This run's object first, so that the cap never leaves it for later.
+listing=$(gcs -f "$api?prefix=held%2F&fields=items(name,generation,size)" \
+  | CURRENT=$current jq -r '.items // [] | sort_by(.name != env.CURRENT) | .[]
+                            | [.name, .generation, .size] | map(tostring) | @tsv')
 n=0 failed=0
+# A failure: this run's own fails the job; another run's is a warning.
+fail() {
+  if [ "$1" = "$current" ]; then
+    echo "review-hold: could not send $1, this run's own finding; it stays for the next run" >&2
+    failed=1
+  else
+    echo "::warning::review-hold: could not send $1, an earlier run's finding; it stays for the next run"
+  fi
+}
 while IFS=$'\t' read -r name generation size; do
   [ -n "$name" ] || continue
   if ! [[ $name =~ ^held/[0-9]+/[0-9a-f]{32}$ && $generation =~ ^[0-9]{1,20}$ && $size =~ ^[0-9]{1,9}$ ]] \
@@ -38,22 +52,26 @@ while IFS=$'\t' read -r name generation size; do
   fi
   n=$((n + 1))
   if [ "$n" -gt "$most" ]; then
-    echo "review-hold: more than $most stored findings; the rest wait for the next run" >&2
-    failed=1
+    echo "::warning::review-hold: more than $most stored findings; the rest wait for the next run"
     break
   fi
   dir="$work/$n"
   mkdir -p "$dir"
-  if gcs --max-filesize 1100000 -o "$dir/object" "$api/${name//\//%2F}?alt=media&generation=$generation" \
-      && HELD_OBJECT=$name "$held" "$dir"; then
-    if gcs -X DELETE "$api/${name//\//%2F}?generation=$generation" > /dev/null; then
+  url="$api/${name//\//%2F}"
+  code=$(gcs --max-filesize 1100000 -o "$dir/object" -w '%{http_code}' "$url?alt=media&generation=$generation") \
+    || true
+  if [ "$code" = 404 ]; then
+    echo "review-hold: $name is gone: another hold job sent it"
+    continue
+  fi
+  if [ "$code" = 200 ] && HELD_OBJECT=$name "$held" "$dir"; then
+    if gcs -f -X DELETE "$url?generation=$generation" > /dev/null; then
       echo "review-hold: sent and deleted $name"
     else
       echo "review-hold: sent $name, but could not delete it: the next run finds its issues and sends nothing twice"
     fi
   else
-    echo "review-hold: could not send $name; it stays for the next run" >&2
-    failed=1
+    fail "$name"
   fi
 done <<< "$listing"
 echo "review-hold: read $n stored findings"

@@ -1658,13 +1658,14 @@ class ReviewRun(unittest.TestCase):
                 self.assertIn("named a held finding outside its own part", self.failure()[0])
                 # The held part is kept, for the review job to store all the same; only the comment is refused.
                 held = self.directory / "review" / "held-finding.md"
-                self.assertEqual(held.exists(), "\n<!-- held finding -->\n" in result)
+                # Nothing is lost: what the cut did not take is held too, for the review job to store.
+                self.assertIn("SECRETBUG", held.read_text())
                 self.assertNotIn("SECRETBUG", out.stdout + out.stderr)
 
     def test_the_opening_line_cut_runs_after_the_held_cut(self):
-        # "Here is the comment:" and a rule in the first six lines are cut, but only from what is left once the held
-        # part is out: a marker among those lines still holds back its finding.
-        result = "Here is the comment:\n<!-- held finding -->\ntitle: x\nparse_SECRETBUG\n---\nThanks.\n"
+        # A line that ends in a colon and a rule (---) in the first six lines are cut as an opening line. Run before the
+        # held cut, that cut would remove the marker and leave the finding's text in the comment.
+        result = "<!-- held finding -->\ntitle: crash in f:\n---\nparse_SECRETBUG at f.c:3\n"
         (self.directory / "stream").write_text(stream({"type": "result", "is_error": False, "result": result}))
         out = self.run_review()
         comment = self.directory / "review" / "comment.md"
@@ -1684,6 +1685,23 @@ class ReviewRun(unittest.TestCase):
                 self.assertEqual(out.returncode, 1, out.stderr)
                 self.assertNotIn("SECRETBUG", out.stdout + out.stderr + (self.failure()[1] or ""))
                 self.assertIn("not shown: it holds a finding held back for private review", out.stderr)
+
+    def test_claude_codes_standard_error_never_shows_a_held_finding(self):
+        (self.directory / "err.1").write_text("<!-- held finding --> parse_SECRETBUG\n")
+        (self.directory / "err.2").write_text("a held finding: parse_SECRETBUG\n")
+        self.fake_claude((API_401[0], 1), (API_401[0], 1))
+        out = self.run_review(**self.identity())
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertNotIn("SECRETBUG", out.stdout + out.stderr)
+        self.assertIn("standard error is not shown: it names a finding held back for private review", out.stderr)
+
+    def test_a_comment_that_says_held_in_another_sense_is_published(self):
+        result = "Thanks for libreac.\n\nThe determinism check held. Finding 2 of the build is fine."
+        (self.directory / "stream").write_text(stream({"type": "result", "is_error": False, "result": result}))
+        out = self.run_review()
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual((self.directory / "review" / "comment.md").read_text(), result + "\n")
+        self.assertFalse((self.directory / "review" / "held-finding.md").exists())
 
     def test_a_session_file_that_is_not_whole_gives_a_fresh_review(self):
         (self.session / "session").write_text(f"id=../../x\nhead={self.LAST}\ndir={self.FOLDER}\n")
@@ -2055,7 +2073,7 @@ class ReviewHeld(unittest.TestCase):
         run, calls, bodies = self.run_held(two, bodies_on_github=[
             f"review run: {self.RUN}\nheld finding key: {self.OBJECT} 1\n", f"held finding key: held/1/{'b' * 32} 2\n"])
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn("finding 1 was already sent", run.stdout)
+        self.assertIn(f"1 of {self.OBJECT} was already sent", run.stdout)
         self.assertEqual(len(bodies), 1)
         self.assertIn(f"held finding key: {self.OBJECT} 2\n", bodies[0])
         self.assertIn("second", bodies[0])
@@ -2065,22 +2083,31 @@ class ReviewHeld(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(len(bodies), 1)
 
-    def test_empty_markers_are_no_findings_and_more_than_ten_sends_none(self):
+    def test_every_object_is_settled_the_first_time(self):
+        # Empty markers are no findings; an object with none sends nothing and succeeds; more than 10 go as one issue.
         run, calls, bodies = self.run_held("<!-- held finding -->\n<!-- held finding -->\nproject: libreac\n")
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(len(bodies), 1)
-        eleven = "".join(f"<!-- held finding -->\ntitle: t{i}\nproject: libreac\n" for i in range(11))
+        run, _, bodies = self.run_held("<!-- held finding -->\n")
+        self.assertEqual((run.returncode, bodies), (0, []))
+        eleven = "".join(f"<!-- held finding -->\ntitle: t{i}\nproject: libreac SECRET{i}\n" for i in range(11))
         run, calls, bodies = self.run_held(eleven)
-        self.assertEqual(run.returncode, 1)
-        self.assertEqual(len(bodies), 0)
-        self.assertIn("more than 10 findings", run.stderr)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(bodies), 1)
+        self.assertIn(f"held finding key: {self.OBJECT} all\n", bodies[0])
+        self.assertIn("SECRET10", bodies[0])
+        # A body over what GitHub takes is cut, and says so.
+        run, _, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + "x" * 70000 + "\n")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertLess(len(bodies[0]), 60200)
+        self.assertIn("Cut at 60,000 bytes", bodies[0])
 
     def test_a_loose_marker_splits_findings_as_review_run_cuts_them(self):
         run, _, bodies = self.run_held("  - <!--Held Finding-->\nproject: a\n> <!-- held_finding -->\nproject: b\n")
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(len(bodies), 2)
 
-    def test_without_a_private_repository_or_a_finding_it_fails(self):
+    def test_without_a_private_repository_or_a_held_object_it_fails(self):
         run, calls, _ = self.run_held(ReviewRun.HELD, variable="")
         self.assertEqual(run.returncode, 2)
         self.assertEqual(calls, [])
@@ -2090,16 +2117,19 @@ class ReviewHeld(unittest.TestCase):
                 self.assertEqual(run.returncode, 2)
                 self.assertIn("names is not private, so nothing is sent", run.stderr)
                 self.assertFalse([c for c in calls if "-F" in c or "-f" in c])
-        run, _, _ = self.run_held("<!-- held finding -->\n")
-        self.assertEqual(run.returncode, 1)
+        self.OBJECT = "held/7/short"
+        run, calls, _ = self.run_held(ReviewRun.HELD)
+        self.assertEqual((run.returncode, calls), (2, []))
 
-    def test_an_object_that_does_not_start_with_the_workflows_lines_sends_nothing(self):
+    def test_an_object_that_does_not_start_with_the_workflows_lines_is_sent_whole(self):
         for header in ("", "oss-verify held finding v1\npr: 68\nhead: x\nproject: libreac\nrun: r\n---\n",
                        self.HEADER.replace("runs/7", "runs/8")):
             with self.subTest(header=header):
                 run, calls, bodies = self.run_held(ReviewRun.HELD, header=header)
-                self.assertEqual(run.returncode, 1)
-                self.assertEqual(bodies, [])
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(len(bodies), 1)
+                self.assertIn(f"held finding key: {self.OBJECT} raw\n", bodies[0])
+                self.assertIn("SECRETBUG", bodies[0])
 
     def test_the_finding_reaches_the_hold_job_only_through_the_private_bucket(self):
         jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())["jobs"]
@@ -2117,14 +2147,15 @@ class ReviewHeld(unittest.TestCase):
         self.assertNotIn("held-finding.md", json.dumps(jobs["review"]["outputs"]))
         # The finding is stored also when the review job fails after cutting it out (a comment that still names it).
         for name in ("Sign in to Google Cloud to store the held finding", "Store the held finding for the hold job"):
-            self.assertEqual(review[name]["if"], "${{ !cancelled() && steps.review.outputs.held == 'yes' }}")
+            self.assertEqual(review[name]["if"], "${{ always() && steps.review.outputs.held == 'yes' }}")
         self.assertLess(review["Review"]["run"].index("held=yes"), review["Review"]["run"].index("exit \"$code\""))
         hold = jobs["hold"]
         self.assertEqual(hold["environment"], {"name": "comment", "deployment": False})
         self.assertEqual(hold["needs"], ["project-builds", "review"])
         # Every run that reviewed anything sweeps the bucket, so a cancelled run's finding goes with the next run.
         self.assertEqual(hold["if"], "${{ !cancelled() && needs.review.result != 'skipped' }}")
-        self.assertNotIn("concurrency", hold)
+        # One sweep at a time in the repository, queued, never cancelled by another.
+        self.assertEqual(hold["concurrency"], {"group": "build-hold", "cancel-in-progress": False})
         steps = {s.get("name"): s for s in hold["steps"]}
         where = steps["Where the held findings go"]["run"]
         self.assertIn("secrets/oss-verify-held-findings-repo/versions/latest:access", where)
@@ -2134,6 +2165,7 @@ class ReviewHeld(unittest.TestCase):
                          ("${{ github.repository_owner }}", "${{ steps.where.outputs.name }}", "write"))
         send = steps["Send every stored held finding to the disclosure route"]
         self.assertEqual(send["run"], '.github/scripts/review-hold "$RUNNER_TEMP/held"')
+        self.assertEqual(send["env"]["CURRENT_OBJECT"], "${{ needs.review.outputs.held_object }}")
         # The comment job posts no review unless the review job succeeded and, if it held a finding, hold sent it.
         self.assertIn("hold", jobs["comment"]["needs"])
         self.assertEqual(jobs["comment"]["steps"][-1]["env"]["REVIEW"],
@@ -2145,15 +2177,16 @@ class ReviewHold(unittest.TestCase):
     """review-hold sends every stored finding in the bucket, its own run's and a cancelled run's, through a fake curl for
     the bucket and a stand-in review-held, and deletes each object once it is sent."""
 
-    def sweep(self, objects, held_fails=(), delete_fails=False):
-        """objects: name -> stored bytes. held_fails: names whose review-held fails."""
+    def sweep(self, objects, held_fails=(), delete_fails=False, current="", gone=(), sizes=None):
+        """objects: name -> stored bytes. held_fails: names whose review-held fails. current: this run's object. gone:
+        names another hold job deleted (404). sizes: name -> the size the listing reports."""
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy(ROOT / ".github" / "scripts" / "review-hold", scripts / "review-hold")
             (root / "store").mkdir()
-            listing = {"items": [{"name": n, "generation": str(100 + i), "size": str(len(b))}
+            listing = {"items": [{"name": n, "generation": str(100 + i), "size": str((sizes or {}).get(n, len(b)))}
                                  for i, (n, b) in enumerate(objects.items())]}
             (root / "listing.json").write_text(json.dumps(listing))
             for name, data in objects.items():
@@ -2173,11 +2206,14 @@ class ReviewHold(unittest.TestCase):
                 f"    sys.exit(22 if {delete_fails} else 0)\n"
                 "if '?prefix=' in url: print((root / 'listing.json').read_text()); sys.exit(0)\n"
                 "name = url.split('/o/')[1].split('?')[0]\n"
-                "pathlib.Path(a[a.index('-o') + 1]).write_bytes((root / 'store' / name).read_bytes())\n")
+                f"if urllib.parse.unquote(name) in {list(gone)!r}: print('404', end=''); sys.exit(0)\n"
+                "pathlib.Path(a[a.index('-o') + 1]).write_bytes((root / 'store' / name).read_bytes())\n"
+                "print('200', end='')\n")
             (bin / "curl").chmod(0o755)
             run = subprocess.run([str(scripts / "review-hold"), str(root / "work")],
                                  env={**os.environ, "PATH": f"{bin}:{os.environ['PATH']}",
-                                      "GCP_ACCESS_TOKEN": "gcp-not-a-secret"}, capture_output=True, text=True)
+                                      "GCP_ACCESS_TOKEN": "gcp-not-a-secret", "CURRENT_OBJECT": current},
+                                 capture_output=True, text=True)
             sent = (root / "sent").read_text().splitlines() if (root / "sent").exists() else []
             curl = (root / "curl").read_text()
             return run, sent, curl
@@ -2191,23 +2227,51 @@ class ReviewHold(unittest.TestCase):
         self.assertIn(f"sent and deleted {cancelled}", run.stdout)
         self.assertNotIn("gcp-not-a-secret", curl)
 
-    def test_an_object_that_is_not_sent_stays_and_the_job_fails(self):
-        good, bad = "held/9/" + "a" * 32, "held/8/" + "b" * 32
-        run, sent, curl = self.sweep({bad: b"x", good: b"x"}, held_fails=(bad,))
-        self.assertEqual(run.returncode, 1)
+    def test_only_this_runs_own_object_fails_the_job(self):
+        mine, other = "held/9/" + "a" * 32, "held/8/" + "b" * 32
+        # Another run's object that cannot be sent is a warning; this run's is a failure.
+        run, sent, curl = self.sweep({other: b"x", mine: b"x"}, held_fails=(other,), current=mine)
+        self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(curl.count("-X DELETE"), 1)
-        self.assertIn(f"could not send {bad}; it stays for the next run", run.stderr)
+        self.assertIn(f"::warning::review-hold: could not send {other}", run.stdout)
+        run, sent, curl = self.sweep({other: b"x", mine: b"x"}, held_fails=(mine,), current=mine)
+        self.assertEqual(run.returncode, 1)
+        self.assertIn(f"could not send {mine}, this run's own finding", run.stderr)
+
+    def test_this_runs_object_goes_first_and_the_cap_leaves_the_rest(self):
+        mine = "held/99/" + "f" * 32
+        objects = {f"held/{i}/" + "a" * 32: b"x" for i in range(25)}
+        objects[mine] = b"x"
+        run, sent, curl = self.sweep(objects, current=mine)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(sent[0].split()[0], mine)
+        self.assertEqual(len(sent), 20)
+        self.assertIn("more than 20 stored findings", run.stdout)
+
+    def test_an_object_another_hold_job_sent_is_gone_not_failed(self):
+        mine = "held/9/" + "a" * 32
+        run, sent, curl = self.sweep({mine: b"x"}, current=mine, gone=(mine,))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(sent, [])
+        self.assertIn(f"{mine} is gone: another hold job sent it", run.stdout)
 
     def test_a_sent_object_that_cannot_be_deleted_does_not_fail_the_job(self):
         run, sent, curl = self.sweep({"held/9/" + "a" * 32: b"x"}, delete_fails=True)
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn("could not delete it: the next run finds its issues and sends nothing twice", run.stdout)
 
-    def test_an_object_that_is_not_a_held_finding_is_skipped(self):
-        run, sent, curl = self.sweep({"held/9/short": b"x", "other/9/" + "a" * 32: b"x"})
+    def test_an_object_that_is_not_a_held_finding_or_too_large_is_skipped(self):
+        big = "held/9/" + "c" * 32
+        run, sent, curl = self.sweep({"held/9/short": b"x", "other/9/" + "a" * 32: b"x", big: b"x"},
+                                     sizes={big: 1100001})
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(sent, [])
-        self.assertEqual(run.stdout.count("skipped an object that is not a held finding"), 2)
+        self.assertEqual(run.stdout.count("skipped an object that is not a held finding"), 3)
+
+    def test_the_object_is_read_at_its_listed_generation(self):
+        run, sent, curl = self.sweep({"held/9/" + "a" * 32: b"x"})
+        self.assertIn("alt=media&generation=100", curl)
+        self.assertIn("--max-filesize 1100000", curl)
 
 
 class SinceLastReview(unittest.TestCase):
