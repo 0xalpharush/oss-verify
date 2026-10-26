@@ -639,6 +639,13 @@ class Analyse(unittest.TestCase):
         self.assertIn("the code ends before function 4", check_links.go_program(go_executable(entries={5: 0})))
         # A function's name must lie in funcnametab, also for a function with a line table, whose name is not read.
         self.assertIn("function 0 has no name", check_links.go_program(go_executable(name_offset=1 << 20)))
+        # The machine's target is the jump's sum with bit 0 cleared (jalr): a jump of 17 from 80 lands at 96.
+        self.assertTrue(check_links.linker_function(trampoline(17), 80, {96}))
+        self.assertFalse(check_links.linker_function(trampoline(17), 80, {97}))
+        # A function at an odd offset: Go starts every function at an even one, and a jump cannot land on it.
+        self.assertIn("starts at the odd offset 0x51",
+                      check_links.go_program(go_executable(functions=GO_FUNCTIONS + (
+                          ("p", b"\0", False), ("s", trampoline(47), False)))))
 
     def test_a_crafted_function_table_is_read_in_linear_time(self):
         # Thousands of functions with no line table, all named by one long run of bytes: each name is read for at

@@ -251,6 +251,10 @@ def go_functions(data, sections):
             return f"its .gopclntab's functions are not in address order ({where})"
         if pcln_at + func + GO_FUNC.size > len(tab):
             return f"its .gopclntab's function {i} runs past the end of the section"
+        if entry % 2:
+            # Go's compiler, assembler and linker start every function at an even offset (a multiple of 4: none of
+            # 3.5 million measured is not); a jump cannot land on an odd one (jalr clears bit 0).
+            return f"its .gopclntab's function {i} starts at the odd offset {entry:#x}"
         _, name_off, _, _, _, pcfile, pcln, _, cu = GO_FUNC.unpack_from(tab, pcln_at + func)
         at = names_at + name_off
         if name_off < 0 or at >= cu_at:
@@ -270,9 +274,9 @@ def go_functions(data, sections):
 # padding (cmd/link/internal/riscv64/asm.go genCallTramp); and the FIPS markers `go:textfipsstart` and
 # `go:textfipsend`, which are zero bytes. They are told by their bytes, not their names: the author of a .syso picks
 # its symbols' names, and a name can be longer than the bytes read of it (a trampoline to a generic function). A
-# trampoline must jump to the entry of a listed function, which the table judges on its own: one that jumps anywhere
-# else (into the middle of another stub, where its bytes decode as a compressed instruction of the author's choice)
-# is not the linker's.
+# trampoline must jump to the entry of a listed function, which the table judges on its own (every entry is even,
+# and the machine's target is the sum with bit 0 cleared): one that jumps anywhere else (into the middle of another
+# stub, where its bytes decode as a compressed instruction of the author's choice) is not the linker's.
 
 
 def linker_function(body, start, entries):
@@ -286,7 +290,7 @@ def linker_function(body, start, entries):
             return False
         high = (auipc & 0xFFFFF000) - ((auipc & 0x80000000) << 1)      # sign-extended U-immediate
         low = (jalr >> 20) - ((jalr & 0x80000000) >> 19)                 # sign-extended I-immediate
-        return start + high + low in entries
+        return (start + high + low) & ~1 in entries     # jalr clears bit 0 of the target
     return False
 
 
