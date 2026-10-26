@@ -380,8 +380,8 @@ def check_budgets(config):
         if halts is None:
             yield "budgets.halts must be a size: a positive number of bytes, or a number with KiB, MiB, GiB or TiB"
         elif halts != size_in_bytes(DEFAULT_BUDGETS["halts"]):   # the only halts budget the statements carry
-            yield ("budgets.halts: only 16GiB is supported; a project's own halts budget is not carried into the "
-                   "statements yet")
+            yield (f"budgets.halts: only {DEFAULT_BUDGETS['halts']} is supported; a project's own halts budget is not "
+                   "carried into the statements yet")
     agrees = budgets.get("agrees")
     if agrees is None:
         return
