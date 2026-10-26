@@ -87,12 +87,14 @@ name: "Build"
 #   issuer   fdis_01JvJ1UhZ8X2HHgcmXqjkJbc: https://token.actions.githubusercontent.com, keys by discovery
 #   main     fdrl_019restxFx3PhpLhbziQoQKf: subject_prefix "repo:theorem-labs@212152656/oss-verify@1429568498:*",
 #            audience "https://api.anthropic.com", claims {"repository_id": "1429568498",
-#            "ref": "refs/heads/main", "workflow": "Build"}
+#            "ref": "refs/heads/main", "workflow": "Build"}, and the condition
+#            claims.workflow_ref.startsWith("theorem-labs/oss-verify/.github/workflows/build.yaml@")
 #   target   the service account oss-verify-ci (svac_01WdHTLcJPEfiPttcuLK1hGT), with the developer role
 #   scope    workspace:inference, in the workspace Default+CVP, with a token lifetime of 3600 seconds
-# The numbers are the immutable ids of theorem-labs and of this repository. The rule does not check which workflow file
-# the run is: `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So it
-# gives a token to any workflow named "Build" that runs on main, from any event. The review and comment jobs of this
+# The numbers are the immutable ids of theorem-labs and of this repository. `workflow` is the workflow's display name
+# (its `name:`), not its file, and `ref` is the run's ref; the condition pins the file, so the rule gives a token only
+# to this file, build.yaml, on main, from any event (a fork's pull_request_target run carries this repository's
+# workflow_ref, so it signs in too). The review and comment jobs of this
 # file ask for an identity token; no other job of it does.
 # A review runs only on main: the Anthropic rule above admits refs/heads/main alone, so a run on another branch gets
 # no Anthropic token (and Google's provider, which also admits main alone, gives it no collector token). A change to
