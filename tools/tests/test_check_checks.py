@@ -593,6 +593,27 @@ class Screening(unittest.TestCase):
                     self.assertLess(len(line.strip()), len(bar), line)
             self.assertTrue(text.strip().endswith("REVIEW_SENTINEL"))
 
+    def test_a_marker_spanning_a_blank_line_is_removed_whole(self):
+        # GitHub ends an HTML comment at its -->, as the scan does, even across a blank line: rendering the case
+        # through GitHub's Markdown endpoint showed the text after the --> and hid the text inside the comment. So a
+        # marker that spans a blank line is one span to both, and the scan removes all of it.
+        review = "Thanks.\n\n<!-- oss-verify-meta v=1\n\nstatus=none -->\n\nAFTER_MARKER"
+        out = review_comment.neutralize(review)
+        self.assertNotIn("oss-verify-meta", out)
+        self.assertNotIn("status=none", out)
+        self.assertIn("Thanks.", out)
+        self.assertIn("AFTER_MARKER", out)
+        # A comment that does not name this script keeps every character, blank line and all.
+        plain = "Thanks.\n\n<!-- plain\n\nstill -->\n\nAFTER_PLAIN"
+        self.assertEqual(review_comment.neutralize(plain), plain)
+
+    def test_a_marker_inside_a_code_span_is_removed_too(self):
+        # The cost of the one transformation, stated: a marker inside Markdown code goes like any other. Code that
+        # does not name this script is untouched, and the comment's own text is what a review would show.
+        span = "See `<!-- oss-verify-meta v=1 status=none -->` here."
+        self.assertEqual(review_comment.neutralize(span), "See ` ` here.")
+        self.assertEqual(review_comment.neutralize("See `<!-- plain -->` here."), "See `<!-- plain -->` here.")
+
     def test_neutralize_removes_only_a_complete_marker_of_this_script(self):
         # An independent implementation of the rule, by regular expression rather than by scan, on inputs small enough
         # that its backtracking does not matter.
