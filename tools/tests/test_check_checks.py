@@ -35,6 +35,23 @@ LOADER = importlib.machinery.SourceFileLoader("review_comment", str(REVIEW_COMME
 SPEC = importlib.util.spec_from_loader("review_comment", LOADER)
 review_comment = importlib.util.module_from_spec(SPEC)
 LOADER.exec_module(review_comment)
+# Records of what answered a review, as .github/scripts/review-served writes them: the provider asked for answered every
+# turn; another provider answered.
+SERVED_OK = ("asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\nusage firstParty/claude-opus-5-5\n"
+             "firstParty/claude-opus-5-5 3\n")
+ANSWERED_OK = "firstParty/claude-opus-5-5 (3 turns)"
+SERVED_OTHER = ("asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\nusage bedrock/claude-opus-5-5\n"
+                "bedrock/claude-opus-5-5 2\n")
+
+
+def posted(review, head, served=SERVED_OK):
+    """review-comment's comment of `review` at `head`, with the record `served` of what answered it."""
+    with tempfile.TemporaryDirectory() as directory:
+        path = pathlib.Path(directory) / "served"
+        path.write_text(served)
+        return subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head", head,
+                               "--served", str(path)], input=review, capture_output=True, text=True,
+                              check=True).stdout
 
 class Shifts(unittest.TestCase):
     def test_a_patch_moves_the_lines_after_its_hunks(self):
@@ -153,20 +170,25 @@ class Mutants(unittest.TestCase):
 
 
 class ReviewComment(unittest.TestCase):
-    def comment(self, review, checks="### report\n", *extra):
+    def comment(self, review, checks="### report\n", *extra, served=SERVED_OK):
+        """The comment; served: the record of what answered the review, or None for no --served."""
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / "review.md").write_text(review)
             (directory / "checks.md").write_text(checks)
+            record = []
+            if served is not None:
+                (directory / "served").write_text(served)
+                record = ["--served", str(directory / "served")]
             return subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
-                                   "--checks", str(directory / "checks.md"), *extra],
+                                   "--checks", str(directory / "checks.md"), *record, *extra],
                                   capture_output=True, text=True, check=True).stdout
 
-    def kept(self, previous, head, run="https://github.com/theorem-labs/oss-verify/actions/runs/7"):
+    def kept(self, previous, head, run="https://github.com/theorem-labs/oss-verify/actions/runs/7", served=SERVED_OK):
         with tempfile.TemporaryDirectory() as directory:
             (pathlib.Path(directory) / "previous.md").write_text(previous)
             return self.comment("", "### new report\n", "--head", head, "--run", run,
-                                "--previous", str(pathlib.Path(directory) / "previous.md"))
+                                "--previous", str(pathlib.Path(directory) / "previous.md"), served=served)
 
     def meta(self, text):
         return review_comment.META.match(text.split("\n")[1])
@@ -184,6 +206,140 @@ class ReviewComment(unittest.TestCase):
         text = self.comment("")
         self.assertIn("did not run on this push: it wrote no comment", text)
         self.assertEqual(self.meta(text).group("status"), "none")
+
+    def test_a_review_names_what_answered_it_after_the_footer(self):
+        text = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
+        blocks = text.split("\n\n")
+        self.assertTrue(blocks[2].startswith("<sub>Claude wrote this review"))
+        self.assertEqual(blocks[3], f"<sub>Answered by `{ANSWERED_OK}`, as Claude Code reported it.</sub>")
+        self.assertEqual(self.meta(text).group("status"), "review")
+
+    def test_a_review_another_provider_answered_is_not_published(self):
+        for served in (SERVED_OTHER, SERVED_OK.replace("endpoint api.anthropic.com", "endpoint https:proxy.example"),
+                       SERVED_OK.replace("firstParty/claude-opus-5-5 3", "firstParty/gpt-5.6-terra 3"),
+                       SERVED_OK.replace("firstParty/claude-opus-5-5 3",
+                                         "firstParty/claude-opus-5-5 2\nfirstParty/claude-haiku-4-5-20251001 1")):
+            with self.subTest(served=served):
+                text = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40, served=served)
+                self.assertNotIn("1. Fix X.", text)
+                self.assertEqual(self.meta(text).group("status"), "none")
+                self.assertIn(f"The review of this push (`{'a' * 7}`) is not published. What answered it, as Claude "
+                              "Code reported it: `it asked for anthropic/claude-opus-5-5, ", text)
+
+    def test_another_provider_without_review_text_says_the_review_is_not_published(self):
+        # In CI a review that another provider or model answered reaches this script as no text at all.
+        text = self.comment("", "### report\n", "--head", "a" * 40, served=SERVED_OTHER)
+        self.assertIn(f"The review of this push (`{'a' * 7}`) is not published. What answered it, as Claude Code "
+                      "reported it: `it asked for anthropic/claude-opus-5-5, which the tool calls "
+                      "firstParty/claude-opus-5-5, but bedrock/claude-opus-5-5 (2 turns) answered", text)
+        self.assertNotIn("did not run", text)
+        text = self.comment("Here: ghs_" + "b" * 36, "### report\n", "--head", "a" * 40, served=SERVED_OTHER)
+        self.assertIn("is not published: its text held what looks like a credential", text)
+
+    def test_a_record_with_a_turn_that_shows_nothing_is_not_published_without_review_text(self):
+        # In CI, review-run exits 4 for a record check refuses as not attributable too, and passes on no text.
+        record = "asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\nnone/claude-opus-5-5 4\n"
+        text = self.comment("", "### report\n", "--head", "a" * 40, "--refused", served=record)
+        self.assertIn(f"The review of this push (`{'a' * 7}`) is not published. What answered it", text)
+        self.assertIn("none/claude-opus-5-5 (4 turns) answered", text)
+        # The same record of a review that timed out or was killed (no --refused): it did not finish, and says what
+        # answered until then.
+        text = self.comment("", "### report\n", "--head", "a" * 40, served=record)
+        self.assertIn("did not run on this push", text)
+        self.assertIn("none/claude-opus-5-5 (4 turns) answered", text)
+
+    def test_a_comment_with_no_review_does_not_say_claude_wrote_one(self):
+        for served in (SERVED_OTHER, SERVED_OK, None):
+            with self.subTest(served=served):
+                text = self.comment("", "### report\n", "--head", "a" * 40, served=served)
+                self.assertEqual(self.meta(text).group("status"), "none")
+                self.assertNotIn("Claude wrote this review", text)
+                self.assertIn(review_comment.NO_REVIEW_FOOTER, text)
+
+    def test_a_review_posted_before_the_record_existed_is_not_posted_again_as_the_review(self):
+        # A comment of this layout, of this same commit, with no "Answered by": a rerun keeps it as not current, with
+        # a notice that names what answered this push's review, never as the review.
+        # Its text may even start with a forged "Answered by" line (before the gate, the model could write one), with
+        # or without a checks block, in either older layout: only metadata version 3 makes a review recorded.
+        answered = review_comment.ANSWERED.format(ANSWERED_OK)
+        footer = review_comment.FOOTER.format(of='It is the review of `aaaaaaa`. ')
+        meta = review_comment.meta_line('a' * 40, 'review', 2)
+        old = f"{review_comment.MARKER}\n{meta}\n\n{review_comment.HEADING}\n\n{footer}\n\nThanks.\n\n1. Fix X.\n"
+        forged = f"{review_comment.MARKER}\n{meta}\n\n{review_comment.HEADING}\n\n{footer}\n\n{answered}\n\n1. Fix X.\n"
+        forged_v1 = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review', 1)}\n\n"
+                     f"{review_comment.HEADING}\n\n{answered}\n\n1. Fix X.\n\n{footer}\n")
+        for previous in (old, old.replace("status=review", "status=stale"), forged, forged_v1):
+            with self.subTest(previous=previous):
+                text = self.kept(previous, "a" * 40, served=SERVED_OTHER)
+                self.assertEqual(self.meta(text).group("status"), "stale")
+                self.assertEqual(self.meta(text).group("version"), "2")
+                self.assertIn("1. Fix X.", text)
+                self.assertIn("What answered that review was not recorded.", text)
+                self.assertIn("but bedrock/claude-opus-5-5 (2 turns) answered", text)
+                # Kept again, it stays unrecorded.
+                self.assertEqual(self.meta(self.kept(text, "a" * 40)).group("status"), "stale")
+        # A review this script wrote with its record is recorded, kept as posted, and written as version 3.
+        first = self.comment("Thanks.\n", "### report\n", "--head", "a" * 40)
+        self.assertEqual(self.meta(first).group("version"), "3")
+        self.assertEqual(self.kept(first, "a" * 40), first)
+
+    def test_what_review_served_prints_is_shown_only_in_its_own_shape(self):
+        # review-comment shows the check's line in the comment: a line of another shape, one that holds what looks
+        # like a credential, or an exit status check never gives, is not shown and is not attributable.
+        with tempfile.TemporaryDirectory() as directory:
+            stand_in = pathlib.Path(directory) / "review-served"
+            real = review_comment.SERVED
+            self.addCleanup(setattr, review_comment, "SERVED", real)
+            review_comment.SERVED = stand_in
+            for line, status in (("firstParty/claude-opus-5-5 (3 turns)", 0), ("a `backtick`", 0),
+                                 ("ghs_" + "a" * 36, 0), ("firstParty/claude-opus-5-5 (3 turns)", 2)):
+                with self.subTest(line=line, status=status):
+                    stand_in.write_text(f"import sys\nprint({line!r})\nsys.exit({status})\n")
+                    code, shown = review_comment.served("asked x\n")
+                    if (line, status) == ("firstParty/claude-opus-5-5 (3 turns)", 0):
+                        self.assertEqual((code, shown), (0, line))
+                    else:
+                        self.assertEqual(code, 3)
+                        self.assertIn("could not check the record", shown)
+
+    def test_a_review_with_no_record_or_one_that_shows_nothing_is_not_published(self):
+        for served, why in ((None, "nothing recorded which provider answered the review: it is not attributable"),
+                            ("", "nothing recorded which provider answered the review: it is not attributable"),
+                            ("asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\n",
+                             "no turn named the provider and model that answered it"),
+                            ("asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\nnone/claude-opus-5-5 2\n",
+                             "none/claude-opus-5-5 (2 turns) answered, where none is"),
+                            ("asked anthropic/claude-opus-5-5\nfirstParty/claude-opus-5-5 \u00b2\n",
+                             "a line of the record of what answered the review is not one")):
+            with self.subTest(served=served):
+                text = self.comment("Thanks.\n\n1. Fix X.\n", served=served)
+                self.assertNotIn("1. Fix X.", text)
+                self.assertIn("is not published. What answered it, as Claude Code reported it: `", text)
+                self.assertIn(why, text)
+
+    def test_no_review_names_what_answered_or_that_nothing_did(self):
+        text = self.comment("", "### report\n", "--head", "a" * 40)
+        self.assertIn(f"did not run on this push (`{'a' * 7}`): it wrote no comment. What answered it, as Claude Code "
+                      f"reported it: `{ANSWERED_OK}`.", text)
+        text = self.comment("", served=None)
+        self.assertIn("What answered it, as Claude Code reported it: `nothing recorded which provider answered the "
+                      "review: it is not attributable`.", text)
+
+    def test_a_kept_review_says_what_answered_the_push_that_had_none(self):
+        first = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
+        second = self.kept(first, "b" * 40, served=SERVED_OTHER)
+        notice = second.split("\n\n")[2]
+        self.assertTrue(notice.startswith("**Not current:**"))
+        self.assertIn("What answered it, as Claude Code reported it: `it asked for anthropic/claude-opus-5-5, which "
+                      "the tool calls firstParty/claude-opus-5-5, but bedrock/claude-opus-5-5 (2 turns) answered",
+                      notice)
+        self.assertTrue(notice.endswith("A person at Theorem reviews the enrollment."))
+        # The kept review keeps what answered it; a second keep writes the notice afresh, and nothing stacks.
+        self.assertIn(f"<sub>Answered by `{ANSWERED_OK}`, as Claude Code reported it.</sub>", second)
+        third = self.kept(second, "c" * 40)
+        self.assertEqual(third.count("What answered it"), 1)
+        self.assertEqual(third.count("<sub>Answered by"), 1)
+        self.assertIn(f"What answered it, as Claude Code reported it: `{ANSWERED_OK}`.", third)
 
     def test_a_review_with_details_is_posted_whole(self):
         text = self.comment("Thanks.\n\n<details><summary>x</summary>y</details>\n\n1. Fix X.\n\n2. Fix Y.\n")
@@ -259,12 +415,15 @@ class ReviewComment(unittest.TestCase):
         # still current, so it is not marked otherwise.
         first = self.comment("Thanks.\n\n1. Fix X.\n", "### report\n", "--head", "a" * 40)
         self.assertEqual(self.kept(first, "a" * 40), first)
-        # A comment of main's renderer (review first, footer last) is sent back as it was, not written again.
+        # A comment of an older renderer (review first, footer last) names nothing that answered it: it is kept as
+        # not current, with its text, and not sent back as the review.
         footer = review_comment.FOOTER.format(of=f"It is the review of `{'a' * 7}`. ")
         base = (f"{review_comment.MARKER}\n<!-- oss-verify-meta v=1 head={'a' * 40} status=review -->\n\n"
                 f"{review_comment.HEADING}\n\nThanks.\n\n{review_comment.CHECKS_SUMMARY}\n\n### report\n\n"
                 f"</details>\n\n{footer}\n")
-        self.assertEqual(self.kept(base, "a" * 40), base)
+        kept = self.kept(base, "a" * 40)
+        self.assertEqual(self.meta(kept).group("status"), "stale")
+        self.assertIn("\n\nThanks.\n\n", kept)
         # A review kept as not current, and the pull request back at its commit: it is current again, once.
         again = self.kept(self.kept(first, "b" * 40), "a" * 40)
         self.assertEqual(self.meta(again).group("status"), "review")
@@ -516,7 +675,7 @@ class PostingStep(unittest.TestCase):
     """build.yaml's own "Post the comment" step, run with a fake gh: what it sends GitHub."""
     OLD = "Thanks.\n\n1. Fix X.\n"
 
-    def post(self, review, existing=True, previous=None, head="b" * 40, pr_head=None):
+    def post(self, review, existing=True, previous=None, head="b" * 40, pr_head=None, served=SERVED_OK, refused=""):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
         name = "Post the comment, or update the one already there"
         matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
@@ -528,8 +687,7 @@ class PostingStep(unittest.TestCase):
             bin = directory / "bin"
             bin.mkdir()
             if previous is None:
-                previous = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head",
-                                           "a" * 40], input=self.OLD, capture_output=True, text=True, check=True).stdout
+                previous = posted(self.OLD, "a" * 40)
             (directory / "existing.md").write_text(previous)
             # Like the real gh: --jq prints the body and then a newline, and the pull request's head is pr_head.
             (bin / "gh").write_text(
@@ -546,6 +704,7 @@ class PostingStep(unittest.TestCase):
             (directory / "temp").mkdir()
             environment = {**os.environ, "PATH": f"{bin}:{os.environ['PATH']}", "GH_TOKEN": "x", "REPO": "o/r",
                            "PR": "8", "REVIEW": review, "CHECKS": "### new report\n", "HEAD_SHA": head,
+                           "SERVED": served, "REFUSED": refused,
                            "RUN_URL": "https://github.com/o/r/actions/runs/7", "RUNNER_TEMP": str(directory / "temp"),
                            "GITHUB_OUTPUT": str(directory / "output")}
             run = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, env=environment, capture_output=True,
@@ -582,11 +741,27 @@ class PostingStep(unittest.TestCase):
     def test_a_rerun_for_the_same_commit_sends_the_comment_as_it_is(self):
         # A rerun, or an edit of the pull request, that writes no review for the commit already reviewed: the body
         # sent is the body stored, rerun after rerun, though gh adds a newline to what it fetches.
-        stored = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", "/dev/stdin", "--head", "b" * 40],
-                                input=self.OLD, capture_output=True, text=True, check=True).stdout
+        stored = posted(self.OLD, "b" * 40)
         once = self.post("", previous=stored)
         self.assertEqual(once, stored)
         self.assertEqual(self.post("", previous=once), stored)
+
+    def test_a_review_another_provider_answered_is_posted_as_not_published(self):
+        # The review job passes on no review text when another provider or model answered, only the record.
+        body = self.post("", existing=False, served=SERVED_OTHER)
+        self.assertEqual(self.status(body), "none")
+        self.assertIn("is not published ([the run](https://github.com/o/r/actions/runs/7)). What answered it, as "
+                      "Claude Code reported it: `it asked for", body)
+        kept = self.post("", served=SERVED_OTHER)
+        self.assertEqual(self.status(kept), "stale")
+        self.assertIn("but bedrock/claude-opus-5-5 (2 turns) answered", kept)
+
+    def test_a_refused_review_is_posted_as_not_published(self):
+        record = "asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\nnone/claude-opus-5-5 4\n"
+        body = self.post("", existing=False, served=record, refused="true")
+        self.assertIn("is not published ([the run]", body)
+        body = self.post("", existing=False, served=record)
+        self.assertIn("did not run on this push", body)
 
     def test_without_a_posted_comment_it_posts_one(self):
         self.assertEqual(self.status(self.post(" \n", existing=False)), "none")
@@ -613,7 +788,8 @@ class PostingStep(unittest.TestCase):
         # The pull request goes back to the reviewed commit between pushes whose reviews do not finish: the review is
         # stale, current, stale again. Where the first keep cut it is carried each time, so it is never cut again.
         big = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
-               f"{review_comment.HEADING}\n\n" + "R" * 64_800 + "TAIL_END\n")
+               f"{review_comment.HEADING}\n\n{review_comment.ANSWERED.format(ANSWERED_OK)}\n\n"
+               + "R" * 64_700 + "TAIL_END\n")
         body, kept = big, []
         for head in "baacadab":
             body = self.post("", previous=body, head=head * 40)
@@ -659,8 +835,10 @@ class Screening(unittest.TestCase):
             directory = pathlib.Path(directory)
             (directory / "review.md").write_text(review)
             (directory / "checks.md").write_text(checks)
+            (directory / "served").write_text(SERVED_OK)
             return subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
-                                   "--checks", str(directory / "checks.md"), "--head", "a" * 40, *extra],
+                                   "--checks", str(directory / "checks.md"), "--head", "a" * 40,
+                                   "--served", str(directory / "served"), *extra],
                                   capture_output=True, text=True, check=True).stdout
 
     def generated_before_the_review(self, text):
@@ -894,6 +1072,7 @@ class ReviewRun(unittest.TestCase):
             real = shutil.which(command)
             (bin / command).write_text(f"#!/bin/bash\nprintf '%s\\0' {command} \"$@\" >> {self.directory}/argv\n"
                                        f"exec {real} \"$@\"\n")
+        (self.directory / "stream").write_text(stream({"type": "result", "is_error": False, "result": "Thanks."}))
         # claude also keeps its conversation as the real one does, in $HOME/.claude/projects/<folder>/<id>.jsonl, and
         # refuses to resume one that is not there, or any one at all when the file fail-resume exists.
         (bin / "claude").write_text(
@@ -912,7 +1091,7 @@ class ReviewRun(unittest.TestCase):
             f'  {{ echo "{{\\"resumed\\": \\"$resume\\"}}"; cat {self.directory}/said 2> /dev/null; }} \\\n'
             f'    > "$HOME/.claude/projects/{self.FOLDER}/$id.jsonl"\n'
             'fi\n'
-            'echo \'{"is_error": false, "result": "Thanks."}\'\n')
+            f"cat {self.directory}/stream\n")
         for script in bin.iterdir():
             script.chmod(0o755)
         (self.directory / "review").mkdir()
@@ -922,10 +1101,11 @@ class ReviewRun(unittest.TestCase):
 
     def fake_claude(self, *calls, wait=0):
         """A claude that, on its call N, appends the identity token file's text to `tokens` (and again after `wait`
-        seconds, as Claude Code reads it again for each exchange), then prints calls[N-1][0] as its result and exits
-        with calls[N-1][1]."""
-        for n, (result, status) in enumerate(calls, 1):
-            (self.directory / f"result.{n}").write_text(json.dumps(result))
+        seconds, as Claude Code reads it again for each exchange), then prints the stream of a review whose turn
+        calls[N-1][2] (by default claude-opus-5-5) answered and whose result is calls[N-1][0], and exits with
+        calls[N-1][1]."""
+        for n, (result, status, *model) in enumerate(calls, 1):
+            (self.directory / f"result.{n}").write_text(stream(result, *model))
             (self.directory / f"status.{n}").write_text(str(status))
         (self.directory / "bin" / "claude").write_text(
             "#!/bin/bash\n"
@@ -956,7 +1136,7 @@ class ReviewRun(unittest.TestCase):
     def run_review(self, **environment):
         base = {"PATH": f"{self.directory / 'bin'}:{os.environ['PATH']}", "HOME": str(self.directory / "home"),
                 "PR": "8", "NAME": "libreac", "GH_TOKEN": "ghs_notasecretnotasecret",
-                "ANTHROPIC_API_KEY": "sk-ant-oat01-notasecret", "CLAUDE_CODE_EFFORT": "x",
+                "ANTHROPIC_API_KEY": "sk-ant-oat01-notasecret", "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "1000",
                 "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://elsewhere", "A.B": "dotted-not-a-secret",
                 "BASH_FUNC_f%%": "() { echo dotted-not-a-secret; }"}
         return subprocess.run([str(ROOT / ".github" / "scripts" / "review-run"), "review"], cwd=self.directory,
@@ -994,7 +1174,7 @@ class ReviewRun(unittest.TestCase):
             self.assertNotIn(secret, argv)
             self.assertNotIn(secret, out.stdout + out.stderr)
         child = self.child()
-        self.assertEqual(set(child), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_EFFORT",
+        self.assertEqual(set(child), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
                                       "ANTHROPIC_IDENTITY_TOKEN_FILE", "CLAUDE_CODE_ENABLE_TELEMETRY",
                                       "OTEL_LOGS_EXPORTER", "OTEL_METRICS_EXPORTER", "OTEL_EXPORTER_OTLP_PROTOCOL",
                                       "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS",
@@ -1052,7 +1232,8 @@ class ReviewRun(unittest.TestCase):
     def test_without_the_collector_nothing_is_exported(self):
         out = self.run_review()
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(set(self.child()), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_EFFORT"})
+        self.assertEqual(set(self.child()), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY",
+                                             "CLAUDE_CODE_MAX_OUTPUT_TOKENS"})
         self.assertEqual(self.headers, [])
 
     def test_a_first_review_is_fresh_and_keeps_its_conversation(self):
@@ -1209,18 +1390,47 @@ class ReviewRun(unittest.TestCase):
         self.assertIn("plain stderr", out.stderr)
         self.assertIn("Token exchange failed", self.failure()[1])
 
+    def test_a_model_or_provider_review_served_cannot_check_starts_no_review(self):
+        for variables in ({"REVIEW_MODEL": "a model"}, {"REVIEW_PROVIDER": "openai"}):
+            with self.subTest(variables=variables):
+                out = self.run_review(**variables)
+                self.assertEqual(out.returncode, 2, out.stderr)
+                self.assertIn("REVIEW_PROVIDER/REVIEW_MODEL is not one review-served can check", out.stderr)
+                self.assertFalse((self.directory / "environ").exists(), "Claude Code ran")
+
+    def test_a_credential_that_nul_bytes_split_is_not_shown(self):
+        # A regression guard: the scan reads standard error without its NUL bytes, which a log can drop, so a token
+        # that one splits is found, and nothing of the file is shown.
+        split = b"sk-ant-oat0\x001" + b"a" * 20
+        for n in (1, 2):
+            (self.directory / f"err.{n}").write_bytes(b"stderr " + split + b"\n")
+        out = self.run_review_twice(API_401, API_401)
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertIn("standard error is not shown: it holds what looks like a credential", out.stderr)
+        self.assertNotIn("aaaaaaaaaa", out.stderr)
+        # And when the review is not published: the same scan.
+        (self.directory / "err.1").write_bytes(b"stderr " + split + b"\n")
+        out = self.run_review_twice((REVIEW_OK, 0, "gpt-5.6-terra"))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertIn("standard error is not shown: it holds what looks like a credential", out.stderr)
+        self.assertNotIn("aaaaaaaaaa", out.stderr)
+
     def test_the_file_tools_may_not_read_the_identity_token_or_runner_temp(self):
-        # --restricted keeps Read, Glob and Grep in the checkout; the deny rule names the two directories too. Claude
-        # Code reads `//` as the start of an absolute path in a rule (a `/` rule is relative to the project).
+        # --restricted keeps Read, Glob and Grep in the checkout; the deny rules name the two directories too, for each
+        # of the three tools, so that the rule does not rest on Claude Code applying a Read rule to Grep and Glob.
+        # Claude Code reads `//` as the start of an absolute path in a rule (a `/` rule is relative to the project).
         temp = self.directory / "temp"
         self.fake_claude((REVIEW_OK, 0))
         out = self.run_review(**self.identity(RUNNER_TEMP=str(temp)))
         self.assertEqual(out.returncode, 0, out.stderr)
         argv = (self.directory / "argv").read_text().split("\0")
-        at = argv.index("--disallowedTools")
-        self.assertEqual(argv[at + 1:at + 3], [f"Read(/{temp}/**)", f"Read(/{self.directory / 'oidc'}/**)"])
-        self.assertTrue(argv[at + 1].startswith("Read(//"))
-        self.assertEqual(argv[at + 3], "--model")
+        claude = argv[len(argv) - 1 - argv[::-1].index("claude"):]
+        at = claude.index("--disallowedTools")
+        rules = [f"{tool}(/{directory}/**)" for directory in (temp, self.directory / "oidc")
+                 for tool in ("Read", "Grep", "Glob")]
+        self.assertEqual(claude[at + 1:at + 7], rules)
+        self.assertTrue(all(rule.startswith(("Read(//", "Grep(//", "Glob(//")) for rule in claude[at + 1:at + 7]))
+        self.assertEqual(claude[at + 7], "--model")
         # A person's own run has neither directory, and no rule.
         for name in ("argv", "calls"):
             (self.directory / name).unlink()
@@ -1229,11 +1439,130 @@ class ReviewRun(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertNotIn("--disallowedTools", (self.directory / "argv").read_text())
 
+    def test_the_review_names_what_answered_it(self):
+        out = self.run_review()
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("asked for anthropic/claude-opus-5-5, answered by firstParty/claude-opus-5-5 (1 turn),",
+                      out.stdout)
+        self.assertEqual((self.directory / "review" / "served").read_text(),
+                         "asked anthropic/claude-opus-5-5\nendpoint api.anthropic.com\n"
+                         "usage firstParty/claude-opus-5-5\nfirstParty/claude-opus-5-5 1\n")
+        argv = (self.directory / "argv").read_text().split("\0")
+        claude = argv[len(argv) - 1 - argv[::-1].index("claude"):]
+        self.assertEqual(claude[claude.index("--output-format") + 1], "stream-json")
+        self.assertIn("--verbose", claude)
+
+    def test_a_review_another_model_answered_is_not_published_or_tried_again(self):
+        out = self.run_review_twice((REVIEW_OK, 0, "gpt-5.6-terra"), (REVIEW_OK, 0))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertEqual((self.directory / "calls").read_text().strip(), "1")
+        self.assertFalse((self.directory / "review" / "comment.md").exists())
+        self.assertEqual(self.failure()[0], "the review is not published: it asked for anthropic/claude-opus-5-5, "
+                                            "which the tool calls firstParty/claude-opus-5-5, but none/gpt-5.6-terra "
+                                            "(1 turn) answered, and the tool's usage names nothing\n")
+        self.assertIn("stopped Claude Code: turn 1 was answered by gpt-5.6-terra", out.stderr)
+
+    def test_a_review_another_provider_answered_is_not_published(self):
+        bedrock = {**REVIEW_OK, "modelUsage": {"claude-opus-5-5": {"provider": "bedrock",
+                                                                   "canonicalModel": "claude-opus-5-5"}}}
+        out = self.run_review_twice((bedrock, 0), (REVIEW_OK, 0))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertIn("but bedrock/claude-opus-5-5 (1 turn) answered", self.failure()[0])
+        self.assertFalse((self.directory / "review" / "comment.md").exists())
+
+    def test_a_review_that_names_no_provider_is_not_published(self):
+        out = self.run_review_twice(({**REVIEW_OK, "modelUsage": {}}, 0), (REVIEW_OK, 0))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertIn("it is not attributable", self.failure()[0])
+
+    def test_a_message_named_as_claude_code_s_own_but_not_marked_so_is_another_model(self):
+        # "<synthetic>" is the model Claude Code gives a message it writes itself, which it marks
+        # is_api_error_message; from a response, the name alone is another model's.
+        out = self.run_review_twice((REVIEW_OK, 0, "<synthetic>"), (REVIEW_OK, 0))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertIn("but none/?synthetic? (1 turn) answered", self.failure()[0])
+
+    def test_a_try_that_ends_well_without_running_review_served_is_not_published(self):
+        # A launcher that ends at once (Python's os.execve on Windows starts a new process and returns) leaves the
+        # records of an earlier run in place: each try removes them first, and a try that ended well with no record
+        # that passes is refused.
+        review = self.directory / "review"
+        (review / "served").write_text(SERVED_OK)
+        (review / "claude.json").write_text(json.dumps(REVIEW_OK))
+        # It reads the environment the launcher is given, as the real one does, then ends without starting anything.
+        (self.directory / "bin" / "timeout").write_text("#!/bin/sh\ncat > /dev/null\nexit 0\n")
+        (self.directory / "bin" / "timeout").chmod(0o755)
+        out = self.run_review()
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertFalse((review / "comment.md").exists())
+        self.assertIn("nothing recorded which provider answered the review", self.failure()[0])
+
+    def test_a_resumed_review_another_model_answered_is_not_published_or_tried_fresh(self):
+        # The first try resumes the last conversation; review-served refuses it, so there is no fresh second try, and
+        # the last review's conversation is not replaced.
+        self.last_review()
+        self.fake_claude((REVIEW_OK, 0, "gpt-5.6-terra"), (REVIEW_OK, 0))
+        out = self.run_review(**self.resume(**self.identity()))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertIn(f"resuming the conversation {self.OLD}", out.stdout)
+        self.assertEqual((self.directory / "calls").read_text().strip(), "1")
+        self.assertIn("but none/gpt-5.6-terra (1 turn) answered", self.failure()[0])
+        self.assertEqual((self.session / "session").read_text(),
+                         f"id={self.OLD}\nhead={self.LAST}\ndir={self.FOLDER}\n")
+        self.assertFalse((self.directory / "review" / "comment.md").exists())
+
+    def test_another_provider_for_a_run_that_also_failed_is_not_published_or_tried_again(self):
+        bedrock = {**API_401[0], "modelUsage": {"claude-opus-5-5": {"provider": "bedrock",
+                                                                    "canonicalModel": "claude-opus-5-5"}}}
+        out = self.run_review_twice((bedrock, 1), (REVIEW_OK, 0))
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertEqual((self.directory / "calls").read_text().strip(), "1")
+        self.assertIn("but bedrock/claude-opus-5-5 (1 turn) answered", self.failure()[0])
+
+    def test_an_endpoint_other_than_anthropic_s_api_starts_no_review(self):
+        # Claude Code calls its provider firstParty also when ANTHROPIC_BASE_URL names a proxy, which could answer
+        # with any model under any name.
+        for variables, where in (({"ANTHROPIC_BASE_URL": "https://proxy.example"}, "https:proxy.example"),
+                                 ({"CLAUDE_CODE_USE_BEDROCK": "1"}, "CLAUDE_CODE_USE_BEDROCK")):
+            with self.subTest(variables=variables):
+                (self.directory / "environ").unlink(missing_ok=True)
+                out = self.run_review(**variables)
+                self.assertEqual(out.returncode, 4, out.stderr)
+                self.assertFalse((self.directory / "environ").exists(), "Claude Code ran")
+                self.assertIn(f"the tool's environment or settings set {where}, which", self.failure()[0])
+        (self.directory / "home" / ".claude").mkdir()
+        (self.directory / "home" / ".claude" / "settings.json").write_text(
+            json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://proxy.example"}}))
+        out = self.run_review()
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertFalse((self.directory / "environ").exists(), "Claude Code ran")
+
+    def test_the_review_step_shows_the_line_of_a_review_that_is_not_published(self):
+        found = re.search(r'grep -m1 -xE "([^"]+)" \\\n\s*\.review/failure\.txt', review_step()["run"])
+        pattern = re.compile(found.group(1))
+        for calls in (((REVIEW_OK, 0, "gpt-5.6-terra"),), (({**REVIEW_OK, "modelUsage": {}}, 0),),
+                      ((REVIEW_OK, 0, "x" * 300),)):
+            with self.subTest(calls=calls):
+                self.assertEqual(self.run_review_twice(*calls).returncode, 4)
+                why = self.failure()[0]
+                self.assertTrue(pattern.fullmatch(why.rstrip("\n")), why)
+
     def run_review_twice(self, *calls):
         for name in ("calls", "tokens"):
             (self.directory / name).unlink(missing_ok=True)
         self.fake_claude(*calls)
         return self.run_review(**self.identity())
+
+
+def stream(result, model="claude-opus-5-5"):
+    """What Claude Code prints with --output-format stream-json --verbose for a review that ends in `result`: a turn
+    that `model` answered, then the result, whose modelUsage names the provider unless `result` has its own. For a
+    result that is not an object (a stand-in for no result), nothing: Claude Code writes only JSON objects."""
+    if not isinstance(result, dict):
+        return ""
+    turn = {"type": "assistant", "message": {"id": "msg_01", "model": model, "role": "assistant", "content": []}}
+    usage = {"claude-opus-5-5": {"provider": "firstParty", "canonicalModel": "claude-opus-5-5"}}
+    return json.dumps(turn) + "\n" + json.dumps({"type": "result", "modelUsage": usage, **result}) + "\n"
 
 
 def review_step():
@@ -1331,6 +1660,26 @@ class ReviewSession(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         files = sorted(p.name for p in target.iterdir()) if target.exists() else []
         return out.stdout, files, target
+
+    def test_a_conversation_sealed_before_the_record_existed_does_not_open(self):
+        # review-session v1 sealed conversations of reviews whose model nothing recorded: they do not open under v2.
+        old = self.directory / "old-scripts"
+        old.mkdir()
+        shutil.copy(REVIEW_COMMENT, old / "review-comment")
+        script = old / "review-session"
+        script.write_text(self.SCRIPT.read_text().replace('VERSION = "oss-verify enroll-review conversation v2"',
+                                                          'VERSION = "oss-verify enroll-review conversation v1"'))
+        script.chmod(0o755)
+        sealed = self.directory / "sealed-v1"
+        base = {"PATH": f"{self.directory / 'bin'}:{os.environ['PATH']}", "REPO": self.REPO, "PR": "8",
+                "NAME": "libreac", "REVIEW_CONVERSATION_KEY": self.KEY, "GH_TOKEN": self.TOKEN}
+        out = subprocess.run([str(script), "seal", str(self.session), str(sealed)], env=base, capture_output=True,
+                             text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.upload(sealed, 41)
+        stdout, files, _ = self.restored()
+        self.assertIn("skipped the artifact 100 of run 41: it does not open with the key", stdout)
+        self.assertEqual(files, [])
 
     def test_a_sealed_conversation_is_restored_whole_and_holds_no_plain_text(self):
         sealed = self.seal()
@@ -1430,6 +1779,19 @@ class ReviewSession(unittest.TestCase):
                 self.assertIn(said, stdout)
                 self.assertEqual(files, [])
 
+    def test_a_review_whose_comment_names_nothing_that_answered_it_is_not_resumed(self):
+        # A comment written before review-served (metadata version 1 or 2) names no model: its conversation could be
+        # another model's, so the next review starts fresh.
+        self.upload(self.seal(), 41)
+        for version in (1, 2):
+            with self.subTest(version=version):
+                meta = review_comment.meta_line(self.HEAD, "review", version)
+                body = f"{review_comment.MARKER}\n{meta}\n\nThanks.\n"
+                self.page(self.COMMENTS, json.dumps([{"user": {"login": "oss-verify[bot]"}, "body": body}]).encode())
+                stdout, files, _ = self.restored()
+                self.assertIn("names nothing that answered its review: a fresh review", stdout)
+                self.assertEqual(files, [])
+
     def test_the_comment_is_read_as_review_comment_reads_it(self):
         # A comment edited in the web page can come back with CRLF line ends; review-comment still reads it as a
         # review of its commit, and so does restore.
@@ -1457,8 +1819,8 @@ class ReviewSession(unittest.TestCase):
         sealed = self.directory / "sealed"
         out = self.run_session("seal", str(self.session), str(sealed), REVIEW_CONVERSATION_KEY="")
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("::warning::The secret REVIEW_CONVERSATION_KEY of the environment enroll-review is not set",
-                      out.stdout)
+        self.assertIn("::warning::The secret REVIEW_CONVERSATION_KEY of the review job's environment (enroll-review, "
+                      "or enroll-review-test on a ci-test/ branch) is not set", out.stdout)
         self.assertFalse(sealed.exists())
         stdout, files, _ = self.restored(REVIEW_CONVERSATION_KEY="")
         self.assertIn("::warning::", stdout)
@@ -1504,7 +1866,7 @@ class ReviewSession(unittest.TestCase):
 class ReviewStep(unittest.TestCase):
     """build.yaml's own Review step, over a stand-in review-run that fails: what the run's page and summary say."""
 
-    def run_step(self, code, failure=None, detail=None, scan=True):
+    def run_step(self, code, failure=None, detail=None, scan=True, served=None, output=None):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / ".github" / "scripts").mkdir(parents=True)
@@ -1516,7 +1878,7 @@ class ReviewStep(unittest.TestCase):
             script = directory / ".github" / "scripts" / "review-run"
             script.write_text(f"#!/bin/bash\nexit {code}\n")
             script.chmod(0o755)
-            for name, text in (("failure.txt", failure), ("failure-detail.txt", detail)):
+            for name, text in (("failure.txt", failure), ("failure-detail.txt", detail), ("served", served)):
                 if text is not None:
                     (directory / ".review" / name).write_text(text)
             token = directory / "jwt"
@@ -1529,6 +1891,8 @@ class ReviewStep(unittest.TestCase):
             run = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", review_step()["run"]],
                                  cwd=directory, env=environment, capture_output=True, text=True)
             self.assertFalse(token.exists(), "the identity token file is removed")
+            if output is not None:
+                output.append((directory / "output").read_text() if (directory / "output").exists() else "")
             return run.returncode, run.stdout, (directory / "summary").read_text()
 
     def test_a_review_that_did_not_finish_says_why_in_the_summary(self):
@@ -1556,6 +1920,27 @@ class ReviewStep(unittest.TestCase):
         _, _, summary = self.run_step(1, "plain words\n", "it was collector-token-not-a-secret\n")
         self.assertNotIn("collector-token-not-a-secret", summary)
         self.assertNotIn("```", summary)
+
+    def test_a_review_that_is_not_published_says_what_answered(self):
+        why = ("the review is not published: it asked for anthropic/claude-opus-5-5, which the tool calls "
+               "firstParty/claude-opus-5-5, but bedrock/claude-opus-5-5 (2 turns) answered, and the tool's usage names "
+               "bedrock/claude-opus-5-5")
+        output = []
+        code, out, summary = self.run_step(4, why + "\n", served=SERVED_OTHER, output=output)
+        self.assertEqual(code, 4)
+        self.assertIn(f"::error::T{why[1:]}\n", out)
+        self.assertEqual(summary, f"### The review is not published\n\n    {why}\n")
+        self.assertRegex(output[0], r"(?m)^served<<(served-[0-9a-f]{32})\n" + re.escape(SERVED_OTHER) + r"\n\1$")
+        self.assertIn("refused=true\n", output[0])
+        _, out, _ = self.run_step(4, "::warning::x\n")
+        self.assertIn("::error::The review is not published: review-run gave no reason\n", out)
+
+    def test_the_record_of_what_answered_reaches_the_comment_job_whatever_the_ending(self):
+        for code in (0, 1, 3):
+            with self.subTest(code=code):
+                output = []
+                self.run_step(code, "plain words\n", served=SERVED_OK, output=output)
+                self.assertIn(SERVED_OK, output[0])
 
     def test_a_review_that_finished_writes_no_summary(self):
         code, out, summary = self.run_step(3)

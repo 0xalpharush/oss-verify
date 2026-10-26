@@ -56,7 +56,9 @@ review_comment = importlib.util.module_from_spec(importlib.util.spec_from_loader
 _LOADER.exec_module(review_comment)
 BOT = "oss-verify[bot]"
 
-VERSION = "oss-verify enroll-review conversation v1"
+# v2: a conversation that a review sealed before .github/scripts/review-served (v1) does not open: nothing records
+# which model wrote it. The version is in the magic, the key's derivation and the associated data.
+VERSION = "oss-verify enroll-review conversation v2"
 MAGIC = (VERSION + "\n").encode()
 MEMBER = "conversation.sealed"
 # The runs whose artifacts are this job's own: build.yaml as the default branch has it, on pull_request_target (GitHub
@@ -107,8 +109,9 @@ def key():
     """The AES-256 key, or None, with a warning, when the secret is not set. ValueError when it is not a key."""
     text = os.environ.get("REVIEW_CONVERSATION_KEY", "").strip()
     if not text:
-        print("::warning::The secret REVIEW_CONVERSATION_KEY of the environment enroll-review is not set, so the "
-              "review's conversation is neither restored nor kept, and each push gets a fresh review.", flush=True)
+        print("::warning::The secret REVIEW_CONVERSATION_KEY of the review job's environment (enroll-review, or "
+              "enroll-review-test on a ci-test/ branch) is not set, so the review's conversation is neither restored "
+              "nor kept, and each push gets a fresh review.", flush=True)
         return None
     try:
         raw = base64.b64decode(text, validate=True)
@@ -170,9 +173,13 @@ def posted_head(repo, pr):
     if not ours:
         raise Fresh(f"pull request #{pr} has no review comment")
     # review-comment's own reader of the metadata line, so that both read a comment the same way.
-    status, head, _, _ = review_comment.read_previous(str(ours[0]["body"]))
+    status, head, version, _ = review_comment.read_previous(str(ours[0]["body"]))
     if status in (None, "none") or not HEAD.fullmatch(head or ""):
         raise Fresh(f"the review comment of pull request #{pr} shows no review of a commit")
+    # A review whose comment names nothing that answered it (written before .github/scripts/review-served, metadata
+    # version 1 or 2) is not resumed: no record shows which model wrote the conversation the next review would build on.
+    if version != "3":
+        raise Fresh(f"the review comment of pull request #{pr} names nothing that answered its review")
     return head
 
 
