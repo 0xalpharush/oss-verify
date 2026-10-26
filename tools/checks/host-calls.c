@@ -9,12 +9,18 @@
  *
  * qemu-riscv64's -strace log prints some arguments of a guest call as 32-bit numbers: the length of mmap, munmap,
  * mprotect and madvise, the offset of mmap, the buffer and count of read and write, the size of getrandom and getcwd.
- * qemu makes the guest's call on the host with the same numbers (with no -R, a guest address is the host address), so
- * the host call shows them in full. Each call of the list below, whether it succeeds or fails, gives one line:
+ * qemu makes the guest's call on the host with the same numbers (with no -R, a guest address is the host address),
+ * except that it rounds those four lengths up to a page, so the host call shows them in full. Each call of the list
+ * below, whether it succeeds or fails, gives one line:
  *
  *     <name> <result, signed decimal> <argument 0> <argument 1> ... <argument 5>     the arguments in hex
  *
- * and the line `exec` when the command's program has started; a log without it is of a run that never started.
+ * and the line `exec` when the command's program has started; a log without it is of a run that never started. A
+ * connect line has one more field: the first two bytes of the address it names, as a little-endian hex number (the
+ * address's family), or `-` when its addrlen is below 2 or the bytes cannot be read. qemu prints connect's address as
+ * a pointer, and copies the guest's address into its own buffer for the host call, so the family is read there, with
+ * PTRACE_PEEKDATA: a tracer may read its stopped tracee that way whatever the tracee's user, where process_vm_readv
+ * would need CAP_SYS_PTRACE for a tracee of another user (the run's container does not grant it).
  *
  * tools/syscall_shapes.py takes a guest call's full arguments from the first unused line of the same name that agrees
  * with the printed values in their low 32 bits. qemu's own calls (its log, its loading of the program) are in the log
@@ -55,6 +61,7 @@ static const char *logged(unsigned long long number) {
     case SYS_getrandom: return "getrandom";
     case SYS_getcwd: return "getcwd";
     case SYS_sendto: return "sendto";
+    case SYS_connect: return "connect";
     default: return NULL;
   }
 }
@@ -115,9 +122,22 @@ int main(int argc, char **argv) {
       /* A system call stop. At its entry the kernel holds -ENOSYS in rax; at its exit, the result. */
       struct user_regs_struct r;
       const char *name;
-      if (ptrace(PTRACE_GETREGS, pid, 0, &r) == 0 && (long long)r.rax != -ENOSYS && (name = logged(r.orig_rax)))
-        fprintf(log, "%s %lld %llx %llx %llx %llx %llx %llx\n", name, (long long)r.rax, r.rdi, r.rsi, r.rdx, r.r10,
-                r.r8, r.r9);
+      if (ptrace(PTRACE_GETREGS, pid, 0, &r) == 0 && (long long)r.rax != -ENOSYS && (name = logged(r.orig_rax))) {
+        fprintf(log, "%s %lld %llx %llx %llx %llx %llx %llx", name, (long long)r.rax, (unsigned long long)r.rdi,
+                (unsigned long long)r.rsi, (unsigned long long)r.rdx, (unsigned long long)r.r10,
+                (unsigned long long)r.r8, (unsigned long long)r.r9);
+        if (r.orig_rax == SYS_connect) {
+          /* The family: the first two bytes of the address qemu passed, read at the call's exit. */
+          long word = 0;
+          errno = 0;
+          if ((unsigned int)r.rdx >= 2) word = ptrace(PTRACE_PEEKDATA, pid, (void *)r.rsi, 0);
+          if ((unsigned int)r.rdx >= 2 && errno == 0)
+            fprintf(log, " %lx", (unsigned long)word & 0xffff);
+          else
+            fprintf(log, " -");
+        }
+        fprintf(log, "\n");
+      }
     } else if (sig == SIGTRAP && (status >> 16) != 0) {
       /* a clone, fork, vfork or exec event: a new thread or process is traced, and stops once, below. The command's
        * own exec is logged: a log without it is of a run that never started. */

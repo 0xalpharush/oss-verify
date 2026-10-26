@@ -801,18 +801,20 @@ BUILD_ID_MAX = 128
 def whole_notes(data, off, size):
     """True when the bytes [off, off + size) are exactly a sequence of build-id notes (BUILD_ID_NOTES): each a 12-byte
     header (namesz, descsz, type), the name and a descriptor of at most BUILD_ID_MAX bytes, each padded to 4 bytes,
-    the last ending at the end. Any other bytes are not taken for notes."""
+    the last ending at the end, and each of the two notes at most once (so they wrap no more than their own few bytes).
+    Any other bytes are not taken for notes."""
     end = off + size
     if off % 4 or size % 4 or end > len(data) or size == 0:
         return False
-    at = off
+    at, seen = off, set()
     while at < end:
         if at + 12 > end:
             return False
         namesz, descsz, kind = struct.unpack_from("<III", data, at)
         name = data[at + 12:at + 12 + (namesz + 3) // 4 * 4]
-        if (name, kind) not in BUILD_ID_NOTES or descsz > BUILD_ID_MAX:
+        if (name, kind) not in BUILD_ID_NOTES or descsz > BUILD_ID_MAX or (name, kind) in seen:
             return False
+        seen.add((name, kind))
         at += 12 + len(name) + (descsz + 3) // 4 * 4
     return at == end
 

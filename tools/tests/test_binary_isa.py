@@ -313,6 +313,16 @@ class WhereTheCodeIs(Base):
         # A well-formed note that is not a build id can wrap any bytes: it is decoded too.
         other = struct.pack("<III", 4, 8, 1) + b"XYZ\0" + CNOP * 4
         self.one(as_note(mkelf(other, text_flags=0x2, gap=NOP)), "RVC")
+        # One Go and one GNU build id are notes; a second of either is not, so repeats cannot wrap any bytes.
+        gnu = struct.pack("<III", 4, 8, 3) + b"GNU\0" + b"\x01\x02\x03\x04\x05\x06\x07\x08"
+        res, out = self.one(as_note(mkelf(note + gnu, text_flags=0x2, gap=NOP + ADD)), "CLEAN")
+        self.assertEqual(res["pf_x"]["data_in_x"], [(".text", len(note + gnu))])
+        wrap = struct.pack("<III", 4, 8, 3) + b"GNU\0" + CNOP * 4
+        for twice in (gnu + wrap, struct.pack("<III", 4, 8, 4) + b"Go\0\0" + CNOP * 4 + note):
+            self.assertFalse(binary_isa.whole_notes(twice, 0, len(twice)))
+        self.one(as_note(mkelf(gnu + wrap, text_flags=0x2, gap=NOP)), "RVC")
+        self.one(as_note(mkelf(note + struct.pack("<III", 4, 8, 4) + b"Go\0\0" + CNOP * 4, text_flags=0x2,
+                               gap=NOP)), "RVC")
 
     def test_a_section_must_be_where_its_segment_maps_it(self):
         # The code is at 2 mod 4, and its section header says 0 mod 4.

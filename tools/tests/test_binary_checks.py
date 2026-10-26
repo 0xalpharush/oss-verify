@@ -65,6 +65,36 @@ def elf_object(text=b"", defined=(), undefined=(), files=(), local=(), comment=F
     return bytes(data)
 
 
+GO_SETTINGS = {"-buildmode": "exe", "-compiler": "gc", "-trimpath": "true", "CGO_ENABLED": "0", "GOARCH": "riscv64",
+               "GOOS": "linux", "GORISCV64": "rva20u64"}
+
+
+def go_executable(section=b".go.buildinfo", flags=2, truncate=False, **settings):
+    """A minimal riscv64 executable with one section, `section`, that holds Go's build information as Go 1.27.1 writes
+    it (src/debug/buildinfo/buildinfo.go), with the `build` settings GO_SETTINGS and `settings` (None drops one)."""
+    lines = ["path\tcommand-line-arguments"] + [f"build\t{key}={value}" for key, value in
+                                                {**GO_SETTINGS, **settings}.items() if value is not None]
+    # The 16-byte frames Go puts around the module information (cmd/go/internal/modload: infoStart, infoEnd), which
+    # are not UTF-8.
+    module = (b"0w\xaf\x0c\x92t\x08\x02A\xe1\xc1\x07\xe6\xd6\x18\xe6" + "".join(f"{line}\n" for line in lines).encode()
+              + b"\xf92C1\x86\x18 r\x00\x82B\x10A\x16\xd8\xf2")
+    version = b"go1.27.1"
+    body = b"\xff Go buildinf:" + bytes([8, flags]) + bytes(16)
+    body += bytes([len(version)]) + version
+    size = len(module) + (1000 if truncate else 0)
+    body += bytes([0x80 | (size & 0x7F), size >> 7]) + module
+    shstrtab = b"\0" + section + b"\0.shstrtab\0"
+    data = bytearray(64) + body + shstrtab
+    shoff = len(data)
+    data += struct.pack("<IIQQQQIIQQ", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    data += struct.pack("<IIQQQQIIQQ", 1, 1, 0x3, 0x10000, 64, len(body), 0, 0, 16, 0)
+    data += struct.pack("<IIQQQQIIQQ", 2 + len(section), 3, 0, 0, 64 + len(body), len(shstrtab), 0, 0, 1, 0)
+    header = b"\x7fELF" + bytes([2, 1, 1, 0]) + bytes(8)
+    header += struct.pack("<HHIQQQIHHHHHH", 2, 0xF3, 1, 0x10000, 0, shoff, 0, 64, 56, 0, 64, 3, 2)
+    data[:64] = header
+    return bytes(data)
+
+
 def archive(members):
     """A System V ar archive of {name: bytes}, with a long-name table for names longer than 15 bytes."""
     longnames, out = b"", [b"!<arch>\n"]
@@ -442,9 +472,80 @@ class Analyse(unittest.TestCase):
         result = self.analyse({"asan": "compile recorded no link of it"})["asan"]
         self.assertIsNone(result["uninstrumented"])
         self.assertEqual(result["instrumented"]["result"], "error")
-        # A Go program's plain build has no map, by design.
-        result = self.analyse({"plain": "its link has no map (a program linked by Go's linker)"})["plain"]
+        # The plain build with no record is not decided either, whatever the cause, and the report says why.
+        for why in ("compile recorded no link of it", "its link has no map, and it is not a Go program linked from "
+                                                      "Go code only (0 .go.buildinfo sections, not one)"):
+            result = self.analyse({"plain": why})["plain"]
+            self.assertIsNone(result["uninstrumented"])
+            self.assertEqual(result["instrumented"], {"result": "error", "detail": f"no link record: {why}"})
+            block = {"model": {"name": "m", "commit": "f" * 40, "release": "x"}, "inputs": {"t": ["a"]},
+                     "targets": {"t": {"plain": {"elf": {"result": "pass"}, "system_calls": {"result": "pass"},
+                                                 "quiet_loud": {"result": "pass"},
+                                                 "instrumented": result["instrumented"]}}}}
+            text = check_binaries.report(block, {"t": {"plain": None}}, ["plain"])
+            self.assertIn("| `t.plain` | pass | pass | pass | **not decided** | not recorded |", text)
+            self.assertIn(f"What each failure is:\n\n- `t.plain`, instrumented: `no link record: {why}`", text)
+
+    def test_a_go_program_is_plain_from_its_build_information(self):
+        """Go's linker writes no map; the program's own build information stands in for the record."""
+        program = check_links.go_program(go_executable())
+        self.assertIsInstance(program, check_links.GoProgram, program)
+        self.assertEqual(program.version, "go1.27.1")
+        result = self.analyse({"plain": program})["plain"]
+        self.assertIsNone(result["uninstrumented"])
         self.assertEqual(result["instrumented"]["result"], "plain")
+        self.assertIn("a Go program (go1.27.1)", result["instrumented"]["detail"])
+        self.assertIn("CGO_ENABLED=0", result["instrumented"]["detail"])
+        block = {"model": {"name": "m", "commit": "f" * 40, "release": "x"}, "inputs": {"t": ["a"]},
+                 "targets": {"t": {"plain": {"elf": {"result": "pass"}, "system_calls": {"result": "pass"},
+                                             "quiet_loud": {"result": "pass"},
+                                             "instrumented": result["instrumented"]}}}}
+        text = check_binaries.report(block, {"t": {"plain": None}}, ["plain"])
+        self.assertIn("| `t.plain` | pass | pass | pass | not instrumented (plain) | no list (Go code only) |", text)
+        # No sanitizer instruments Go code, so a sanitizer build of a Go program decides nothing.
+        self.assertEqual(self.analyse({"asan": program})["asan"]["instrumented"]["result"], "error")
+
+    def test_a_go_program_that_may_link_c_is_not_plain(self):
+        cases = {
+            "CGO_ENABLED=1, not 0": go_executable(CGO_ENABLED="1"),
+            "-compiler=gccgo, not gc": go_executable(**{"-compiler": "gccgo"}),
+            "-buildmode=pie, not exe": go_executable(**{"-buildmode": "pie"}),
+            "GOARCH=amd64, not riscv64": go_executable(GOARCH="amd64"),
+            "CGO_ENABLED=(none), not 0": go_executable(CGO_ENABLED=None),
+            "-race=true": go_executable(**{"-race": "true"}),
+            "-asan=true": go_executable(**{"-asan": "true"}),
+            "chooses the linker": go_executable(**{"-ldflags": '"-linkmode=external -s"'}),
+            "0 .go.buildinfo sections": go_executable(section=b".data"),
+            "cannot be read": go_executable(truncate=True),
+            "not the build information of Go 1.18": go_executable(flags=0),
+            "not a RISC-V ELF file": b"\x7fELF" + b"\0" * 60,
+        }
+        for expected, data in cases.items():
+            why = check_links.go_program(data)
+            self.assertIsInstance(why, str, expected)
+            self.assertIn(expected, why)
+
+    def test_record_of_reads_a_go_program_and_refuses_any_other_binary_without_a_map(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = pathlib.Path(tmp)
+            go, other = go_executable(), go_executable(CGO_ENABLED="1")
+            (raw / "go").write_bytes(go)
+            (raw / "c").write_bytes(other)
+            record, quiet = check_binaries.record_of(raw, "go")
+            self.assertIsInstance(record, check_links.GoProgram)
+            self.assertIsNone(quiet)
+            # compile-go keeps the quiet program in a record with no map.
+            kept = raw / ".records" / hashlib.sha256(go).hexdigest()
+            kept.mkdir(parents=True)
+            (kept / "quiet").write_bytes(b"quiet")
+            record, quiet = check_binaries.record_of(raw, "go")
+            self.assertIsInstance(record, check_links.GoProgram)
+            self.assertEqual(quiet, b"quiet")
+            record, quiet = check_binaries.record_of(raw, "c")
+            self.assertIsInstance(record, str)
+            self.assertIn("compile recorded no link of it", record)
+            self.assertIn("CGO_ENABLED=1", record)
+            self.assertEqual(check_links.analyse({"plain": record}, {})["plain"]["instrumented"]["result"], "error")
 
     def test_dwarfdump_output(self):
         text = "\n".join([
@@ -499,7 +600,7 @@ class ModelRelease(unittest.TestCase):
 class Runs(unittest.TestCase):
     """check_binaries' reading of the runs: quiet and loud, the system calls' floors, and the report."""
 
-    QEMU = "qemu-riscv64 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)"
+    QEMU = "qemu-riscv64 version 10.0.11 (Debian 1:10.0.11+ds-0+deb13u1)"
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -601,8 +702,8 @@ class Runs(unittest.TestCase):
                     "verdict": "pass", "host_log": "present"}
         seen = {}
 
-        def check_trace(model, text, *, stance, require_exit, binary, lengths):
-            seen.update(stance=stance, lengths=lengths)
+        def check_trace(model, text, *, stance, require_exit, binary, lengths, inputs):
+            seen.update(stance=stance, lengths=lengths, inputs=inputs)
             return dict(verdicts)
 
         saved = check_binaries.syscall_shapes.check_trace
@@ -611,8 +712,14 @@ class Runs(unittest.TestCase):
                                                                            self.results)
         try:
             self.assertEqual(run()["result"], "pass")
-            self.assertEqual(seen, {"stance": "off", "lengths": "exec\n"})
+            # Each run's input.bin holds that run's input, header and all.
+            self.assertEqual(seen, {"stance": "off", "lengths": "exec\n",
+                                    "inputs": {"input.bin": check_binaries.HEADER + b"x"}})
             self.assertEqual(run(qemu="qemu-riscv64 version 9.1.0")["result"], "error")
+            # qemu 8.2 hands the host 0 for every anonymous mmap's offset: its runs decide nothing.
+            result = run(qemu="qemu-riscv64 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)")
+            self.assertEqual(result["result"], "error")
+            self.assertIn("qemu 10.0 only", result["detail"])
             verdicts["calls"] = 3
             self.assertEqual(run()["result"], "error")
             verdicts["calls"] = 12

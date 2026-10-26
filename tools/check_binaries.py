@@ -64,8 +64,10 @@ STANCE = "off"
 # A trace decides something only with this many calls at least, and with the input opened (system_calls).
 MIN_CALLS = 8
 INPUT_OPEN = re.compile(r'^\d+ openat\(AT_FDCWD,"input\.bin",O_RDONLY[^)]*\) = [0-9]+$', re.M)
-# The qemu releases whose -strace formats tools/syscall_shapes.py reads (each was measured).
-QEMU_VERSIONS = re.compile(r"qemu-riscv64 version (8\.2|10\.0)\.[0-9]+")
+# The one qemu release whose -strace formats and host calls tools/syscall_shapes.py reads (measured: Debian 13's
+# qemu-user 10.0.11, which CI and the collection's runner install). A run of any other release leaves check 2 not
+# decided.
+QEMU_VERSIONS = re.compile(r"qemu-riscv64 version 10\.0\.[0-9]+")
 MAX_RESULT_BYTES = 256 << 20
 
 
@@ -154,26 +156,33 @@ def assembly_reader(tag, checkouts, labels):
 
 
 def record_of(raw, target):
-    """The link record of a fuzz target in one build's $OUT `raw`: a check_links.Record, or the reason there is none.
-    Also its quiet twin's bytes, or None."""
+    """The link record of a fuzz target in one build's $OUT `raw`: a check_links.Record, a check_links.GoProgram (a
+    program that Go's linker linked, which has no map), or the reason there is neither. Also its quiet twin's bytes, or
+    None."""
     try:
-        executable = check_links.below(raw, target)
-        digest = hashlib.sha256(check_links.read_regular(executable)).hexdigest()
+        executable = check_links.read_regular(check_links.below(raw, target))
     except check_links.RecordError as error:
         return f"{target}: {error}", None
-    if not os.path.lexists(raw / ".records" / digest):
-        return "compile recorded no link of it (a link that did not go through $CC or $CXX)", None
+    digest = hashlib.sha256(executable).hexdigest()
     quiet = None
-    try:
-        quiet = check_links.read_regular(check_links.below(raw, ".records", digest, "quiet"))
-    except check_links.RecordError:
-        pass
-    if not os.path.lexists(raw / ".records" / digest / "map"):
-        return "its link has no map (a program linked by Go's linker)", quiet
-    try:
-        return check_links.read_record(raw, digest), quiet
-    except check_links.RecordError as error:
-        return str(error), quiet
+    if os.path.lexists(raw / ".records" / digest):
+        try:
+            quiet = check_links.read_regular(check_links.below(raw, ".records", digest, "quiet"))
+        except check_links.RecordError:
+            pass
+        if os.path.lexists(raw / ".records" / digest / "map"):
+            try:
+                return check_links.read_record(raw, digest), quiet
+            except check_links.RecordError as error:
+                return str(error), quiet
+        why = "its link has no map"
+    else:
+        why = "compile recorded no link of it (a link that did not go through $CC or $CXX)"
+    # Go's linker writes no map: a Go program says what it linked in its own build information.
+    program = check_links.go_program(executable)
+    if isinstance(program, check_links.GoProgram):
+        return program, quiet
+    return f"{why}, and it is not a Go program linked from Go code only ({program})", quiet
 
 
 # ── running the binaries ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -234,10 +243,12 @@ def system_calls(model, stale, qemu, binary, inputs, results):
     if isinstance(model, str):
         return {"result": "error", "detail": model}
     if not QEMU_VERSIONS.match(qemu):
-        return {"result": "error", "detail": f"{qemu or 'no qemu version'}: tools/syscall_shapes.py reads the -strace "
-                                             "formats of qemu 8.2 and 10.0 only"}
+        return {"result": "error", "detail": f"{qemu or 'no qemu version'}: check 2 reads the runs of qemu 10.0 only "
+                                             "(tools/syscall_shapes.py reads its -strace formats and host calls; qemu "
+                                             "8.2 hands the host 0 for every anonymous mmap's offset, so its runs "
+                                             "cannot show one)"}
     statuses, unmodeled, undecided, calls, whole = {}, {}, [], 0, set()
-    for n, (name, _) in enumerate(inputs):
+    for n, (name, data) in enumerate(inputs):
         status = read_number(results, f"l{n}.status")
         statuses[name] = status
         text, log = read_result(results, f"l{n}.trace"), read_result(results, f"l{n}.calls")
@@ -245,8 +256,9 @@ def system_calls(model, stale, qemu, binary, inputs, results):
             undecided.append(f"{name}: {describe_status(status)}" if status is None else f"{name}: no trace")
             continue
         try:
-            verdict = syscall_shapes.check_trace(model, text, stance=STANCE, require_exit=True, binary=str(binary),
-                                                 lengths=log)
+            # The run's input.bin holds the input's bytes (tools/checks/run-binaries), so its reads have one answer.
+            verdict = syscall_shapes.check_trace(model, text, stance=STANCE, require_exit=True,
+                                                 binary=str(binary), lengths=log, inputs={"input.bin": data})
         # One trace must not take the step's other results with it.
         except Exception as failure:
             return {"result": "error", "detail": f"{name}: the trace could not be read: "
@@ -434,6 +446,7 @@ def binary_checks(job, tag, toolchain, targets, entries, sources, work, *, label
             binary = work / "out" / target / entries[target][build]["file"]
             record = records[(target, build)]
             why_none = ("one of the driver's objects has no quiet build" if isinstance(record, check_links.Record)
+                        else "the Go helper kept no quiet program" if isinstance(record, check_links.GoProgram)
                         else record)
             # A check that cannot read one binary gives that binary an error, never the whole step.
             if (target, build) in results:
@@ -485,9 +498,11 @@ def report(block, uninstrumented, builds):
         for build in builds:
             results = by_build[build]
             listing = uninstrumented[target][build]
-            files = "not recorded" if listing is None else f"{len(listing)} files" + (
-                f", {sum(1 for u in listing if u['kind'] == 'assembly')} assembly"
-                if any(u["kind"] == "assembly" for u in listing) else "")
+            # A plain result with no list is a Go program (check_links.analyse): it links Go code only.
+            files = ("no list (Go code only)" if listing is None and results["instrumented"]["result"] == "plain"
+                     else "not recorded" if listing is None else f"{len(listing)} files" + (
+                         f", {sum(1 for u in listing if u['kind'] == 'assembly')} assembly"
+                         if any(u["kind"] == "assembly" for u in listing) else ""))
             cells = [RESULT_WORDS.get(results[key]["result"], results[key]["result"])
                      for key in ("elf", "system_calls", "quiet_loud", "instrumented")]
             name = f"{target}.{build}"

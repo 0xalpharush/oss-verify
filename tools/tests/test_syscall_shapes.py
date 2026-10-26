@@ -6,11 +6,12 @@ Most cases need the process model: set OSS_VERIFY_MODEL to a checkout of the pub
 theories/) at syscall_shapes.MODEL_COMMIT. Without it they are skipped, and say so; the trace parser, the host-call
 log reader, the image reader and the 32-bit argument reader are tested either way.
 
-The planted traces are what qemu-riscv64 -strace prints: the formats of linux-user/strace.list and strace.c at v8.2.2
-and v10.0.11 (rt_sigaction prints three arguments, mmap's length through `%d`, a record with no printer prints six
-64-bit decimals, and so on). Each one names the condition it is about, and is a trace the checker must accept or one
-it must refuse: a checker that cannot refuse tests nothing. Each run also needs its host-call log; faithful_log()
-writes the log of a run whose printed arguments are its true ones, and the cases about cut arguments write their own.
+The planted traces are what qemu-riscv64 10.0 -strace prints: the formats of linux-user/strace.list and strace.c at
+v10.0.0, the release the runs are recorded with (rt_sigaction prints three arguments, mmap's length through `%d`,
+connect's address as a 32-bit pointer, a record with no printer prints six 64-bit decimals, and so on). Each one names
+the condition it is about, and is a trace the checker must accept or one it must refuse: a checker that cannot refuse
+tests nothing. Each run also needs its host-call log; faithful_log() writes the log of a run whose printed arguments
+are its true ones, and the cases about cut arguments write their own.
 """
 import os
 import pathlib
@@ -41,17 +42,46 @@ def elf_bytes(loads, machine=S.EM_RISCV):
     return bytes(header) + phdrs
 
 
-def faithful_log(trace, *, started=True, extra=()):
+# The calls whose length qemu rounds up to a page before its host call (linux-user/mmap.c at v10.0.0: target_mmap,
+# target_munmap, target_mprotect and target_madvise apply TARGET_PAGE_ALIGN).
+PAGED = ("mmap", "munmap", "mprotect", "madvise")
+
+
+def host_values(name, args, result):
+    """The six arguments of the host call qemu 10.0 makes for a guest call it printed with `args` (taken as its true
+    ones) and answered `result`, or None when qemu answers the call itself with no host call."""
+    values = [(S.num(a) or 0) % (1 << 64) for a in (list(args) + ["0"] * 6)[:6]]
+    if name in PAGED:
+        addr, rounded = values[0], S.page_round_up(values[1])
+        fixed = name != "mmap" or "MAP_FIXED" in (list(args) + [""] * 4)[3]
+        # A length that rounds to 0 (or wraps), an unaligned fixed address, or an unaligned mmap offset is answered
+        # before the host call.
+        if rounded % (1 << 64) == 0 or (fixed and addr % S.PAGE_SIZE) or (name == "mmap" and values[5] % S.PAGE_SIZE):
+            return None
+        values[1] = rounded
+    if name == "connect" and result == -S.EFAULT:
+        return None             # qemu could not read the address (target_to_host_sockaddr), so it made no host call
+    return values
+
+
+def faithful_log(trace, *, started=True, extra=(), families=()):
     """The host-call log (tools/checks/host-calls.c) of a run whose printed arguments are its true ones: the `exec`
-    line, then one line per record of a call the tracer logs, with the values qemu printed. `extra` adds lines."""
+    line, then one line per record of a call the tracer logs, with the arguments qemu 10.0 hands the host (host_values)
+    and the result (-errno for a failure). Each connect line ends with the next of `families`, its address's family,
+    or `-` once they run out. `extra` adds lines."""
     lines = ["exec"] if started else []
+    families = list(families)
     for line in trace.splitlines():
         for _, name, args, tail, closed in S.split_records(line):
             if name not in S.HOST_NAMES or not closed:
                 continue
-            values = [(S.num(a) or 0) % (1 << 64) for a in (list(args) + ["0"] * 6)[:6]]
-            ret = S.parse_ret(tail)
-            lines.append(" ".join([name, str(ret if ret is not None else 0)] + [f"{v:x}" for v in values]))
+            ret, failed = S.parse_ret(tail), S.ERRNO_TAIL.match(tail)
+            result = -int(failed.group(1)) if failed else (ret if ret is not None else 0)
+            values = host_values(name, args, result)
+            if values is None:
+                continue
+            family = (f" {families.pop(0):x}" if families else " -") if name == "connect" else ""
+            lines.append(" ".join([name, str(result)] + [f"{v:x}" for v in values]) + family)
     return "\n".join(lines + list(extra)) + "\n"
 
 
@@ -68,9 +98,9 @@ def image(tmp_path_factory):
     return str(path)
 
 
-def check(model, image, text, stance="off", require_exit=True, lengths=None):
+def check(model, image, text, stance="off", require_exit=True, lengths=None, inputs=None, families=()):
     return S.check_trace(model, text, stance=stance, require_exit=require_exit, binary=image,
-                         lengths=faithful_log(text) if lengths is None else lengths)
+                         lengths=faithful_log(text, families=families) if lengths is None else lengths, inputs=inputs)
 
 
 def whys(result):
@@ -165,8 +195,6 @@ ACCEPT = [
      "1 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,3,0) = 0x100000\n" + EXIT),
     ("an anonymous mmap that failed with -ENOMEM",
      "1 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = -1 errno=12\n" + EXIT),
-    ("a zero-length mmap, -EINVAL",
-     "1 mmap(NULL,0,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = -1 errno=22\n" + EXIT),
     ("mremap to the same rounded size",
      MADVISE_GRANT + "1 mremap(1048576,262144,262144,1,0,0) = 1048576\n" + EXIT),
     ("an mremap shrink in place", MADVISE_GRANT + "1 mremap(1048576,262144,131072,1,0,0) = 1048576\n" + EXIT),
@@ -203,7 +231,6 @@ ACCEPT = [
     ("DONTNEED printed as a number", MADVISE_GRANT + "1 madvise(0x100000,4096,0x4) = 0\n" + EXIT),
     ("DONTNEED at an unaligned address, -EINVAL",
      "1 madvise(0x100001,4096,MADV_DONTNEED) = -1 errno=22 (Invalid argument)\n" + EXIT),
-    ("a zero-length DONTNEED", MADVISE_GRANT + "1 madvise(0x100000,0,MADV_DONTNEED) = 0\n" + EXIT),
     # -- files and descriptors ---------------------------------------------------------------------------------------
     ("a read-only openat with O_LARGEFILE", OPEN3 + EXIT),
     ("an O_DIRECTORY open of the working directory", OPENDIR3 + EXIT),
@@ -282,16 +309,17 @@ ACCEPT = [
     ("sigaltstack with a NULL old stack", "1 sigaltstack(0x40007ff8b0,NULL) = 0\n" + EXIT),
     ("prctl PR_CAPBSET_READ", "1 prctl(23,40,0,7517016,0,-8606760485637849041) = 1\n" + EXIT),
     ("prlimit64 reading RLIMIT_CORE",
-     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0, rlim_max=0})\n" + EXIT),
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0,rlim_max=0})\n" + EXIT),
     ("prlimit64 writing RLIMIT_CORE after a read",
-     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0, rlim_max=0})\n"
-     "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=0, rlim_max=0},NULL) = 0\n" + EXIT),
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0,rlim_max=0})\n"
+     "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=0,rlim_max=0},NULL) = 0\n" + EXIT),
     ("set_tid_address, then getpid with the same answer", TID + "1 getpid() = 1\n" + EXIT),
     ("sched_getaffinity with a length the kernel refuses", "1 sched_getaffinity(0,12,0x40007ff8b0) = -1 errno=22\n"
      + EXIT),
     ("sched_setscheduler to SCHED_IDLE", "1 sched_setscheduler(0,5,0x40007ff8b0,0,0,0) = 0\n" + EXIT),
     ("sched_yield", "1 sched_yield() = 0\n" + EXIT),
     ("uname", "1 uname(0x40007ff8b0) = 0\n" + EXIT),
+    ("uname into a buffer that ends past TASK_SIZE, -EFAULT", "1 uname(0x7fffffffff00) = -1 errno=14\n" + EXIT),
     ("getuid", "1 getuid() = 65534\n" + EXIT),
     ("eventfd2 with a bad flag, -EINVAL", "1 eventfd2(0,2) = -1 errno=22\n" + EXIT),
     ("epoll_create1 with a bad flag, -EINVAL", "1 epoll_create1(2) = -1 errno=22\n" + EXIT),
@@ -307,18 +335,15 @@ ACCEPT = [
     ("socket AF_INET SOCK_STREAM", SOCKET3 + EXIT),
     ("socket of family 46, -EAFNOSUPPORT", "1 socket(46,SOCK_STREAM,IPPROTO_IP) = -1 errno=97\n" + EXIT),
     ("sendto on a socket no connect has reached, -EPIPE",
-     SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n" + EXIT),
-    ("connect on a socket answered -EAFNOSUPPORT", SOCKET3 + "1 connect(3,0x40007ff8b0,16) = -1 errno=97\n" + EXIT),
+     SOCKET3 + '1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n' + EXIT),
     ("getsockopt at a level the model refuses", SOCKET3 + "1 getsockopt(3,999,2,0x40007ff8b0,0x40007ff8c8) = -1 "
                                                           "errno=95\n" + EXIT),
     ("shutdown(SHUT_WR) of a listening socket",
      SOCKET3 + "1 listen(3,5) = 0\n1 shutdown(3,1,0,0,0,0) = 0\n" + EXIT),
     ("a send on an accepted socket", SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 listen(3,5) = 0\n"
-     "1 accept(3,NULL,NULL) = 4\n1 sendto(4,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+     '1 accept(3,NULL,NULL) = 4\n1 sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = 2\n' + EXIT),
     ("-EPIPE on a bound socket",
-     SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n" + EXIT),
-    ("two AF_UNSPEC connects on a fresh socket", SOCKET3 + "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n"
-     "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT),
+     SOCKET3 + "1 bind(3," + BIND_ANY + ',16) = 0\n1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n' + EXIT),
     ("a wait4 whose return came after a signal line on its line",
      "1 wait4(-1,0x40007ff8b0,1,NULL)--- SIGALRM {si_signo=SIGALRM, si_code=SI_KERNEL} ---\n = -1 errno=10\n" + EXIT),
     # -- the answers the model gives ---------------------------------------------------------------------------------
@@ -505,10 +530,10 @@ REJECT = [
     ("prlimit64 on RLIMIT_STACK", "1 prlimit64(0,RLIMIT_STACK,NULL,0x40007ff8b0) = 0\n" + EXIT),
     ("prlimit64 with both pointers NULL", "1 prlimit64(0,RLIMIT_CORE,NULL,NULL) = 0\n" + EXIT),
     ("prlimit64 writing before any read",
-     "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=0, rlim_max=0},NULL) = 0\n" + EXIT),
+     "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=0,rlim_max=0},NULL) = 0\n" + EXIT),
     ("prlimit64 writing a soft limit above the hard limit",
      "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0\n"
-     "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=8192, rlim_max=4096},NULL) = 0\n" + EXIT),
+     "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=8192,rlim_max=4096},NULL) = 0\n" + EXIT),
     ("a task id that came back twice with different answers", TID + "1 getpid() = 7\n" + EXIT),
     ("a thread start",
      "1 clone(CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|"
@@ -536,16 +561,11 @@ REJECT = [
     ("socketpair AF_INET stream that succeeded", "1 socketpair(PF_INET,SOCK_STREAM,IPPROTO_IP,0x40007ff8b0) = 0\n"
      + EXIT),
     ("accept with an address pointer", SOCKET3 + "1 accept(3,0x40007ff8b0,0x40007ff8c8) = 4\n" + EXIT),
-    ("connect to an address that resolved", SOCKET3 + '1 connect(3,{sin_family=AF_INET,sin_port=htons(53),'
-     'sin_addr=inet_addr("127.0.0.1")},16) = 0\n' + EXIT),
-    ("connect with an AF_UNSPEC address on a socket a bind has used",
-     SOCKET3 + "1 bind(3,{sa_family=0, sa_data={00, 00, 00, 00, 00, 00}},16) = 0\n"
-     "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT),
-    ("connect on a file", OPEN3 + "1 connect(3,0x40007ff8b0,16) = -1 errno=97\n" + EXIT),
+    ("connect on a file", OPEN3 + "1 connect(3,0x7ff8b0,16) = -1 errno=97\n" + EXIT),
     ("recvfrom that received bytes", SOCKET3 + "1 recvfrom(3,0x1000,64,0,NULL,NULL) = 64\n" + EXIT),
-    ("setsockopt that succeeded", SOCKET3 + "1 setsockopt(3,1,2,0x40007ff8b0,4) = 0\n" + EXIT),
-    ("sendto with flags 0", SOCKET3 + "1 sendto(3,0x1000,2,0,NULL,0) = 2\n" + EXIT),
-    ("sendto on a file", OPEN3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+    ("setsockopt that succeeded", SOCKET3 + "1 setsockopt(3,1,2,0x40007ff8b0,0x4) = 0\n" + EXIT),
+    ("sendto with flags 0", SOCKET3 + '1 sendto(3,"hi",2,0,NULL,0) = 2\n' + EXIT),
+    ("sendto on a file", OPEN3 + '1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = 2\n' + EXIT),
     ("a write on a socket", SOCKET3 + "1 write(3,0x1000,2) = 2\n" + EXIT),
     ("shutdown(SHUT_RD) that succeeded", SOCKET3 + "1 shutdown(3,0,0,0,0,0) = 0\n" + EXIT),
     # -- answers the model does not give -----------------------------------------------------------------------------
@@ -582,6 +602,9 @@ REJECT = [
     ("flock LOCK_EX of the one opener answered -EAGAIN", OPEN3 + "1 flock(3,LOCK_EX) = -1 errno=11\n" + EXIT),
     ("sched_yield that returned 1", "1 sched_yield() = 1\n" + EXIT),
     ("uname answered -EPERM", "1 uname(0x40007ff8b0) = -1 errno=1\n" + EXIT),
+    ("uname into a buffer in range answered -EFAULT", "1 uname(0x40007ff8b0) = -1 errno=14\n" + EXIT),
+    ("openat with O_RDWR|O_CREAT answered -ENOENT",
+     '1 openat(AT_FDCWD,"f",O_RDWR|O_CREAT,0644) = -1 errno=2\n' + EXIT),
     ("setuid that returned 5", "1 setuid(0) = 5\n" + EXIT),
     ("setresgid answered -EAGAIN", "1 setresgid(0,0,0) = -1 errno=11\n" + EXIT),
     ("close of an open file that returned 5", OPEN3 + "1 close(3) = 5\n" + EXIT),
@@ -593,17 +616,14 @@ REJECT = [
     ("a blocked read whose later return is more than its count",
      OPEN3 + "1 read(3,0x1000,4)\n = 8\n" + EXIT),
     ("sendto on a socket no connect has reached that sent bytes",
-     SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+     SOCKET3 + '1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = 2\n' + EXIT),
     ("sendto on an accepted socket that sent more than its count",
      SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 listen(3,5) = 0\n1 accept(3,NULL,NULL) = 4\n"
-     "1 sendto(4,0x1000,2,MSG_NOSIGNAL,NULL,0) = 99\n" + EXIT),
+     '1 sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = 99\n' + EXIT),
     ("sendto on a bound socket that sent bytes",
-     SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+     SOCKET3 + "1 bind(3," + BIND_ANY + ',16) = 0\n1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = 2\n' + EXIT),
     ("sendto on a listening socket that sent bytes",
-     SOCKET3 + "1 listen(3,5) = 0\n1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
-    ("sendto after an AF_UNSPEC connect that sent bytes",
-     SOCKET3 + "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n"
-     "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+     SOCKET3 + '1 listen(3,5) = 0\n1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = 2\n' + EXIT),
     ("bind to port 8080",
      SOCKET3 + '1 bind(3,{sin_family=AF_INET,sin_port=htons(8080),sin_addr=inet_addr("0.0.0.0")},16) = 0\n' + EXIT),
     ("bind to 127.0.0.1",
@@ -630,10 +650,10 @@ REJECT = [
     ("socket answered -EPERM", "1 socket(PF_INET,SOCK_STREAM,IPPROTO_IP) = -1 errno=1\n" + EXIT),
     ("socket of type 4 that succeeded", "1 socket(PF_INET,4,IPPROTO_IP) = 3\n" + EXIT),
     ("a prlimit64 read that returned 5",
-     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 5 ({rlim_cur=0, rlim_max=0})\n" + EXIT),
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 5 ({rlim_cur=0,rlim_max=0})\n" + EXIT),
     ("two prlimit64 reads that disagree",
-     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0, rlim_max=0})\n"
-     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=7, rlim_max=9})\n" + EXIT),
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0,rlim_max=0})\n"
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=7,rlim_max=9})\n" + EXIT),
     ("fsync of standard output that succeeded", "1 fsync(1) = 0\n" + EXIT),
     ("fsync of a file answered -EIO", OPEN3 + "1 fsync(3) = -1 errno=5\n" + EXIT),
     ("ftruncate of a read-only file that succeeded", OPEN3 + "1 ftruncate(3,0) = 0\n" + EXIT),
@@ -799,10 +819,22 @@ def test_a_cut_count_that_the_host_log_pins_as_huge(model, image):
 
 @needs_model
 def test_a_sendto_count_is_printed_whole_and_read_unsigned(model, image):
-    assert check(model, image, SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n" + EXIT)[
+    assert check(model, image, SOCKET3 + '1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n' + EXIT)[
         "verdict"] == "pass"
+    # print_buf cannot lock a range of 2^64 - 1 bytes, so qemu prints the buffer as a pointer.
     why = one_why(check(model, image, SOCKET3 + "1 sendto(3,0x1000,-1,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT), "sendto")
     assert "rw_bytes_max" in why and "unsigned" in why
+
+
+@needs_model
+def test_a_sendto_buffer_qemu_could_read_is_no_efault(model, image):
+    # print_buf prints the buffer as a string only after it locked all `count` bytes of it, so the buffer is below
+    # TASK_SIZE and access_ok_zero passes; a pointer print is a buffer qemu could not read, and -EFAULT stands.
+    for prefix in ("", SOCKET3, OPEN3):
+        text = prefix + '1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=14\n' + EXIT
+        assert "returned -1 errno=14" in one_why(check(model, image, text), "sendto"), prefix
+        text = prefix + "1 sendto(3,0x7fffffffff00,2,MSG_NOSIGNAL,NULL,0) = -1 errno=14\n" + EXIT
+        assert check(model, image, text)["verdict"] == "pass", prefix
 
 
 @needs_model
@@ -811,7 +843,7 @@ def test_a_struct_printed_for_a_pointer_is_not_null(model, image):
     timeout = ("1 futex(0x52b0e0,FUTEX_PRIVATE_FLAG|FUTEX_WAIT,2,{tv_sec = 0,tv_nsec = 1000},NULL,0) = -1 errno=11\n"
                + EXIT)
     assert "with a timeout" in one_why(check(model, image, timeout), "futex")
-    address = (SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,{sin_family=AF_INET,sin_port=htons(53),"
+    address = (SOCKET3 + '1 sendto(3,"hi",2,MSG_NOSIGNAL,{sin_family=AF_INET,sin_port=htons(53),'
                'sin_addr=inet_addr("127.0.0.1")},16) = 2\n' + EXIT)
     assert "destination address" in one_why(check(model, image, address), "sendto")
     for text in ("NULL", "(nil)", "0", "0x0"):
@@ -878,7 +910,7 @@ def test_dup3_overwrites_the_new_descriptor(model, image):
 @needs_model
 @pytest.mark.parametrize("call", ["fstat(5,0x40007ff8b0) = 0", "flock(5,LOCK_EX) = 0", "dup(5) = 6",
                                   "fcntl(5,F_SETFL,O_RDONLY) = 0", "read(5,0x1000,64) = 64",
-                                  "sendto(5,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2"])
+                                  'sendto(5,"hi",2,MSG_NOSIGNAL,NULL,0) = 2'])
 def test_after_a_pipe2_an_untracked_descriptor_declines(model, image, call):
     text = "1 pipe2(0x40007ff8b0,0) = 0\n1 " + call + "\n" + EXIT
     assert "pipe2 may have made" in one_undecided(check(model, image, text))
@@ -890,13 +922,13 @@ def test_after_a_pipe2_an_untracked_descriptor_declines(model, image, call):
 
 @needs_model
 def test_prlimit64_carries_the_hard_limit_from_the_read(model, image):
-    read = "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=1, rlim_max=4096})\n"
-    same = read + "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2, rlim_max=4096},NULL) = 0\n" + EXIT
+    read = "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=1,rlim_max=4096})\n"
+    same = read + "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2,rlim_max=4096},NULL) = 0\n" + EXIT
     assert check(model, image, same)["verdict"] == "pass"
-    changed = read + "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2, rlim_max=8192},NULL) = 0\n" + EXIT
+    changed = read + "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2,rlim_max=8192},NULL) = 0\n" + EXIT
     assert "changed rlim_max" in one_why(check(model, image, changed), "prlimit64")
     omitted = "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0\n" \
-              "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2, rlim_max=4096},NULL) = 0\n" + EXIT
+              "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=2,rlim_max=4096},NULL) = 0\n" + EXIT
     result = check(model, image, omitted)
     assert result["verdict"] == "undecided" and result["unmodeled"] == []
     assert [u["call"] for u in result["undecided"]] == ["prlimit64", "prlimit64"]
@@ -1439,88 +1471,88 @@ def test_the_32_bit_argument_reader():
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# A real run: giflib's dgif_target, the AddressSanitizer build, on six zero bytes under qemu 8.2.2
+# A real run: giflib's dgif_target, the AddressSanitizer build, on six zero bytes under qemu 10.0.11
 # ---------------------------------------------------------------------------------------------------------------------
 # Recorded with tools/checks/run-binaries and tools/checks/host-calls.c. The runtime opens with three
-# MAP_FIXED_NOREPLACE shadow mappings, two of which qemu prints with a length its 32-bit format cut (the 1 TiB gap as
+# MAP_FIXED_NOREPLACE shadow mappings, two of which qemu prints with a length its 32-bit format cut (the 2 TiB gap as
 # 0, the high shadow as a negative number), and reserves a 128 GiB allocator arena that it prints as 69632. qemu holds
-# its own -D log on descriptor 3, so the input opens at 4. The log is the run's own, with 500 of its 503 identical
-# writes to that log descriptor left out: they belong to no guest call, and the three kept ones stand for them.
-# The trace, line by line: qemu prints a record on one line, and three of them are longer than this file's
-# lines, so those are written as two pieces of the one string.
+# its own -D log on descriptor 3, so the input opens at 4. The log is the run's own, with 500 of its 503 writes to that
+# log descriptor left out: they belong to no guest call, and the three kept ones stand for them.
+# The trace, line by line: qemu prints a record on one line, and some of them are longer than this file's lines, so
+# those are written as two pieces of the one string.
 GIFLIB_TRACE = "".join(line + "\n" for line in [
     "66 set_tid_address(0x6237c0) = 66",
-    "66 mmap(0x000000007fff7000,268435456,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE|"
-    "MAP_NORESERVE,-1,0) = 0x000000007fff7000",
+    "66 mmap(0x000000007fff7000,268435456,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED_NOREPLACE|MAP_NORESERVE,-1,0) = 0x000000007fff7000",
     "66 mmap(0x000000008fff7000,0,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE|"
     "MAP_NORESERVE,-1,0) = 0x000000008fff7000",
-    "66 mmap(0x000001008fff7000,-268431360,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE|"
-    "MAP_NORESERVE,-1,0) = 0x000001008fff7000",
-    "66 mmap(NULL,65536,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002aaaab2ad000",
-    "66 mmap(NULL,3727360,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002aaaab2bd000",
-    "66 mmap(NULL,69632,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0) = 0x00002aaaab64b000",
-    "66 mmap(0x00002acaab650000,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002acaab650000",
-    "66 mmap(NULL,8388608,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0) = 0x00002acaab65c000",
-    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaabe5c000",
-    "66 mmap(NULL,65536,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaabe5d000",
-    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaabe6d000",
-    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaabe6e000",
-    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaabe6f000",
-    "66 munmap(0x00002acaabe6f000,4096) = 0",
-    "66 mmap(NULL,11571200,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaabe70000",
+    "66 mmap(0x000002008fff7000,-268431360,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED_NOREPLACE|MAP_NORESERVE,-1,0) = 0x000002008fff7000",
+    "66 mmap(NULL,65536,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db287000",
+    "66 mmap(NULL,3727360,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368d8fef000",
+    "66 mmap(NULL,69632,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0) = 0x00007348cbfef000",
+    "66 mmap(0x00007368cbff0000,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x00007368cbff0000",
+    "66 mmap(NULL,8388608,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0) = 0x00007368d8600000",
+    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db286000",
+    "66 mmap(NULL,65536,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db276000",
+    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db275000",
+    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db274000",
+    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db273000",
+    "66 munmap(0x00007368db273000,4096) = 0",
+    "66 mmap(NULL,11571200,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007348cb4e6000",
     "66 brk(NULL) = 0x0000000000626000",
     "66 brk(0x0000000000628000) = 0x0000000000628000",
     "66 mmap(0x0000000000626000,4096,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0) = 0x0000000000626000",
-    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaac979000",
-    "66 mmap(NULL,1048576,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaac97a000",
-    "66 mmap(NULL,8388608,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0) = 0x00002acaaca7a000",
-    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaad27a000",
+    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db273000",
+    "66 mmap(NULL,1048576,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368d8eef000",
+    "66 mmap(NULL,8388608,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0) = 0x00007348cac00000",
+    "66 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db272000",
     "66 openat(AT_FDCWD,\"input.bin\",O_RDONLY|O_LARGEFILE) = 4",
-    "66 mmap(NULL,73728,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00002acaad27b000",
-    "66 mmap(0x00002acaab65c000,131072,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002acaab65c000",
+    "66 mmap(NULL,73728,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x00007368db260000",
+    "66 mmap(0x00007368d8600000,131072,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x00007368d8600000",
     "66 read(4,0x5f2c50,65536) = 6",
     "66 read(4,0x5f2c50,65530) = 0",
     "66 close(4) = 0",
-    "66 mmap(0x00002aabab650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002aabab650000",
-    "66 mmap(0x00002aac8b650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002aac8b650000",
-    "66 mmap(0x00002ab0ab650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002ab0ab650000",
-    "66 mmap(0x00002ab18b650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002ab18b650000",
-    "66 mmap(0x00002ac6ab650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002ac6ab650000",
-    "66 mmap(0x00002ac78b650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002ac78b650000",
-    "66 mmap(0x00002ac2ab650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002ac2ab650000",
-    "66 mmap(0x00002ac38b650000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
-    "MAP_FIXED,-1,0) = 0x00002ac38b650000",
-    "66 ioctl(1,TIOCGWINSZ,0x00002aaaab2ab8f0) = -1 errno=25 (Inappropriate ioctl for device)",
-    "66 writev(1,0x2aaaab2ab888,0x2) = 2",
+    "66 mmap(0x00007349cbff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x00007349cbff0000",
+    "66 mmap(0x0000734aabff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x0000734aabff0000",
+    "66 mmap(0x0000734ecbff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x0000734ecbff0000",
+    "66 mmap(0x0000734fabff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x0000734fabff0000",
+    "66 mmap(0x00007364cbff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x00007364cbff0000",
+    "66 mmap(0x00007365abff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x00007365abff0000",
+    "66 mmap(0x00007360cbff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x00007360cbff0000",
+    "66 mmap(0x00007361abff0000,262144,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|"
+    "MAP_FIXED,-1,0) = 0x00007361abff0000",
+    "66 ioctl(1,TIOCGWINSZ,0x00007368d9b7d8f0) = -1 errno=25 (Inappropriate ioctl for device)",
+    "66 writev(1,0x7368d9b7d888,0x2) = 2",
     "66 exit_group(0)",
 ])
 GIFLIB_CALLS = '''\
 exec
-getrandom 8 7ceaefc48920 8 1 1000 0 7ceaefc0a4c0
-mprotect 0 7ceaefbb0000 5c000 1 80 5555777c57f0 4
-mmap 137348473909248 0 801000 0 20022 ffffffff 0
-mprotect 0 7ceaeeff8000 800000 3 801000 ffffffff 0
-mmap 137348337631232 0 8000000 0 22 ffffffff 0
-munmap 0 7ceae6e00000 1200000 1200000 22 ffffffff 0
-munmap 0 7ceaec000000 2e00000 1200000 22 ffffffff 0
-mprotect 0 7ceae8000000 21000 3 22 ffffffff 0
-read 64 4 7ffc3e672240 40 0 0 16
-mmap 137348473380864 0 81000 3 22 ffffffff 0
-mmap 137348222287872 0 8000000 0 22 ffffffff 0
-madvise 0 7ceae0000000 8000000 e 7ceae0000000 ffffffff 0
-mprotect 0 7ceae0000000 7fff000 7 7ceae0000000 7fff000 0
-getrandom 0 0 0 0 5555777e6a90 0 7ceaefac3390
-read 6 5 5555777e2ad0 400 ffffffffffffffb0 0 ffffffff
-read 1024 4 7ffc3e6723d0 400 0 0 0
+getrandom 8 7368db234500 8 1 1000 7368db1b0858 0
+mprotect 0 7368db04f000 163000 1 4 555581282850 555581282870
+mmap 126894167027712 0 801000 0 20022 ffffffff 0
+mprotect 0 7368d9c00000 800000 3 801000 ffffffff 0
+mmap 126894030716928 0 8000000 0 22 ffffffff 0
+munmap 0 7368d1a00000 2600000 0 22 ffffffff 0
+munmap 0 7368d8000000 1a00000 0 22 ffffffff 0
+mprotect 0 7368d4000000 21000 3 22 ffffffff 0
+read 64 4 7ffe4706f570 40 0 0 0
+mmap 126894166499328 0 81000 3 22 ffffffff 0
+mmap 126893936345088 0 8000000 0 22 ffffffff 0
+madvise 0 7368cc000000 8000000 e 22 ffffffff 0
+mprotect 0 7368cc000000 7fff000 7 22 ffffffff 0
+getrandom 0 0 0 0 0 0 0
+read 6 5 5555812a67f0 400 0 0 0
+read 1024 4 7ffe4706f840 400 0 0 0
 mmap 65536 10000 615098 0 104022 ffffffff 0
 munmap 0 10000 615098 10000 104022 ffffffff 0
 mmap 65536 10000 616000 0 104022 ffffffff 0
@@ -1529,70 +1561,54 @@ mmap 233472 39000 8c000 1 12 4 28000
 mmap 806912 c5000 5000 3 12 4 b3000
 mmap 827392 ca000 3000 3 12 4 b7000
 mmap 839680 cd000 559000 3 32 ffffffff 0
-pread64 1344 4 5555777fb2d0 540 ba098 0 0
-mmap 46912496119808 2aaaaaaab000 801000 0 4022 ffffffff 0
-mmap 46912496119808 2aaaaaaab000 801000 3 32 ffffffff 0
-mprotect 0 2aaaaaaab000 1000 0 7ceaefc397d0 0 0
-mmap 46912504512512 2aaaab2ac000 1000 0 4022 ffffffff 0
-mmap 46912504512512 2aaaab2ac000 1000 0 4032 ffffffff 0
-mmap 46912504512512 2aaaab2ac000 1000 3 32 ffffffff 0
-mprotect 0 2aaaab2ac000 1000 3 7ffc3e672240 0 0
-mprotect 0 2aaaab2ac000 1000 1 5555777fb370 0 0
-getrandom 16 7ffc3e671c90 10 0 2aaaab2acfff 0 0
-write 28 3 555577809c70 1c 1 0 0
-write 3 3 555577809c70 3 1 0 ffffffffff9fc848
-write 3 3 555577809c70 3 0 0 0
+pread64 1344 4 5555812c92f0 540 ba098 0 0
+mmap 126894158106624 0 801000 3 22 ffffffff 0
+mprotect 0 7368d937d000 1000 0 0 0 0
+mmap 126894190718976 0 1000 0 4022 ffffffff 0
+mmap 126894190718976 7368db297000 1000 3 32 ffffffff 0
+mprotect 0 7368db297000 1000 3 0 0 0
+mprotect 0 7368db297000 1000 1 0 0 0
+getrandom 16 7ffe4706f4a0 10 0 0 0 0
+write 28 3 5555812d6c00 1c 0 0 0
+write 3 3 5555812d6c00 3 0 0 0
+write 3 3 5555812d6c00 3 0 0 0
 mmap 2147446784 7fff7000 10000000 3 104022 ffffffff 0
-mmap 2415882240 8fff7000 10000000000 0 104022 ffffffff 0
-mmap 1101927510016 1008fff7000 6fff0001000 3 104022 ffffffff 0
-mmap 46912504516608 2aaaab2ad000 10000 0 4022 ffffffff 0
-mmap 46912504516608 2aaaab2ad000 10000 3 32 ffffffff 0
-mmap 46912504582144 2aaaab2bd000 38e000 0 4022 ffffffff 0
-mmap 46912504582144 2aaaab2bd000 38e000 3 32 ffffffff 0
-mmap 46912508309504 2aaaab64b000 2000011000 0 4022 ffffffff 0
-mmap 46912508309504 2aaaab64b000 2000011000 0 4032 ffffffff 0
-mmap 47049947283456 2acaab650000 1000 3 32 ffffffff 0
-mmap 47049947332608 2acaab65c000 800000 0 4022 ffffffff 0
-mmap 47049947332608 2acaab65c000 800000 0 4032 ffffffff 0
-mmap 47049955721216 2acaabe5c000 1000 0 4022 ffffffff 0
-mmap 47049955721216 2acaabe5c000 1000 3 32 ffffffff 0
-mmap 47049955725312 2acaabe5d000 10000 0 4022 ffffffff 0
-mmap 47049955725312 2acaabe5d000 10000 3 32 ffffffff 0
-mmap 47049955790848 2acaabe6d000 1000 0 4022 ffffffff 0
-mmap 47049955790848 2acaabe6d000 1000 3 32 ffffffff 0
-mmap 47049955794944 2acaabe6e000 1000 0 4022 ffffffff 0
-mmap 47049955794944 2acaabe6e000 1000 3 32 ffffffff 0
-mmap 47049955799040 2acaabe6f000 1000 0 4022 ffffffff 0
-mmap 47049955799040 2acaabe6f000 1000 3 32 ffffffff 0
-munmap 0 2acaabe6f000 1000 fff 0 0 0
-mmap 47049955803136 2acaabe70000 b09000 0 4022 ffffffff 0
-mmap 47049955803136 2acaabe70000 b09000 3 32 ffffffff 0
+mmap 2415882240 8fff7000 20000000000 0 104022 ffffffff 0
+mmap 2201439137792 2008fff7000 dfff0001000 3 104022 ffffffff 0
+mmap 126894190653440 0 10000 3 22 ffffffff 0
+mmap 126894154379264 0 38e000 3 22 ffffffff 0
+mmap 126756497321984 0 2000011000 0 4022 ffffffff 0
+mmap 126893936279552 7368cbff0000 1000 3 32 ffffffff 0
+mmap 126894143963136 0 800000 0 4022 ffffffff 0
+mmap 126894190649344 0 1000 3 22 ffffffff 0
+mmap 126894190583808 0 10000 3 22 ffffffff 0
+mmap 126894190579712 0 1000 3 22 ffffffff 0
+mmap 126894190575616 0 1000 3 22 ffffffff 0
+mmap 126894190571520 0 1000 3 22 ffffffff 0
+munmap 0 7368db273000 1000 1000 0 0 0
+mmap 126756485750784 0 b09000 3 22 ffffffff 0
 mmap 6447104 626000 2000 3 100022 ffffffff 0
 mmap 6447104 626000 1000 0 32 ffffffff 0
-mmap 47049967374336 2acaac979000 1000 0 4022 ffffffff 0
-mmap 47049967374336 2acaac979000 1000 3 32 ffffffff 0
-mmap 47049967378432 2acaac97a000 100000 0 4022 ffffffff 0
-mmap 47049967378432 2acaac97a000 100000 3 32 ffffffff 0
-mmap 47049968427008 2acaaca7a000 800000 0 4022 ffffffff 0
-mmap 47049968427008 2acaaca7a000 800000 3 4032 ffffffff 0
-mmap 47049976815616 2acaad27a000 1000 0 4022 ffffffff 0
-mmap 47049976815616 2acaad27a000 1000 3 32 ffffffff 0
-getcwd 5 7ffc3e66fb80 400 69 0 2aaaab2abfd8 1
-mmap 47049976819712 2acaad27b000 12000 0 4022 ffffffff 0
-mmap 47049976819712 2acaad27b000 12000 3 32 ffffffff 0
-mmap 47049947332608 2acaab65c000 20000 3 32 ffffffff 0
-read 6 4 5f2c50 10000 0 0 7ceae00ece40
-read 0 4 5f2c50 fffa 0 0 7ceae00ee480
-mmap 46916803297280 2aabab650000 40000 3 32 ffffffff 0
-mmap 46920561393664 2aac8b650000 40000 3 32 ffffffff 0
-mmap 46938278133760 2ab0ab650000 40000 3 32 ffffffff 0
-mmap 46942036230144 2ab18b650000 40000 3 32 ffffffff 0
-mmap 47032767414272 2ac6ab650000 40000 3 32 ffffffff 0
-mmap 47036525510656 2ac78b650000 40000 3 32 ffffffff 0
-mmap 47015587545088 2ac2ab650000 40000 3 32 ffffffff 0
-mmap 47019345641472 2ac38b650000 40000 3 32 ffffffff 0
+mmap 126894190571520 0 1000 3 22 ffffffff 0
+mmap 126894153330688 0 100000 3 22 ffffffff 0
+mmap 126756476420096 0 800000 3 4022 ffffffff 0
+mmap 126894190567424 0 1000 3 22 ffffffff 0
+getcwd 5 7ffe4706d410 400 7368d9b7dfd8 0 0 0
+mmap 126894190493696 0 12000 3 22 ffffffff 0
+mmap 126894143963136 7368d8600000 20000 3 32 ffffffff 0
+read 6 4 5f2c50 10000 0 7ffe4706f180 5555812cd178
+read 0 4 5f2c50 fffa 0 7ffe4706f180 5555812ccdb8
+mmap 126760792293376 7349cbff0000 40000 3 32 ffffffff 0
+mmap 126764550389760 734aabff0000 40000 3 32 ffffffff 0
+mmap 126782267129856 734ecbff0000 40000 3 32 ffffffff 0
+mmap 126786025226240 734fabff0000 40000 3 32 ffffffff 0
+mmap 126876756410368 7364cbff0000 40000 3 32 ffffffff 0
+mmap 126880514506752 7365abff0000 40000 3 32 ffffffff 0
+mmap 126859576541184 7360cbff0000 40000 3 32 ffffffff 0
+mmap 126863334637568 7361abff0000 40000 3 32 ffffffff 0
 '''
-GIFLIB_LOADS = [(65536, 167936), (233472, 573440), (806912, 20480), (827392, 5619712)]
+GIFLIB_LOADS = [(65536, 165824), (235456, 567500), (807056, 20336), (827952, 5615208)]   # (p_vaddr, p_memsz)
+GIFLIB_INPUT = bytes(6)
 
 
 @pytest.fixture(scope="session")
@@ -1603,9 +1619,9 @@ def giflib_image(tmp_path_factory):
     return str(path)
 
 
-def gif(model, image, text=None, lengths=None):
+def gif(model, image, text=None, lengths=None, inputs=None):
     return S.check_trace(model, GIFLIB_TRACE if text is None else text, stance="off", binary=image,
-                         lengths=GIFLIB_CALLS if lengths is None else lengths)
+                         lengths=GIFLIB_CALLS if lengths is None else lengths, inputs=inputs)
 
 
 def gif_plus(model, image, lines):
@@ -1624,6 +1640,16 @@ def test_a_real_asan_run_passes_with_its_host_call_log(model, giflib_image):
 
 
 @needs_model
+def test_the_real_run_reads_its_input_exactly(model, giflib_image):
+    # With input.bin's six bytes known, its two reads have one answer each: 6, then 0 at the end of the file.
+    assert gif(model, giflib_image, inputs={"input.bin": GIFLIB_INPUT})["verdict"] == "pass"
+    longer = gif(model, giflib_image, inputs={"input.bin": bytes(7)})
+    assert longer["verdict"] == "fail" and longer["unmodeled"][0]["call"] == "read", longer["unmodeled"]
+    why = longer["unmodeled"][0]["why"]
+    assert "returned 6" in why and "holds 7 bytes past offset 0" in why and "exactly 7" in why
+
+
+@needs_model
 def test_the_real_run_without_its_host_call_log(model, giflib_image):
     # A log that holds the run's start and no call line: every cut argument declines, and nothing passes on a guess.
     bare = gif(model, giflib_image, lengths="exec\n")
@@ -1635,10 +1661,10 @@ def test_the_real_run_without_its_host_call_log(model, giflib_image):
 
 @needs_model
 def test_the_real_run_with_a_host_line_changed(model, giflib_image):
-    # The high shadow's length is 0x6FFF0001000; without that line the printed -268431360 stands and declines.
-    short = GIFLIB_CALLS.replace("mmap 1101927510016 1008fff7000 6fff0001000 3 104022 ffffffff 0\n", "")
+    # The high shadow's length is 0xDFFF0001000; without that line the printed -268431360 stands and declines.
+    short = GIFLIB_CALLS.replace("mmap 2201439137792 2008fff7000 dfff0001000 3 104022 ffffffff 0\n", "")
     assert "not pinned" in one_undecided(gif(model, giflib_image, lengths=short), "mmap")
-    wrong = GIFLIB_CALLS.replace("6fff0001000 3 104022", "6fff0002000 3 104022")
+    wrong = GIFLIB_CALLS.replace("dfff0001000 3 104022", "dfff0002000 3 104022")
     assert gif(model, giflib_image, lengths=wrong)["verdict"] != "pass"
 
 
@@ -1654,12 +1680,12 @@ def test_the_real_run_knows_which_descriptor_is_qemus(model, giflib_image):
 
 @needs_model
 @pytest.mark.parametrize("line,verdict,needle", [
-    # the low shadow is read-write, the 1 TiB gap PROT_NONE (vm_noaccess)
+    # the low shadow is read-write, the 2 TiB gap PROT_NONE (vm_noaccess)
     ("madvise(0x000000007fff7000,4096,MADV_DONTNEED) = 0", "pass", None),
     ("madvise(0x000000008fff7000,4096,MADV_DONTNEED) = 0", "fail", "vm_noaccess"),
     # inside the 128 GiB arena: a 256 KiB rw commit, and the PROT_NONE page just past it
-    ("madvise(0x00002aabab650000,262144,MADV_DONTNEED) = 0", "pass", None),
-    ("madvise(0x00002aabab690000,4096,MADV_DONTNEED) = 0", "fail", "vm_noaccess"),
+    ("madvise(0x00007349cbff0000,262144,MADV_DONTNEED) = 0", "pass", None),
+    ("madvise(0x00007349cc030000,4096,MADV_DONTNEED) = 0", "fail", "vm_noaccess"),
     # the guard page over the heap's last page
     ("madvise(0x0000000000626000,4096,MADV_DONTNEED) = 0", "fail", "vm_noaccess"),
     ("madvise(0x0000000000627000,4096,MADV_DONTNEED) = 0", "pass", None),
@@ -1687,6 +1713,11 @@ def test_the_real_runs_ledgers(model, giflib_image, line, verdict, needle):
     ('1 openat(AT_FDCWD,"f",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n1 ftruncate(3,1099511627776) = 0\n' + EXIT,
      "ftruncate", "modeled_truncate_gap"),
     ("1 madvise(0x100000,4096,MADV_HWPOISON) = 0\n" + EXIT, "madvise", "unparseable advice"),
+    # qemu answers a zero length itself, with no host call (linux-user/mmap.c at v10.0.0), so no line pins the printed
+    # 0, which may be a multiple of 2^32.
+    ("1 mmap(NULL,0,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = -1 errno=22\n" + EXIT, "mmap",
+     "the mmap length"),
+    (MADVISE_GRANT + "1 madvise(0x100000,0,MADV_DONTNEED) = 0\n" + EXIT, "madvise", "the madvise length"),
     ('1 openat(AT_FDCWD,"a\n' + EXIT, "openat", "no closing parenthesis"),
 ])
 def test_what_the_trace_does_not_decide(model, image, text, call, needle):
@@ -1717,19 +1748,407 @@ def test_an_undecided_call_is_not_a_verdict_against_the_run(model, image):
     assert [u["call"] for u in result["undecided"]] == ["brk"]
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# The lengths qemu rounds, and the offset it hands on
+# ---------------------------------------------------------------------------------------------------------------------
+GO_MAPS = ("1 mmap(NULL,69648,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x100000\n"
+           "1 mmap(NULL,1439992,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x200000\n"
+           "1 munmap(0x200000,1439992) = 0\n")
+
+
 @needs_model
-def test_connect_answers_0_for_an_af_unspec_address_on_a_fresh_socket(model, image):
-    fresh = SOCKET3 + "1 connect(3,{sa_family=0, sa_data={00, 00, 00, 00, 00, 00}},16) = 0\n" + EXIT
-    assert check(model, image, fresh)["verdict"] == "pass"
-    # It changes nothing modeled (connect_spec: AF_UNSPEC on SkFresh), so a second one answers 0 too; after a bind
-    # the socket is SkBound, where AF_UNSPEC is unmodeled.
-    twice = fresh.replace(EXIT, "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT)
-    assert check(model, image, twice)["verdict"] == "pass"
-    bound = SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT
-    assert "fresh socket only" in one_why(check(model, image, bound), "connect")
-    # An address qemu could not read is printed as a pointer, and then the trace does not show its family.
-    pointer = SOCKET3 + "1 connect(3,0x40007ff8b0,16) = 0\n" + EXIT
-    assert "as a pointer" in one_undecided(check(model, image, pointer), "connect")
+def test_a_length_that_is_not_whole_pages_is_found_by_its_rounding(model, image):
+    # The Go runtime maps lengths that are not whole pages (a real run prints 69648 and 1439992). qemu hands the host
+    # those lengths rounded up to a page, 0x12000 and 0x160000 (linux-user/mmap.c TARGET_PAGE_ALIGN), and the checker
+    # finds the guest's whole length from that line (Arg.unpaged).
+    log = faithful_log(GO_MAPS + EXIT)
+    assert "mmap 1048576 0 12000 " in log and "munmap 0 200000 160000 " in log
+    result = check(model, image, GO_MAPS + EXIT)
+    assert result["verdict"] == "pass", (result["unmodeled"], result["undecided"])
+    # A host line whose length is not the rounding of the printed low 32 bits is no host call of this guest call:
+    # the length stays cut, and the call is undecided.
+    for wrong in ("11010", "13000"):
+        log = faithful_log(GO_MAPS + EXIT).replace("mmap 1048576 0 12000 ", f"mmap 1048576 0 {wrong} ")
+        assert "the mmap length" in one_undecided(check(model, image, GO_MAPS + EXIT, lengths=log), "mmap")
+
+
+@needs_model
+def test_an_anonymous_mmaps_offset_comes_from_its_host_line(model, image):
+    # qemu 10.0 hands the host the guest's offset (linux-user/mmap.c mmap_h_eq_g), so the host line that pins the
+    # length pins the offset too. A printed 0 that the line shows as 2^32 is an offset no anonymous shape has
+    # (Sys/Mm/Mmap.v mmap_modeled_b: w_is0 off).
+    text = "1 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x100000\n" + EXIT
+    assert check(model, image, text)["verdict"] == "pass"
+    wide = faithful_log(text).replace("ffffffffffffffff 0", "ffffffffffffffff 100000000")
+    assert "every anonymous shape needs offset 0" in one_why(check(model, image, text, lengths=wide), "mmap")
+    # With no host line neither the length nor the offset is pinned, and the call is undecided.
+    assert "the mmap length" in one_undecided(check(model, image, text, lengths="exec\n"), "mmap")
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Sockets: connect, and the states Sys/Net/Socket.v keeps
+# ---------------------------------------------------------------------------------------------------------------------
+ACCEPTED4 = SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 listen(3,5) = 0\n1 accept(3,NULL,NULL) = 4\n"
+LISTEN3 = SOCKET3 + "1 listen(3,5) = 0\n"
+BOUND3 = SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n"
+
+
+def conn(ret, fd=3, alen=16):
+    """A connect record as qemu 10.0 prints it: `%s(%d,%#x,%d)`, the address a pointer cut to 32 bits."""
+    return f"1 connect({fd},0x7ff8b0,{alen}) = {ret}\n"
+
+
+# (label, trace, the family of each connect line's address in the host-call log, verdict, a word of the reason)
+CONNECT_CASES = [
+    # Sys/Net/Socket.v connect_spec: AF_UNSPEC on SkFresh answers 0 and changes nothing modeled; any other answer is
+    # not the model's.
+    ("AF_UNSPEC on a fresh socket", SOCKET3 + conn("0"), (0,), "pass", None),
+    ("two AF_UNSPEC connects on a fresh socket", SOCKET3 + conn("0") + conn("0"), (0, 0), "pass", None),
+    ("AF_UNSPEC on a fresh socket answered -EINVAL", SOCKET3 + conn("-1 errno=22"), (0,), "fail", "AF_UNSPEC"),
+    ("AF_UNSPEC on a fresh socket answered -ECONNREFUSED", SOCKET3 + conn("-1 errno=111"), (0,), "fail", "AF_UNSPEC"),
+    # On any other state it is a real disconnect, which the model does not have.
+    ("AF_UNSPEC on a bound socket", BOUND3 + conn("0"), (0,), "fail", "bound socket is unmodeled"),
+    ("AF_UNSPEC on an accepted socket", ACCEPTED4 + conn("0", fd=4), (0,), "fail", "connected socket is unmodeled"),
+    ("a send after an AF_UNSPEC connect", SOCKET3 + conn("0") + '1 sendto(3,"hi",2,MSG_NOSIGNAL,NULL,0) = 2\n', (0,),
+     "fail", "SendDead"),
+    # Any other family on SkFresh or SkBound: -EINVAL below a sockaddr_in, -EAFNOSUPPORT for a family other than
+    # AF_INET, and for AF_INET the attempt itself, which is unmodeled.
+    ("AF_INET on a fresh socket that connected", SOCKET3 + conn("0"), (2,), "fail", "the attempt itself"),
+    ("AF_INET on a fresh socket refused by its peer", SOCKET3 + conn("-1 errno=111"), (2,), "fail",
+     "the attempt itself"),
+    ("AF_UNIX on a fresh socket, -EAFNOSUPPORT", SOCKET3 + conn("-1 errno=97"), (1,), "pass", None),
+    ("AF_UNIX on a fresh socket that connected", SOCKET3 + conn("0"), (1,), "fail", "family 1"),
+    ("AF_INET6 on a bound socket, -EAFNOSUPPORT", BOUND3 + conn("-1 errno=97", alen=28), (10,), "pass", None),
+    ("AF_INET with addrlen 8, -EINVAL", SOCKET3 + conn("-1 errno=22", alen=8), (2,), "pass", None),
+    ("AF_INET with addrlen 8 answered -EAFNOSUPPORT", SOCKET3 + conn("-1 errno=97", alen=8), (2,), "fail",
+     "shorter than a sockaddr_in"),
+    ("addrlen 1, shorter than a family, -EINVAL", SOCKET3 + conn("-1 errno=22", alen=1), (), "pass", None),
+    # A listening, connected or reset socket answers -EISCONN to every family but AF_UNSPEC.
+    ("AF_INET on a listening socket, -EISCONN", LISTEN3 + conn("-1 errno=106"), (2,), "pass", None),
+    ("AF_INET on a listening socket answered -EINVAL", LISTEN3 + conn("-1 errno=22"), (2,), "fail",
+     "listening socket"),
+    ("AF_UNIX on a listening socket answered -EAFNOSUPPORT", LISTEN3 + conn("-1 errno=97"), (1,), "fail",
+     "listening socket"),
+    ("AF_INET on an accepted socket, -EISCONN", ACCEPTED4 + conn("-1 errno=106", fd=4), (2,), "pass", None),
+    ("AF_INET on an accepted socket that connected", ACCEPTED4 + conn("0", fd=4), (2,), "fail", "connected socket"),
+    # A host line without the family (the tracer could not read it) decides nothing.
+    ("a connect whose host line has no family", SOCKET3 + conn("0"), (), "undecided", "family"),
+]
+
+
+@needs_model
+@pytest.mark.parametrize("label,text,families,verdict,needle", CONNECT_CASES, ids=[c[0] for c in CONNECT_CASES])
+def test_connect_is_answered_by_the_family_in_the_host_call_log(model, image, label, text, families, verdict, needle):
+    result = check(model, image, text + EXIT, families=families)
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+    if verdict == "fail":
+        assert needle in one_why(result)
+    elif verdict == "undecided":
+        assert needle in one_undecided(result, "connect")
+
+
+@needs_model
+def test_connect_efault_is_an_address_qemu_could_not_read(model, image):
+    # connect_spec answers -EFAULT when read_bytes_map cannot read the address, before anything else. qemu then
+    # answers it itself, with no host call (target_to_host_sockaddr), so the log has no line for it.
+    efault = SOCKET3 + conn("-1 errno=14") + EXIT
+    assert check(model, image, efault)["verdict"] == "pass"
+    assert check(model, image, efault, lengths="exec\n")["verdict"] == "pass"
+    # A host line of the call means qemu did read the address, and then the family's answer stands, never -EFAULT:
+    # AF_UNSPEC on a fresh socket answers only 0.
+    read = faithful_log(efault, extra=["connect -14 3 7ff8b0 10 0 0 0 0"])
+    assert "read_bytes_map" in one_why(check(model, image, efault, lengths=read), "connect")
+    # With no line at all, a success decides nothing: the family is not known.
+    assert "family" in one_undecided(check(model, image, SOCKET3 + conn("0") + EXIT, lengths="exec\n"), "connect")
+
+
+RESETS = {
+    "after an ECONNRESET send": ACCEPTED4 + '1 sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=104\n',
+    "after an ECONNRESET read": ACCEPTED4 + "1 read(4,0x1000,64) = -1 errno=104\n",
+    "after an ETIMEDOUT read": ACCEPTED4 + "1 read(4,0x1000,64) = -1 errno=110\n",
+}
+
+
+@needs_model
+@pytest.mark.parametrize("reset", list(RESETS))
+@pytest.mark.parametrize("call,families,verdict", [
+    # Sys/Fs/ReadWrite.v read_spec, SkReset: end-of-stream, behind access_ok_zero; the error is reported once.
+    ("read(4,0x1000,64) = 0", (), "pass"),
+    ("read(4,0x1000,64) = 5", (), "fail"),
+    ("read(4,0x1000,64) = -1 errno=104", (), "fail"),
+    ("read(4,0x1000,64) = -1 errno=14", (), "fail"),
+    ("read(4,0x7ffffffffff0,64) = -1 errno=14", (), "pass"),
+    # Sys/Net/Socket.v send_state, SkReset: SendDead.
+    ('sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=32', (), "pass"),
+    ('sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = 2', (), "fail"),
+    ('sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=104', (), "fail"),
+    # listen_spec, SkReset: -EINVAL.
+    ("listen(4,5) = -1 errno=22", (), "pass"),
+    ("listen(4,5) = 0", (), "fail"),
+    # connect_spec, SkReset: -EISCONN for every family but AF_UNSPEC, which is unmodeled.
+    ("connect(4,0x7ff8b0,16) = -1 errno=106", (2,), "pass"),
+    ("connect(4,0x7ff8b0,16) = -1 errno=22", (2,), "fail"),
+    ("connect(4,0x7ff8b0,16) = 0", (0,), "fail"),
+    # getpeername_spec, SkReset: -ENOTCONN.
+    ("getpeername(4,0x40007ff8b0,0x40007ff8c8) = -1 errno=107", (), "pass"),
+    # bind_spec, SkReset: unmodeled, whatever it answers.
+    ("bind(4," + BIND_ANY + ",16) = -1 errno=22", (), "fail"),
+])
+def test_a_reported_peer_error_resets_the_socket(model, image, reset, call, families, verdict):
+    # The model's SkReset: a connection whose peer's reset or timeout one read or send has reported (send_on_socket,
+    # socket_pending_error). The plants reach a connected socket through an accept, which the model answers.
+    result = check(model, image, RESETS[reset] + "1 " + call + "\n" + EXIT, families=families)
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+
+
+@needs_model
+@pytest.mark.parametrize("call,verdict", [
+    # SkConnected sends bytes or reports its peer's error once (send_on_socket); it is never SendDead.
+    ('sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=32', "fail"),
+    ('sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=110', "pass"),
+    ('sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = 2', "pass"),
+    # A read on it delivers bytes, the FIN, or the peer's error; -ENOTCONN is the answer of the unconnected states.
+    ("read(4,0x1000,64) = -1 errno=107", "fail"),
+    ("readv(4,274886295728,2,0,0,0) = -1 errno=107", "fail"),
+    ("read(4,0x1000,64) = 0", "pass"),
+    ("read(4,0x1000,64) = 64", "pass"),
+])
+def test_a_connected_socket_answers_neither_epipe_nor_enotconn(model, image, call, verdict):
+    result = check(model, image, ACCEPTED4 + "1 " + call + "\n" + EXIT)
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+
+
+SOCKET_OPTION_CASES = [
+    # Sys/Net/Socket.v getpeername_spec: -ENOTCONN on SkFresh, SkBound, SkListening and SkReset; unmodeled on
+    # SkConnected (a success that writes the peer's address).
+    ("getpeername on a fresh socket, -ENOTCONN",
+     SOCKET3 + "1 getpeername(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=107\n", "pass"),
+    ("getpeername on a fresh socket that succeeded", SOCKET3 + "1 getpeername(3,0x40007ff8b0,0x40007ff8c8) = 0\n",
+     "fail"),
+    ("getpeername on a fresh socket answered -EINVAL",
+     SOCKET3 + "1 getpeername(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=22\n", "fail"),
+    ("getpeername on a listening socket, -ENOTCONN",
+     LISTEN3 + "1 getpeername(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=107\n", "pass"),
+    ("getpeername on an accepted socket answered -ENOTCONN",
+     ACCEPTED4 + "1 getpeername(4,0x40007ff8b0,0x40007ff8c8) = -1 errno=107\n", "fail"),
+    ("getpeername on a file, -ENOTSOCK", OPEN3 + "1 getpeername(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=88\n", "pass"),
+    ("getpeername on a descriptor the run never opened, -EBADF",
+     "1 getpeername(7,0x40007ff8b0,0x40007ff8c8) = -1 errno=9\n", "pass"),
+    # getsockname_spec: on a socket every answer is unmodeled; on anything else -ENOTSOCK (sock_fd).
+    ("getsockname on a socket answered -EINVAL",
+     SOCKET3 + "1 getsockname(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=22\n", "fail"),
+    ("getsockname on a socket answered -ENOTCONN",
+     SOCKET3 + "1 getsockname(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=107\n", "fail"),
+    ("getsockname on a file, -ENOTSOCK", OPEN3 + "1 getsockname(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=88\n", "pass"),
+    ("getsockname on a file answered -EINVAL", OPEN3 + "1 getsockname(3,0x40007ff8b0,0x40007ff8c8) = -1 errno=22\n",
+     "fail"),
+    # setsockopt_spec: a negative optlen (int32_neg) is -EINVAL, then a level outside sock_level_known -ENOPROTOOPT,
+    # and every option of a known level is unmodeled. qemu prints the level with `%d` and optlen with `%p`.
+    ("setsockopt at an unknown level, -ENOPROTOOPT",
+     SOCKET3 + "1 setsockopt(3,999,2,0x40007ff8b0,0x4) = -1 errno=92\n", "pass"),
+    ("setsockopt at an unknown level answered -EINVAL",
+     SOCKET3 + "1 setsockopt(3,999,2,0x40007ff8b0,0x4) = -1 errno=22\n", "fail"),
+    ("setsockopt at an unknown level answered -EOPNOTSUPP",
+     SOCKET3 + "1 setsockopt(3,999,2,0x40007ff8b0,0x4) = -1 errno=95\n", "fail"),
+    ("setsockopt with a negative optlen, -EINVAL",
+     SOCKET3 + "1 setsockopt(3,1,2,0x40007ff8b0,0xffffffffffffffff) = -1 errno=22\n", "pass"),
+    ("setsockopt with a negative optlen at an unknown level answered -ENOPROTOOPT",
+     SOCKET3 + "1 setsockopt(3,999,2,0x40007ff8b0,0xffffffffffffffff) = -1 errno=92\n", "fail"),
+    ("setsockopt at SOL_SOCKET answered -ENOPROTOOPT",
+     SOCKET3 + "1 setsockopt(3,1,2,0x40007ff8b0,0x4) = -1 errno=92\n", "fail"),
+    ("setsockopt on a file, -ENOTSOCK", OPEN3 + "1 setsockopt(3,1,2,0x40007ff8b0,0x4) = -1 errno=88\n", "pass"),
+]
+
+
+@needs_model
+@pytest.mark.parametrize("label,text,verdict", SOCKET_OPTION_CASES, ids=[c[0] for c in SOCKET_OPTION_CASES])
+def test_the_socket_option_and_address_calls(model, image, label, text, verdict):
+    result = check(model, image, text + EXIT)
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+
+
+# qemu prints sendmsg with no printer (six 64-bit decimals; 16384 is MSG_NOSIGNAL), recvmsg through `%s(%d,%p,%#x)`,
+# recvfrom with print_recvfrom (the size in full) and getsockopt through `%s(%d,%d,%d,%p,%p)`.
+MESSAGE_CASES = [
+    # Sys/Net/Socket.v sendmsg_spec: past the header (-EFAULT, -EMSGSIZE, -EINVAL), send_on_socket as for sendto.
+    ("sendmsg on a fresh socket, -EPIPE", SOCKET3 + "1 sendmsg(3,274886295728,16384,0,0,0) = -1 errno=32\n", "pass"),
+    ("sendmsg on a fresh socket that sent bytes", SOCKET3 + "1 sendmsg(3,274886295728,16384,0,0,0) = 5\n", "fail"),
+    ("sendmsg on an accepted socket that sent bytes", ACCEPTED4 + "1 sendmsg(4,274886295728,16384,0,0,0) = 5\n",
+     "pass"),
+    ("sendmsg on an accepted socket answered -EPIPE",
+     ACCEPTED4 + "1 sendmsg(4,274886295728,16384,0,0,0) = -1 errno=32\n", "fail"),
+    ("sendmsg on an accepted socket that sent more than rw_bytes_max",
+     ACCEPTED4 + "1 sendmsg(4,274886295728,16384,0,0,0) = 131073\n", "fail"),
+    ("a send after an ECONNRESET sendmsg, -EPIPE",
+     ACCEPTED4 + "1 sendmsg(4,274886295728,16384,0,0,0) = -1 errno=104\n"
+     '1 sendto(4,"hi",2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n', "pass"),
+    ("sendmsg on a file, -ENOTSOCK", OPEN3 + "1 sendmsg(3,274886295728,16384,0,0,0) = -1 errno=88\n", "pass"),
+    ("sendmsg on a file answered -EPIPE", OPEN3 + "1 sendmsg(3,274886295728,16384,0,0,0) = -1 errno=32\n", "fail"),
+    # recvfrom_spec: a size above rw_bytes_max is unmodeled; a range past TASK_SIZE -EFAULT, before the descriptor;
+    # then -EBADF, -ENOTSOCK, and on a socket unmodeled.
+    ("recvfrom on a file, -ENOTSOCK", OPEN3 + "1 recvfrom(3,0x1000,64,0,NULL,NULL) = -1 errno=88\n", "pass"),
+    ("recvfrom on a socket answered -ENOTCONN", SOCKET3 + "1 recvfrom(3,0x1000,64,0,NULL,NULL) = -1 errno=107\n",
+     "fail"),
+    ("recvfrom past TASK_SIZE, -EFAULT", "1 recvfrom(9,0x7ffffffffff0,64,0,NULL,NULL) = -1 errno=14\n", "pass"),
+    ("recvfrom past TASK_SIZE answered -EBADF", "1 recvfrom(9,0x7ffffffffff0,64,0,NULL,NULL) = -1 errno=9\n", "fail"),
+    ("recvfrom of more than rw_bytes_max", OPEN3 + "1 recvfrom(3,0x1000,131073,0,NULL,NULL) = -1 errno=88\n", "fail"),
+    # recvmsg_spec: MSG_CMSG_COMPAT is unmodeled; then -EBADF, -ENOTSOCK, and on a socket unmodeled.
+    ("recvmsg on a file, -ENOTSOCK", OPEN3 + "1 recvmsg(3,0x40007ff8b0,0x0) = -1 errno=88\n", "pass"),
+    ("recvmsg with MSG_CMSG_COMPAT on a file", OPEN3 + "1 recvmsg(3,0x40007ff8b0,0x80000000) = -1 errno=88\n", "fail"),
+    ("recvmsg on a socket answered -ENOTCONN", SOCKET3 + "1 recvmsg(3,0x40007ff8b0,0x0) = -1 errno=107\n", "fail"),
+    # getsockopt_spec: an unknown level is -EOPNOTSUPP on a socket; nothing else is answered there.
+    ("getsockopt at an unknown level answered -ENOTSOCK on a socket",
+     SOCKET3 + "1 getsockopt(3,999,2,0x40007ff8b0,0x40007ff8c8) = -1 errno=88\n", "fail"),
+    ("getsockopt on a file, -ENOTSOCK", OPEN3 + "1 getsockopt(3,1,2,0x40007ff8b0,0x40007ff8c8) = -1 errno=88\n",
+     "pass"),
+]
+
+
+@needs_model
+@pytest.mark.parametrize("label,text,verdict", MESSAGE_CASES, ids=[c[0] for c in MESSAGE_CASES])
+def test_the_message_calls(model, image, label, text, verdict):
+    result = check(model, image, text + EXIT)
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+
+
+# The address structs qemu 10.0's print_sockaddr writes for bind, each followed by the printed addrlen.
+ZEROS14 = ", ".join(["00"] * 14)
+BIND_CASES = [
+    # Sys/Net/Socket.v bind_spec: below a sockaddr_in -EINVAL; then any family but AF_INET (or AF_UNSPEC with
+    # INADDR_ANY) -EAFNOSUPPORT.
+    ("an AF_UNIX address, -EAFNOSUPPORT", '{sun_family=AF_UNIX,sun_path="/tmp/s"},110', "-1 errno=97", "pass"),
+    ("an AF_UNIX address that bound", '{sun_family=AF_UNIX,sun_path="/tmp/s"},110', "0", "fail"),
+    ("an AF_PACKET address, -EAFNOSUPPORT", "{sll_family=AF_PACKET,sll_protocol=htons(0x0003),if2,pkttype=PACKET_HOST,"
+     "sll_addr=00:00:00:00:00:00:00:00},20", "-1 errno=97", "pass"),
+    ("an AF_PACKET address that bound", "{sll_family=AF_PACKET,sll_protocol=htons(0x0003),if2,pkttype=PACKET_HOST,"
+     "sll_addr=00:00:00:00:00:00:00:00},20", "0", "fail"),
+    ("an AF_NETLINK address of 16 bytes, -EAFNOSUPPORT", "{nl_family=AF_NETLINK,nl_pid=0,nl_groups=0},16",
+     "-1 errno=97", "pass"),
+    ("an AF_NETLINK address of 16 bytes that bound", "{nl_family=AF_NETLINK,nl_pid=0,nl_groups=0},16", "0", "fail"),
+    ("an AF_NETLINK address of 12 bytes, -EINVAL", "{nl_family=AF_NETLINK,nl_pid=0,nl_groups=0},12", "-1 errno=22",
+     "pass"),
+    ("an AF_INET6 address, -EAFNOSUPPORT", "{sa_family=10, sa_data={" + ZEROS14 + "}},28", "-1 errno=97", "pass"),
+    ("an AF_INET6 address that bound", "{sa_family=10, sa_data={" + ZEROS14 + "}},28", "0", "fail"),
+    ("an AF_UNSPEC INADDR_ANY address that bound", "{sa_family=0, sa_data={" + ZEROS14 + "}},16", "0", "pass"),
+    ("an AF_UNSPEC address of 127.0.0.1, -EAFNOSUPPORT",
+     "{sa_family=0, sa_data={00, 00, 7f, 00, 00, 01, 00, 00, 00, 00, 00, 00, 00, 00}},16", "-1 errno=97", "pass"),
+    # An AF_UNIX path is guest text, printed as it is: it can spell an AF_INET struct, and is not read as one.
+    ("an AF_UNIX path that spells an AF_INET address, which bound",
+     '{sun_family=AF_UNIX,sun_path="sin_family=AF_INET,sin_port=htons(0),sin_addr=inet_addr("0.0.0.0")"},110', "0",
+     "fail"),
+    # qemu prints a pointer when it cannot read the address, and then answers -EFAULT itself (read_bytes_map fails).
+    ("an address qemu could not read, -EFAULT", "0x40007ff8b0,16", "-1 errno=14", "pass"),
+    ("an address qemu could not read answered -EPERM", "0x40007ff8b0,16", "-1 errno=1", "fail"),
+    ("an address qemu could not read with an addrlen above 32 bits", "0x40007ff8b0,4294967312", "-1 errno=14",
+     "undecided"),
+]
+
+
+@needs_model
+@pytest.mark.parametrize("label,address,ret,verdict", BIND_CASES, ids=[c[0] for c in BIND_CASES])
+def test_bind_reads_every_address_qemu_prints(model, image, label, address, ret, verdict):
+    result = check(model, image, SOCKET3 + f"1 bind(3,{address}) = {ret}\n" + EXIT)
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+    if verdict == "fail":
+        one_why(result, "bind")
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# prlimit64's pointers and limits
+# ---------------------------------------------------------------------------------------------------------------------
+PRLIMIT_READ = "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0,rlim_max=4096})\n"
+PRLIMIT_CASES = [
+    # Sys/Kernel/Sys.v prlimit64_spec, the read: a buffer read_bytes_map cannot write is -EFAULT past access_okb
+    # old_rlim 16 and unmodeled in range; the limit it reads has soft <= hard (rlim64_wf).
+    ("a read into a buffer in range answered -EFAULT", "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = -1 errno=14\n",
+     "fail"),
+    ("a read into a buffer that ends past TASK_SIZE, -EFAULT",
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x7ffffffffff8) = -1 errno=14\n", "pass"),
+    ("a read whose soft limit is above its hard limit",
+     "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=8,rlim_max=4})\n", "fail"),
+    ("a read of an unlimited limit", "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=-1,rlim_max=-1})\n",
+     "pass"),
+    # The write: qemu prints a pointer when it cannot read the new limit; read_bytes_map fails, which is -EFAULT past
+    # access_okb new_rlim 16 and unmodeled in range.
+    ("a write from a buffer that ends past TASK_SIZE, -EFAULT",
+     PRLIMIT_READ + "1 prlimit64(0,RLIMIT_CORE,0x7ffffffffff8,NULL) = -1 errno=14\n", "pass"),
+    ("a write from a buffer that ends past TASK_SIZE that succeeded",
+     PRLIMIT_READ + "1 prlimit64(0,RLIMIT_CORE,0x7ffffffffff8,NULL) = 0\n", "fail"),
+    ("a write from an unreadable buffer in range",
+     PRLIMIT_READ + "1 prlimit64(0,RLIMIT_CORE,0x40007ff8b0,NULL) = -1 errno=14\n", "fail"),
+]
+
+
+@needs_model
+@pytest.mark.parametrize("label,text,verdict", PRLIMIT_CASES, ids=[c[0] for c in PRLIMIT_CASES])
+def test_prlimit64_decides_its_pointers_and_limits(model, image, label, text, verdict):
+    result = check(model, image, text + EXIT)
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+    if verdict == "fail":
+        one_why(result, "prlimit64")
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# input.bin, whose contents the run's environment fixes
+# ---------------------------------------------------------------------------------------------------------------------
+INPUT = b"0123456789"
+OPEN_INPUT = '1 openat(AT_FDCWD,"input.bin",O_RDONLY|O_LARGEFILE) = 3\n'
+INPUT_CASES = [
+    # Sys/Fs/ReadWrite.v read_spec on FdFile: exactly the file's bytes from the offset, cut at its end and at the
+    # clamped count (Fs.v file_read), or -EFAULT; the offset moves by what was delivered.
+    ("the whole file in one read", ["read(3,0x1000,64) = 10"], "pass"),
+    ("a short read", ["read(3,0x1000,64) = 5"], "fail"),
+    ("a read of nothing at the head of the file", ["read(3,0x1000,64) = 0"], "fail"),
+    ("reads to the end of the file", ["read(3,0x1000,4) = 4", "read(3,0x1000,64) = 6", "read(3,0x1000,64) = 0"],
+     "pass"),
+    ("a read past the end that delivered a byte", ["read(3,0x1000,64) = 10", "read(3,0x1000,64) = 1"], "fail"),
+    ("a read answered -EFAULT", ["read(3,0x1000,64) = -1 errno=14"], "pass"),
+    # lseek_spec: SEEK_END's base is the file's length, SEEK_CUR's the descriptor's offset.
+    ("lseek SEEK_END to the length", ["lseek(3,0,SEEK_END) = 10"], "pass"),
+    ("lseek SEEK_END elsewhere", ["lseek(3,0,SEEK_END) = 4096"], "fail"),
+    ("lseek SEEK_END back 4, then a read", ["lseek(3,-4,SEEK_END) = 6", "read(3,0x1000,64) = 4"], "pass"),
+    ("lseek SEEK_CUR after a read", ["read(3,0x1000,4) = 4", "lseek(3,0,SEEK_CUR) = 4"], "pass"),
+    ("lseek SEEK_CUR after a read that answered the head", ["read(3,0x1000,4) = 4", "lseek(3,0,SEEK_CUR) = 0"],
+     "fail"),
+    # pread64 reads at its position, and leaves the offset.
+    ("pread64 to the end", ["pread64(3,0x1000,64,4) = 6"], "pass"),
+    ("a short pread64", ["pread64(3,0x1000,64,4) = 5"], "fail"),
+    ("pread64, then a read from the head", ["pread64(3,0x1000,64,4) = 6", "read(3,0x1000,64) = 10"], "pass"),
+    # readv's iovec total is behind its pointer: it delivers at most the bytes that remain.
+    ("readv of the whole file", ["readv(3,274886295728,2,0,0,0) = 10"], "pass"),
+    ("readv of part of the file", ["readv(3,274886295728,2,0,0,0) = 4"], "pass"),
+    ("readv of more than the file", ["readv(3,274886295728,2,0,0,0) = 11"], "fail"),
+    ("readv at the end that delivered a byte", ["read(3,0x1000,64) = 10", "readv(3,274886295728,2,0,0,0) = 1"],
+     "fail"),
+    ("readv, then a read of the rest", ["readv(3,274886295728,2,0,0,0) = 4", "read(3,0x1000,64) = 6"], "pass"),
+    ("readv, then a read of the whole file", ["readv(3,274886295728,2,0,0,0) = 4", "read(3,0x1000,64) = 10"],
+     "fail"),
+    # A descriptor that can write the file makes its contents unknown from then on (forget_contents).
+    ("a short read after an O_RDWR open of the file",
+     ['openat(AT_FDCWD,"input.bin",O_RDWR|O_LARGEFILE) = 4', "read(3,0x1000,64) = 5"], "pass"),
+]
+
+
+@needs_model
+@pytest.mark.parametrize("label,calls,verdict", INPUT_CASES, ids=[c[0] for c in INPUT_CASES])
+def test_input_bin_reads_have_one_answer(model, image, label, calls, verdict):
+    text = OPEN_INPUT + "".join(f"1 {call}\n" for call in calls) + EXIT
+    result = check(model, image, text, inputs={"input.bin": INPUT})
+    assert result["verdict"] == verdict, (result["unmodeled"], result["undecided"])
+
+
+@needs_model
+def test_input_bin_is_found(model, image):
+    # Sys/Fs/Open.v openat_resolved_spec: fs_lookup finds a file the environment holds, so its open is not -ENOENT.
+    absent = '1 openat(AT_FDCWD,"input.bin",O_RDONLY|O_LARGEFILE) = -1 errno=2\n' + EXIT
+    assert "openat_resolved_spec" in one_why(check(model, image, absent, inputs={"input.bin": INPUT}), "openat")
+    assert check(model, image, absent)["verdict"] == "pass"
+    # Without its contents a read of it is held to its count only, as a read of any file.
+    short = OPEN_INPUT + "1 read(3,0x1000,64) = 5\n" + EXIT
+    assert check(model, image, short)["verdict"] == "pass"
+    # Once the run removes it, a later open of the name may answer -ENOENT.
+    removed = '1 unlinkat(AT_FDCWD,"input.bin",0) = 0\n' + absent
+    assert check(model, image, removed, inputs={"input.bin": INPUT})["verdict"] == "pass"
 
 
 @needs_model

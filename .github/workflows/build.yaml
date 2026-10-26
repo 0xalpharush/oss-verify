@@ -146,7 +146,6 @@ jobs:
   project-builds:
     # A static name: GitHub reports the check under it on every run, and a required job has no job-level if:.
     name: project-builds
-    # 24.04, not ubuntu-latest: Ubuntu 26.04 has no qemu-user-static package, which --checks takes qemu from.
     runs-on: ubuntu-24.04
     # tools/check has no time limit of its own: this one is the runner's, the most it allows, for two builds and
     # --checks (at most 30 minutes of runs for the checks of the binaries, 2 x 20 minutes of seed runs on the unchanged
@@ -190,12 +189,19 @@ jobs:
           # It is taken out of its package, not installed: the package registers qemu with the kernel for riscv64
           # programs (binfmt_misc), and a build.sh could then run the riscv64 programs that it makes. (From #24.)
           # Without it, --checks says that it could not measure, and the build is checked as before.
+          # The check of system calls reads the runs of qemu 10.0 only (tools/check_binaries.py QEMU_VERSIONS), so this
+          # is Debian 13's qemu-user 1:10.0.11+ds-0+deb13u1, pinned by its SHA-256 at its snapshot.debian.org address:
+          # the build theorem-labs/oss-verify-proofs's toolchain/runner.Dockerfile runs counterexamples with. Its
+          # qemu-riscv64 is a static binary; the -static name is the one tools/check looks for.
           mkdir "$RUNNER_TEMP/qemu" && cd "$RUNNER_TEMP/qemu"
-          if { apt-get download -q qemu-user-static || { sudo apt-get update -qq && apt-get download -q qemu-user-static; }; } \
-              && dpkg-deb -x qemu-user-static_*.deb . && test -x usr/bin/qemu-riscv64-static; then
+          deb=qemu-user_10.0.11+ds-0+deb13u1_amd64.deb
+          if curl -fsSL --retry 3 -o "$deb" https://snapshot.debian.org/file/a0eaa62f815efb2361d43b1e3f8011c17ad9123a \
+              && echo "6b6fea55551fbcc1eb30e146ad5abdfbb49f8fa8c5998016242126de4d7f80df  $deb" | sha256sum -c --quiet \
+              && dpkg-deb -x "$deb" . && ln -s qemu-riscv64 usr/bin/qemu-riscv64-static \
+              && usr/bin/qemu-riscv64-static --version | grep -q 'version 10\.0\.11'; then
             echo "$RUNNER_TEMP/qemu/usr/bin" >> "$GITHUB_PATH"
           else
-            echo "::warning::No qemu-riscv64-static: tools/check --checks cannot run the fuzz targets."
+            echo "::warning::No qemu-riscv64-static 10.0.11: tools/check --checks cannot run the fuzz targets."
           fi
 
       - name: Pull the pinned toolchain image

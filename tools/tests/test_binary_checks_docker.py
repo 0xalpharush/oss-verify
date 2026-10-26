@@ -31,7 +31,8 @@ BUILDS = ["plain", "ubsan", "asan"]
 def docker_ready():
     """Whether Docker runs and the pinned toolchain image is here."""
     try:
-        return subprocess.run(["docker", "image", "inspect", check_build.toolchain()], capture_output=True).returncode == 0
+        return subprocess.run(["docker", "image", "inspect", check_build.newest_toolchain()],
+                              capture_output=True).returncode == 0
     except OSError:
         return False
 
@@ -83,8 +84,9 @@ class Records(unittest.TestCase):
         records = {build: check_binaries.record_of(self.raw[build], "example_fuzzer")[0] for build in BUILDS}
         wanted = {real for record in records.values() for real, _, _ in record.inputs.values()
                   if real.startswith("/opt/")}
-        image = check_binaries.image_hashes(check_build.toolchain(), wanted, labels=[])
-        results = check_links.analyse(records, image, check_binaries.dwarf_reader(check_build.toolchain(), []))
+        toolchain = check_build.newest_toolchain()
+        image = check_binaries.image_hashes(toolchain, wanted, labels=[])
+        results = check_links.analyse(records, image, check_binaries.dwarf_reader(toolchain, []))
         self.assertEqual(results["plain"]["instrumented"]["result"], "plain")
         for build in ("ubsan", "asan"):
             self.assertEqual(results[build]["instrumented"]["result"], "pass", results[build]["instrumented"])
@@ -97,11 +99,12 @@ class Records(unittest.TestCase):
         language: check_links reads that unit to list hand-written assembly."""
         script = ('cd /tmp && printf ".globl f\\nf:\\n ret\\n" > x.S && clang --config=/opt/asan-static/musl.cfg '
                   '-march=rv64g -g -c x.S -o x.o && cat x.o')
-        data = subprocess.run(["docker", "run", "--rm", "--network=none", "--entrypoint", "sh", check_build.toolchain(),
+        toolchain = check_build.newest_toolchain()
+        data = subprocess.run(["docker", "run", "--rm", "--network=none", "--entrypoint", "sh", toolchain,
                                "-c", script], capture_output=True, check=True).stdout
         facts = check_links.object_facts(data)
         self.assertFalse(facts.compiled)
-        unit = check_binaries.dwarf_reader(check_build.toolchain(), [])([data])[0]
+        unit = check_binaries.dwarf_reader(toolchain, [])([data])[0]
         self.assertEqual((unit[0], unit[1]), ("DW_LANG_Mips_Assembler", "x.S"), unit)
 
     @unittest.skipUnless(QEMU, "no qemu-riscv64-static on PATH")
@@ -120,7 +123,8 @@ class Records(unittest.TestCase):
                 (files / "inputs" / str(n)).write_bytes(data)
                 runs += [f"l{n} binary inputs/{n} example_fuzzer", f"q{n} quiet inputs/{n} example_fuzzer"]
             (files / "runs").write_text("".join(f"{run}\n" for run in runs))
-            results = check_binaries.run_job(job_dir, check_build.toolchain(), pathlib.Path(QEMU).resolve(), [], 600)
+            results = check_binaries.run_job(job_dir, check_build.newest_toolchain(), pathlib.Path(QEMU).resolve(), [],
+                                             600)
             self.assertEqual([(results / f"l{n}.status").read_text().strip() for n in range(2)], ["0", "78"])
             self.assertTrue((results / "l0.out").read_text().strip() != "0", "the loud binary writes")
             agreement = check_binaries.quiet_loud(True, "", inputs, results)

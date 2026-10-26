@@ -28,7 +28,10 @@ and gives each build of each fuzz target two results:
    functions. So in the ubsan and asan-ubsan builds, each archive of the project's code must hold more of them than
    the same archive in the plain build, and so must the project's code as a whole.
 
-The plain build instruments nothing, by design; its result is "plain".
+The plain build instruments nothing, by design; its result is "plain" when its record is complete, and "error"
+when it has no record or an incomplete one. A Go program has no record (Go's linker writes no map): its result is
+"plain" when its own build information says Go's linker linked it from Go code only, with no cgo, and "error"
+otherwise.
 
 What this catches: a build whose sanitizer flags did not reach some of its code, by mistake. The records are written
 inside the build's own container, so a build.sh that sets out to deceive the check can; the review of the pull request
@@ -44,6 +47,8 @@ import re
 import stat
 import struct
 import sys
+
+import binary_isa
 
 # The kinds of the toolchain's runtimes, by file name, as the toolchain's driver links them. Every other archive in a
 # sysroot's usr/lib is a library of the toolchain image: kind image-library.
@@ -162,6 +167,86 @@ class Record:
         if hashlib.sha256(data).hexdigest() != sha256:
             raise RecordError(f"the kept copy of {sha256[:16]} has other bytes")
         return data
+
+
+@dataclasses.dataclass
+class GoProgram:
+    """A program that Go's own linker linked from Go code only, as the program's build information says. Go's linker
+    writes no map, so such a link has no Record; this stands in for it."""
+
+    version: str  # the Go release, as the build information names it
+    settings: dict  # the build information's `build` lines: {key: value}
+
+
+# The build information that Go writes into each program it builds (.go.buildinfo, read by `go version -m`;
+# src/debug/buildinfo/buildinfo.go): a 32-byte header that starts with this magic, then, when bit 1 of its flags byte
+# is set, the Go version and the module information, each a uvarint length and the bytes. The module information is
+# framed by 16 bytes on each side.
+GO_BUILDINFO_MAGIC = b"\xff Go buildinf:"
+# The settings of a program that takes no file of the toolchain image that a sanitizer could instrument: no cgo (so no
+# C library and no C compiler's runtime), Go's own compiler, an executable, for linux/riscv64. The race detector and
+# Go's -msan and -asan modes link C runtimes, and an external link runs the C toolchain's linker.
+GO_ONLY_SETTINGS = {"CGO_ENABLED": "0", "-compiler": "gc", "-buildmode": "exe", "GOOS": "linux", "GOARCH": "riscv64"}
+GO_C_RUNTIMES = ("-race", "-msan", "-asan")
+
+
+def _uvarint(data, at):
+    """The uvarint at data[at:] and the offset after it. Raise ValueError if it runs past the end or past 64 bits."""
+    value = shift = 0
+    while shift < 64:
+        if at >= len(data):
+            raise ValueError("a length runs past the end of the section")
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return value, at
+        shift += 7
+    raise ValueError("a length is longer than 64 bits")
+
+
+def go_program(data):
+    """The GoProgram that the executable `data` is, from its .go.buildinfo section, or the reason it is not one
+    (str): no such section, build information this cannot read, or a setting that lets the link take C code."""
+    try:
+        _, sections, _ = binary_isa.parse_elf(data)
+    except binary_isa.Unexamined as error:
+        return f"not a RISC-V ELF file: {error}"
+    found = [s for s in sections if s["name"] == ".go.buildinfo" and s["type"] != SHT_NOBITS]
+    if len(found) != 1:
+        return f"{len(found)} .go.buildinfo sections, not one: not a program that Go built"
+    body = data[found[0]["off"]:found[0]["off"] + found[0]["size"]]
+    if len(body) < 32 or not body.startswith(GO_BUILDINFO_MAGIC) or not body[15] & 2:
+        return "its .go.buildinfo is not the build information of Go 1.18 or later"
+    try:
+        strings, at = [], 32
+        for _ in range(2):
+            size, at = _uvarint(body, at)
+            if at + size > len(body):
+                raise ValueError("a string runs past the end of the section")
+            strings.append(body[at:at + size])
+            at += size
+        version, module = strings
+        if len(module) >= 33 and module[-17:-16] == b"\n":
+            module = module[16:-16]
+        version, module = version.decode("ascii"), module.decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as error:
+        return f"its .go.buildinfo cannot be read: {error}"
+    if not version.startswith("go"):
+        return f"its .go.buildinfo names no Go release: {version[:40]!r}"
+    settings = {}
+    for line in module.split("\n"):
+        if line.startswith("build\t"):
+            key, _, value = line[len("build\t"):].partition("=")
+            settings[key] = value
+    wrong = [f"{key}={settings.get(key, '(none)')}, not {value}" for key, value in GO_ONLY_SETTINGS.items()
+             if settings.get(key) != value]
+    wrong += [f"{key}={settings[key]}" for key in GO_C_RUNTIMES if settings.get(key, "false") != "false"]
+    if "linkmode" in settings.get("-ldflags", "") or "extld" in settings.get("-ldflags", ""):
+        wrong.append(f"-ldflags={settings['-ldflags']} chooses the linker")
+    if wrong:
+        return f"a Go program ({version}) whose build information lets its link take C code: " + "; ".join(wrong)
+    return GoProgram(version, settings)
 
 
 def parse_map(text):
@@ -479,21 +564,31 @@ def source_entry(c, unit, checkouts, named=None):
 
 def analyse(records, image, dwarf_units=None, checkouts=(), assembly_sources=None):
     """The results for one fuzz target: {build: {"uninstrumented": [...] or None, "instrumented": {"result",
-    "detail"}}}. `records` maps a build to its Record, or to the reason it has none; `image` maps real paths under
-    /opt to the toolchain image's sha256. `dwarf_units(objects)` gives each object's DWARF compile unit (language,
-    name, compilation directory) or None; `checkouts` are the checkouts of the project image, which a source is named
-    relative to; `assembly_sources([(object name, [the functions it defines])])` gives, for an object with no DWARF,
-    the assembly source of the project that carries its name and names every one of them, or None."""
+    "detail"}}}. `records` maps a build to its Record, to a GoProgram, or to the reason it has neither; `image` maps
+    real paths under /opt to the toolchain image's sha256. `dwarf_units(objects)` gives each object's DWARF compile
+    unit (language, name, compilation directory) or None; `checkouts` are the checkouts of the project image, which a
+    source is named relative to; `assembly_sources([(object name, [the functions it defines])])` gives, for an object
+    with no DWARF, the assembly source of the project that carries its name and names every one of them, or None."""
     results, scanned, problems_of = {}, {}, {}
     for build, record in records.items():
+        if isinstance(record, GoProgram):
+            # Go's linker writes no map, and the program's own build information says what it linked: Go code only,
+            # with no C library and no file of a C toolchain. No list is written: what it takes from the toolchain
+            # image is Go's runtime and standard library, which no file list of the facts' schema names. Go has the
+            # plain build only (infra/base-builder/go/compile-go), and no sanitizer instruments Go code.
+            plain = build not in SANITIZER_BUILDS
+            results[build] = {"uninstrumented": None, "instrumented": {
+                "result": "plain" if plain else "error",
+                "detail": (f"a Go program ({record.version}), linked by Go's own linker from Go code only (its build "
+                           "information: " + ", ".join(f"{k}={record.settings[k]}" for k in GO_ONLY_SETTINGS)
+                           + "), which writes no map; no uninstrumented list, as it links no C library or other file "
+                           "of a C toolchain" + ("; the plain build instruments nothing, by design" if plain
+                                                 else "; no sanitizer instruments Go code"))}}
+            continue
         if not isinstance(record, Record):
-            if build in SANITIZER_BUILDS:
-                results[build] = {"uninstrumented": None,
-                                  "instrumented": {"result": "error", "detail": f"no link record: {record}"}}
-            else:
-                results[build] = {"uninstrumented": None, "instrumented": {
-                    "result": "plain", "detail": f"the plain build instruments nothing, by design; not recorded: "
-                                                 f"{record}"}}
+            # With no record, nothing says what the link took, in the plain build as in the others.
+            results[build] = {"uninstrumented": None,
+                              "instrumented": {"result": "error", "detail": f"no link record: {record}"}}
             continue
         code, provided, problems = project_code(record, image)
         scanned[build] = code
