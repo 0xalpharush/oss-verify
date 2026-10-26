@@ -296,6 +296,21 @@ class WhereTheCodeIs(Base):
         res, out = self.one(mkelf(Z32 * 2, text_flags=0x2), "UNEXAMINED", exec_bytes=0)
         self.assertEqual((res["pf_x"]["gap_zero"], res["pf_x"]["gap_nonzero"]), (8, 0))
 
+    def test_a_well_formed_note_section_mapped_executable_is_data(self):
+        # Go's linker puts .note.go.buildid and .note.gnu.build-id in the text segment, in front of .text. A note
+        # section whose bytes are whole, well-formed notes is named and not decoded; any other bytes are decoded.
+        def as_note(blob):
+            b = bytearray(blob)
+            shoff = struct.unpack_from("<Q", b, 40)[0]
+            struct.pack_into("<I", b, shoff + 64 + 4, binary_isa.SHT_NOTE)
+            return bytes(b)
+        note = struct.pack("<III", 4, 8, 4) + b"Go\0\0" + b"\x01\x02\x03\x04\x05\x06\x07\x08"
+        res, out = self.one(as_note(mkelf(note, text_flags=0x2, gap=NOP + ADD)), "CLEAN")
+        self.assertEqual(res["pf_x"]["data_in_x"], [(".text", len(note))])
+        # The same bytes with a size that runs past the section are not notes: decoded, and they fail.
+        bad = struct.pack("<III", 4, 4000, 4) + b"Go\0\0" + CNOP * 4
+        res, out = self.one(as_note(mkelf(bad, text_flags=0x2, gap=NOP)), "RVC")
+
     def test_a_section_must_be_where_its_segment_maps_it(self):
         # The code is at 2 mod 4, and its section header says 0 mod 4.
         b = bytearray(mkelf(NOP + ADD, text_vaddr=TEXT_VADDR + 2))

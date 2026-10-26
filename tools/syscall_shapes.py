@@ -867,8 +867,8 @@ UNCERTAIN = ("an earlier MAP_FIXED that failed over live memory may have unmappe
              "the trace does not say which")
 # A descriptor's kind, as State.v FdEntry names it. The replay stores a tuple: ("channel", n), ("file", path) for
 # FdFile, ("filew", path), ("filea", path), ("filerw", path), ("dir",), ("devnull", readable, writable),
-# ("urandom",), ("socket", fresh), ("pipe", writable). A socket is fresh (State.v SkFresh) until a bind, listen or
-# connect has succeeded on it.
+# ("urandom",), ("socket", True) for a fresh socket (State.v SkFresh), ("socket", False, state) once a bind, listen or
+# accept has made it SkBound ("bound"), SkListening ("listening") or SkConnected ("connected"), and ("pipe", writable).
 FILE_KINDS = ("file", "filew", "filea", "filerw")
 KIND_NAMES = {"channel": "channel", "file": "read-only file", "filew": "write-only file",
               "filea": "append file", "filerw": "read-write file", "dir": "directory", "devnull": "/dev/null",
@@ -879,6 +879,15 @@ ABSENT = ("absent",)
 def kind_name(kind):
     """The model's name for a descriptor's entry (State.v FdEntry)."""
     return KIND_NAMES[kind[0]]
+
+
+def sock_state(kind):
+    """A socket kind's SockState: "fresh", "bound", "listening" or "connected"."""
+    return "fresh" if kind[1] else kind[2]
+
+
+def sock_connected(kind):
+    return kind[0] == "socket" and sock_state(kind) == "connected"
 
 
 class Ledger:
@@ -914,6 +923,7 @@ class Ledger:
         self.fork_unseen = False            # a fork the model answers whose return the trace does not show
         self.ngroups = None                 # the run's number of groups (cr_groups), once an answer has shown it
         self.rlimit_core = None             # (rlim_cur, rlim_max) of m_rlimit_core, once the trace has shown it
+        self.ids = {}                       # the first answer of each uid and gid read since the last set*id
 
     # -- the address space ------------------------------------------------------------------------------------------
     def image_clear(self, addr, n):
@@ -1627,28 +1637,39 @@ def _openat(run, args, ret, errno, tid):
         if fd is not None:
             led.fds[fd] = open_kind(fl, path)
 
-    def any_open_answer(what, cite):
-        """Every open arm answers a new descriptor (one the table does not hold: lowest_fd), an errno of
-        openat_errnos, or one of the path errnos its arms give; read_cstr adds -ENAMETOOLONG and -EFAULT."""
+    def any_open_answer(what, cite, errnos=frozenset()):
+        """An open arm's answer: a new descriptor (one the table does not hold: lowest_fd), an errno of openat_errnos,
+        or one of `errnos`, the path errnos of that arm; read_cstr adds -ENAMETOOLONG and -EFAULT."""
         if fd is not None and fd in led.fds:
             return (f"{what} returned {fd}, a descriptor the run already holds: the model answers a free one "
                     f"({cite}: lowest_fd)")
-        return refused(ret, errno, OPENAT_ERRNOS | {EEXIST, EISDIR, ENOENT, ENOTDIR, ENAMETOOLONG, EFAULT}, what,
-                       cite)
+        return refused(ret, errno, OPENAT_ERRNOS | {ENAMETOOLONG, EFAULT} | set(errnos), what, cite)
+
     if "/" not in path:
         # Sys/Fs/Open.v openat_dir_spec declines a name over NAME_MAX and never answers a successful directory open of
         # a name other than "." and ".." (only -ENOENT and -ENOTDIR).
         if fl == OPEN_DIR and path not in (".", ".."):
             if len(path) > NAME_MAX:
                 return "a directory open of a name over NAME_MAX (Sys/Fs/Open.v openat_dir_spec)"
-            if fd is not None:
-                return (f"openat(O_DIRECTORY) of {path!r} returned {fd}: the model answers -ENOENT or -ENOTDIR for a "
-                        "name and declines a directory the file system only implies (Sys/Fs/Open.v openat_dir_spec)")
+            return errno_only(ret, errno, {ENOENT, ENOTDIR, ENAMETOOLONG, EFAULT}, f"openat(O_DIRECTORY) of {path!r}",
+                              "Sys/Fs/Open.v openat_dir_spec: a name, not a directory the file system only implies")
         if fl == OPEN_WR_CREATE:
             why = create_answer(path, ret, errno)
             if why:
                 return why
-        why = any_open_answer(f"openat of {path!r}", "Sys/Fs/Open.v openat_resolved_spec")
+        # The path errnos of each word's arm (Sys/Fs/Open.v openat_resolved_spec): openat_read_spec answers -ENOENT
+        # for a name the file system lacks; the create and append words -EISDIR; the exclusive words -EEXIST; the
+        # read-write words -EISDIR and, without O_CREAT, -ENOENT.
+        dirref = path in (".", "..")
+        if fl == OPEN_RD or fl == OPEN_DIR:
+            path_errnos = set() if dirref else {ENOENT}
+        elif fl in (OPEN_WR_CREATE, OPEN_APPEND):
+            path_errnos = {EISDIR}
+        elif fl in OPEN_EXCL or fl in OPEN_RDWR_EXCL:
+            path_errnos = {EEXIST}
+        else:
+            path_errnos = {EISDIR, ENOENT}
+        why = any_open_answer(f"openat of {path!r}", "Sys/Fs/Open.v openat_resolved_spec", path_errnos)
         if why:
             return why
         install()
@@ -1659,7 +1680,14 @@ def _openat(run, args, ret, errno, tid):
             return "openat of /etc/localtime with O_CREAT is unmodeled (Sys/Fs/Open.v openat_localtime_spec)"
         return errno_only(ret, errno, {ENOENT}, "openat of /etc/localtime", "Sys/Fs/Open.v openat_localtime_spec")
     if path == DEVNULL_PATH:
-        # Sys/Fs/Open.v openat_devnull_spec: every modeled word, a /dev/null descriptor.
+        # Sys/Fs/Open.v openat_devnull_spec: the exclusive words are -EEXIST and O_DIRECTORY -ENOTDIR; every other
+        # modeled word opens a /dev/null descriptor or answers openat_errnos.
+        if fl in OPEN_EXCL or fl in OPEN_RDWR_EXCL:
+            return errno_only(ret, errno, {EEXIST, ENAMETOOLONG, EFAULT}, "an exclusive create of /dev/null",
+                              "Sys/Fs/Open.v openat_devnull_spec")
+        if fl == OPEN_DIR:
+            return errno_only(ret, errno, {ENOTDIR, ENAMETOOLONG, EFAULT}, "openat(O_DIRECTORY) of /dev/null",
+                              "Sys/Fs/Open.v openat_devnull_spec")
         why = any_open_answer("openat of /dev/null", "Sys/Fs/Open.v openat_devnull_spec")
         if why:
             return why
@@ -1899,8 +1927,9 @@ def _read(run, args, ret, errno, tid):
             return undecided(f"the read's buffer and count on a {kind_name(kind)}")
         if kind[0] == "pipe":
             return counted(ret, errno, count, {EFAULT}, what, cite)
-        if kind[1]:
-            # A fresh socket (SkFresh) answers -ENOTCONN, or -EFAULT, to any count but 0, which reads 0.
+        if not sock_connected(kind):
+            # A socket no accept connected (SkFresh, SkBound, SkListening) answers -ENOTCONN, or -EFAULT, to any count
+            # but 0, which reads 0.
             if ret is not None and ret >= 0:
                 zero = count.is_zero()
                 if ret == 0 and zero is True:
@@ -2005,7 +2034,7 @@ def _readv(run, args, ret, errno, tid):
     if kind is None:
         return kind_reason(fd, ret, errno, "readv", cite)
     what = f"readv on a {kind_name(kind)}"
-    if kind[0] == "socket" and kind[1]:
+    if kind[0] == "socket" and not sock_connected(kind):
         return answered(ret, errno, {0}, {EFAULT, EINVAL, ENOTCONN}, what, f"{cite}: readv_imported")
     if kind[0] in ("pipe", "urandom", "devnull"):
         if kind[0] != "devnull" and ret is not None and ret > 0:
@@ -2668,13 +2697,34 @@ def _setid(run, args, ret, errno, tid, name):
     if low32(v) == 0xFFFFFFFF:
         return errno_only(ret, errno, {EINVAL}, f"{name}(-1)", f"{cite}: ID_MINUS_ONE")
     errnos = {EPERM, ENOMEM, EAGAIN} if name == "setuid" else {EPERM, ENOMEM}
-    return answered(ret, errno, {0}, errnos, name, f"{cite}, setid_errnos")
+    why = answered(ret, errno, {0}, errnos, name, f"{cite}, setid_errnos")
+    if why is None and ret == 0:
+        run.led.ids.clear()
+    return why
 
 
 def _setresid(run, args, ret, errno, tid, name):
     """Sys/Kernel/Sys.v setresid_spec: 0, -EPERM, or an errno of setid_errnos (ENOMEM, and EAGAIN for setresuid)."""
     errnos = {EPERM, ENOMEM, EAGAIN} if name == "setresuid" else {EPERM, ENOMEM}
-    return answered(ret, errno, {0}, errnos, name, "Sys/Kernel/Sys.v setresid_spec, setid_errnos")
+    why = answered(ret, errno, {0}, errnos, name, "Sys/Kernel/Sys.v setresid_spec, setid_errnos")
+    if why is None and ret == 0:
+        run.led.ids.clear()
+    return why
+
+
+def _getid(run, args, ret, errno, tid, name):
+    """Sys/Kernel/Sys.v getid_spec: the credential (m_creds), which only a successful set*id call changes. The run
+    starts with any credentials, so the first answer is taken, and every later one must repeat it."""
+    if ret is None:
+        return None
+    if ret < 0 and errno is not None:
+        return (f"{name} returned {ret_text(ret, errno)}: the model answers the credential, never an errno "
+                "(Sys/Kernel/Sys.v getid_spec)")
+    seen = run.led.ids.setdefault(name, ret)
+    if seen != ret:
+        return (f"{name} returned {ret} after {seen}, with no successful set*id call between: the credential does not "
+                "change (Sys/Kernel/Sys.v getid_spec)")
+    return None
 
 
 def _prctl(run, args, ret, errno, tid):
@@ -2846,6 +2896,10 @@ def _sched_setscheduler(run, args, ret, errno, tid):
     cite = "Sys/Kernel/Sched/Syscalls.v sched_setscheduler_spec"
     if policy < 0 or param == 0 or pid < 0:
         return errno_only(ret, errno, {EINVAL}, "sched_setscheduler", cite)
+    # The param is read before the target is checked: past access_okb it is -EFAULT, and nothing else.
+    if param % TWO_POW_64 > TASK_SIZE - 4:
+        return errno_only(ret, errno, {EFAULT}, "sched_setscheduler with a param past TASK_SIZE",
+                          f"{cite}: access_okb")
     if pid != 0 and pid != run.led.tid:
         return f"sched_setscheduler of pid {pid}: only the caller's own task is modeled ({cite})"
     if policy & 0x40000000 or policy == 7:
@@ -3088,7 +3142,14 @@ def _gettimeofday(run, args, ret, errno, tid):
         return f"a non-NULL tz is unmodeled ({cite})"
     if is_null(args[0]):
         return f"a NULL tv is unmodeled ({cite})"
-    return answered(ret, errno, {0}, {EFAULT}, "gettimeofday", cite)
+    tv = num(args[0])
+    if tv is not None and tv % TWO_POW_64 > TASK_SIZE - 8:
+        return errno_only(ret, errno, {EFAULT}, "gettimeofday with a tv past TASK_SIZE", f"{cite}: access_okb")
+    # A tv in range that cannot be written is unmodeled, not -EFAULT. A pointer printed in 32 bits may be the low half
+    # of one past TASK_SIZE, so an -EFAULT there is not decided.
+    if ret is not None and ret < 0 and errno == EFAULT and tv is not None and tv < TWO_POW_32:
+        return undecided("the gettimeofday tv pointer")
+    return answered(ret, errno, {0}, set(), "gettimeofday", cite)
 
 
 def _getgroups(run, args, ret, errno, tid):
@@ -3344,13 +3405,15 @@ def _accept(run, args, ret, errno, tid, name="accept"):
     kind = run.led.kind(num(args[0]))
     if kind is not None and kind is not ABSENT and kind[0] != "socket":
         return errno_only(ret, errno, {ENOTSOCK}, f"{name} on a {kind_name(kind)} descriptor", cite)
-    if kind is not None and len(kind) < 3:
+    if kind is None:
+        return kind_reason(num(args[0]), ret, errno, name, cite)
+    if sock_state(kind) != "listening":
         return errno_only(ret, errno, {EINVAL}, f"{name} on a socket that is not listening", cite)
     if ret is not None and ret >= 0 and ret in run.led.fds:
         return f"{name} returned {ret}, a descriptor the run already holds ({cite}: lowest_fd)"
-    why = refused(ret, errno, SOCKET_ERRNOS | {EINVAL, ENOTSOCK, EBADF}, name, f"{cite}, accept_errnos")
+    why = refused(ret, errno, SOCKET_ERRNOS, name, f"{cite}, accept_errnos")
     if why is None and ret is not None and ret >= 0:
-        run.led.fds[ret] = ("socket", False)
+        run.led.fds[ret] = ("socket", False, "connected")
     return why
 
 
@@ -3390,10 +3453,10 @@ def _connect(run, args, ret, errno, tid):
             return (f"connect returned {ret} with a {args[1].split(',')[0].lstrip('{')} address: the model answers 0 "
                     f"only for an AF_UNSPEC address, and every address that resolves is unmodeled ({cite})")
         if not kind[1]:
-            return (f"connect returned {ret} on a socket that a bind, listen or connect has already used: the model "
-                    f"answers 0 for an AF_UNSPEC address on a fresh socket only ({cite}: SkFresh)")
-        run.led.fds[num(args[0])] = ("socket", False)
-        return None
+            return (f"connect returned {ret} on a socket that a bind, listen or accept has made: the model answers 0 "
+                    f"for an AF_UNSPEC address on a fresh socket only ({cite}: SkFresh)")
+        # Sys/Net/Socket.v connect_spec: AF_UNSPEC on SkFresh answers 0 and changes nothing; the socket stays fresh.
+        return answered(ret, errno, {0}, set(), "connect(AF_UNSPEC) on a fresh socket", cite)
     return errno_in(ret, errno, {EAFNOSUPPORT, EINVAL, EFAULT, EISCONN}, "connect on a socket",
                     f"{cite}: a well-formed AF_INET address is unmodeled")
 
@@ -3444,16 +3507,19 @@ def _shutdown(run, args, ret, errno, tid):
     how = sym(args[1], {"SHUT_RD": 0, "SHUT_WR": 1, "SHUT_RDWR": 2})
     if how is None:
         return und(f"unparseable how {args[1]}")
-    how = low32(how)
-    if how not in (0, 1, 2):
-        return errno_only(ret, errno, {EINVAL, ENOTSOCK}, f"shutdown({args[1]})", "Sys/Net/Socket.v shutdown_spec")
+    how = how % TWO_POW_64              # shut_how_ok reads the whole register, and qemu prints it in full
+    cite = "Sys/Net/Socket.v shutdown_spec"
     kind = run.led.kind(num(args[0]))
-    if kind is not None and kind is not ABSENT and kind[0] != "socket":
-        return errno_only(ret, errno, {ENOTSOCK}, f"shutdown of a {kind_name(kind)}", "Sys/Net/Socket.v shutdown_spec")
-    if ret is not None and ret >= 0 and (how != 1 or kind is None or len(kind) < 3):
-        return (f"shutdown({args[1]}) returned {ret}: only SHUT_WR on a listening socket succeeds in the model "
-                "(Sys/Net/Socket.v shutdown_spec)")
-    return answered(ret, errno, {0}, {ENOTSOCK}, f"shutdown({args[1]})", "Sys/Net/Socket.v shutdown_spec")
+    if kind is None:
+        return kind_reason(num(args[0]), ret, errno, "shutdown", cite)
+    if kind[0] != "socket":
+        return errno_only(ret, errno, {ENOTSOCK}, f"shutdown of a {kind_name(kind)}", cite)
+    if how not in (0, 1, 2):
+        return errno_only(ret, errno, {EINVAL}, f"shutdown({args[1]})", f"{cite}: shut_how_ok")
+    if how != 1 or sock_state(kind) != "listening":
+        return (f"shutdown({args[1]}) of a {sock_state(kind)} socket is unmodeled: only SHUT_WR on a listening socket "
+                f"is answered ({cite})")
+    return answered(ret, errno, {0}, set(), "shutdown(SHUT_WR) of a listening socket", cite)
 
 
 def _sendto(run, args, ret, errno, tid):
@@ -3488,7 +3554,7 @@ def _sendto(run, args, ret, errno, tid):
         return errno_only(ret, errno, {ENOTSOCK, EFAULT}, f"sendto on a {kind_name(kind)} descriptor", cite)
     # Sys/Net/Socket.v send_on_socket, behind access_ok_zero (-EFAULT): a socket no connect has reached is SendDead
     # (-EPIPE); a connected one gives -EPIPE, -ECONNRESET, -ETIMEDOUT, or 1..count bytes (0 for a count of 0).
-    if kind[1]:
+    if not sock_connected(kind):
         return errno_only(ret, errno, {EPIPE, EFAULT}, "sendto on a socket no connect has reached",
                           f"{cite}: send_state SendDead")
     return counted(ret, errno, Arg.full(count), {EPIPE, ECONNRESET, ETIMEDOUT, EFAULT}, "sendto on a socket",
@@ -3552,33 +3618,96 @@ def _ftruncate(run, args, ret, errno, tid):
     if kind is None:
         return kind_reason(fd, ret, errno, "ftruncate", cite)
     if kind[0] in ("filew", "filea", "filerw"):
+        if length > RW_BYTES_MAX:
+            # modeled_truncate_gap: a length more than rw_bytes_max past the file's is unmodeled, and the trace does
+            # not show the file's length.
+            return und(f"ftruncate to {length} bytes: past rw_bytes_max the answer turns on the file's length, which "
+                       f"the trace does not show ({cite}: modeled_truncate_gap)")
         return answered(ret, errno, {0}, set(), f"ftruncate of a {kind_name(kind)}", cite)
     return errno_only(ret, errno, {EINVAL}, f"ftruncate of a {kind_name(kind)}", cite)
 
 
+SOCKADDR_FAMILY = re.compile(r"\b(?:sa|sin)_family=(\w+)")
+SOCKADDR_PORT = re.compile(r"\bsin_port=htons\((\d+)\)")
+SOCKADDR_ADDR = re.compile(r'\bsin_addr=inet_addr\("(\d+)\.(\d+)\.(\d+)\.(\d+)"\)')
+SOCKADDR_DATA = re.compile(r"\bsa_data=\{([0-9a-fA-Fx, ]*)\}")
+
+
+def sockaddr(arg):
+    """(family, port, address) of an address qemu printed as a struct (strace.c print_sockaddr), each None when the
+    print does not show it; None when qemu printed a pointer (it could not read the address)."""
+    a = arg.strip()
+    if not a.startswith("{"):
+        return None
+    fam = SOCKADDR_FAMILY.search(a)
+    family = None if not fam else sym(fam.group(1), {"AF_INET": 2, "AF_UNSPEC": 0, "PF_INET": 2, "PF_UNSPEC": 0})
+    port, addr = SOCKADDR_PORT.search(a), SOCKADDR_ADDR.search(a)
+    port = int(port.group(1)) if port else None
+    addr = sum(int(b) << (8 * (3 - i)) for i, b in enumerate(addr.groups())) if addr else None
+    data = SOCKADDR_DATA.search(a)
+    if data and port is None and addr is None:
+        raw = [int(b, 16) for b in data.group(1).replace("0x", "").split(",") if b.strip()]
+        if len(raw) >= 6:       # sa_data is the sockaddr from byte 2: the port, then the IPv4 address
+            port, addr = (raw[0] << 8) | raw[1], int.from_bytes(bytes(raw[2:6]), "big")
+    return family, port, addr
+
+
 def _bind_listen(run, args, ret, errno, name):
-    """Sys/Net/Socket.v bind_spec and listen_spec: a descriptor the table does not hold is -EBADF; the rest reads the
-    address, which the trace does not show. A success takes the socket out of SkFresh."""
+    """Sys/Net/Socket.v bind_spec and listen_spec. Both start with the descriptor: -EBADF for one the table does not
+    hold, -ENOTSOCK for one that is not a socket. bind then reads the address: an addrlen (sint32) outside
+    (0, SOCKADDR_STORAGE_SIZE] is -EINVAL; an unreadable address -EFAULT; one shorter than a sockaddr_in -EINVAL; a
+    family other than AF_INET (or AF_UNSPEC with INADDR_ANY) -EAFNOSUPPORT; an address other than INADDR_ANY, or a
+    port other than 0, is unmodeled; then a fresh socket answers bind_errnos or 0 (SkBound), and any other -EINVAL.
+    listen answers listen_errnos or 0 on a fresh socket, 0 on a bound or listening one (SkListening), and -EINVAL on
+    a connected one."""
     fd = num(args[0]) if args else None
-    why = bad_fd_only(run, fd, ret, errno, name, f"Sys/Net/Socket.v {name}_spec")
+    cite = f"Sys/Net/Socket.v {name}_spec"
+    why = bad_fd_only(run, fd, ret, errno, name, cite)
     if why or run.led.kind(fd) is ABSENT:
         return why
     kind = run.led.kind(fd)
-    cite = f"Sys/Net/Socket.v {name}_spec"
     if kind is None:
         return kind_reason(fd, ret, errno, name, cite)
     if kind[0] != "socket":
         return errno_only(ret, errno, {ENOTSOCK}, f"{name} on a {kind_name(kind)} descriptor", cite)
-    # bind reads the address (-EINVAL, -EFAULT, -EAFNOSUPPORT) and answers bind_errnos or 0 on a fresh socket, -EINVAL
-    # on a bound or listening one; listen answers 0, listen_errnos, or -EINVAL on a connected one.
-    errnos = BIND_ERRNOS | ({EINVAL, EFAULT, EAFNOSUPPORT} if name == "bind" else {EINVAL})
-    if name == "bind" and not kind[1]:
-        return errno_only(ret, errno, {EINVAL, EFAULT, EAFNOSUPPORT}, "bind on a socket a bind, listen or connect has "
-                          "used", cite)
-    why = answered(ret, errno, {0}, errnos, f"{name} on a socket", cite)
-    if why is None and ret is not None and ret >= 0:
-        # A third field marks a listening socket (SkListening), the one state accept and shutdown(SHUT_WR) answer.
-        run.led.fds[fd] = ("socket", False, True) if name == "listen" else ("socket", False)
+    state = sock_state(kind)
+    if name == "listen":
+        if state == "connected":
+            return errno_only(ret, errno, {EINVAL}, "listen on a connected socket", cite)
+        why = answered(ret, errno, {0}, BIND_ERRNOS if state == "fresh" else set(), f"listen on a {state} socket",
+                       f"{cite}, listen_errnos")
+        if why is None and ret == 0:
+            run.led.fds[fd] = ("socket", False, "listening")
+        return why
+    if len(args) < 3:
+        return und("unparseable argument list")
+    al = sint32(num(args[2]))
+    if al is None:
+        return und(f"unparseable addrlen {args[2]}")
+    if al <= 0 or al > SOCKADDR_STORAGE_SIZE:
+        return errno_only(ret, errno, {EINVAL}, f"bind with addrlen {al}", cite)
+    addr = sockaddr(args[1])
+    if addr is None:
+        if ret is not None and ret < 0 and errno == EFAULT:
+            return None
+        return und(f"bind returned {ret_text(ret, errno)} and qemu printed the address as a pointer, so the trace does "
+                   f"not show the family, port and address {cite} reads")
+    if al < 16:
+        return errno_only(ret, errno, {EINVAL}, f"bind with addrlen {al}, shorter than a sockaddr_in", cite)
+    family, port, ip = addr
+    if family is None or (family == 0 and ip is None):
+        return und(f"bind of {args[1]}: the trace does not show the family and address {cite} reads")
+    if not (family == 2 or (family == 0 and ip == 0)):
+        return errno_only(ret, errno, {EAFNOSUPPORT}, f"bind of {args[1]}", cite)
+    if ip is None or port is None:
+        return und(f"bind of {args[1]}: the trace does not show the address and port {cite} reads")
+    if ip != 0 or port != 0:
+        return f"bind to an address other than INADDR_ANY port 0 is unmodeled ({cite})"
+    if state != "fresh":
+        return errno_only(ret, errno, {EINVAL}, f"bind on a {state} socket", cite)
+    why = answered(ret, errno, {0}, BIND_ERRNOS, "bind on a fresh socket", f"{cite}, bind_errnos")
+    if why is None and ret == 0:
+        run.led.fds[fd] = ("socket", False, "bound")
     return why
 
 
@@ -3608,6 +3737,8 @@ GATES = {
        for n in ("setuid", "setgid")},
     **{n: (lambda run, args, ret, errno, tid, n=n: _setresid(run, args, ret, errno, tid, n))
        for n in ("setresuid", "setresgid")},
+    **{n: (lambda run, args, ret, errno, tid, n=n: _getid(run, args, ret, errno, tid, n))
+       for n in ("getuid", "geteuid", "getgid", "getegid")},
     "sched_getaffinity": _sched_getaffinity, "sched_setscheduler": _sched_setscheduler,
     "getgroups": _getgroups, "setgroups": _setgroups,
     "socket": _socket, "socketpair": _socketpair, "accept": _accept, "accept4": _accept4, "connect": _connect,
@@ -3616,9 +3747,8 @@ GATES = {
     "bind": _bind, "listen": _listen,
 }
 # The modeled names whose arms read nothing the trace shows and answer any value, and so pass on the name: exit and
-# exit_group (Sys/Kernel/Exit.v exit_spec, which ends the run) and the uid and gid reads (Sys/Kernel/Sys.v getid_spec,
-# which answers the credentials the run starts with).
-NAME_ONLY = frozenset("exit exit_group getuid geteuid getgid getegid".split())
+# exit_group (Sys/Kernel/Exit.v exit_spec, which ends the run).
+NAME_ONLY = frozenset("exit exit_group".split())
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -3714,15 +3844,41 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
         if why is not None:
             report(name, why)
 
-    # A record of the run's task with no return yet: qemu writes the return when the call returns, on a line of its
-    # own (` = N`) when another task's record took the line meanwhile. Such a record is judged with that return, the
-    # first such line after it, oldest first; one whose return never comes is judged with none at the end.
-    pending = []
+    # A record of the run's task whose return is not on its line. qemu flushes each print, and a single task cannot
+    # start a call before the last one returned, so the return of the run's task follows its record on the same line,
+    # unless a signal line or another task's record took the line meanwhile; then it comes on a line of its own
+    # (` = N`). At most one record of the run's task waits for its return (`pending`). Before any fork that return is
+    # the run's, and the record is judged with it. After a fork the child's returns land on such lines too, so a
+    # record of the run's task that waits for one is undecided, never judged on a guess. The fork itself logs two
+    # returns, the parent's pid and the child's 0, in either order: an answered fork owes one ` = 0`, which is the
+    # child's. A record whose return never comes, or whose task's next record comes first, is undecided.
+    pending = None
+    child_zero_owed = 0
+    unjudged = und("its return is not where qemu writes it (not on its line, nor on the next line of its own), so "
+                   "the answer cannot be read")
     for line in text.splitlines():
         if kill_line(line):
             saw_death = True
-        if pending and not RECORD.match(line) and parse_ret(line) is not None:
-            judge(*pending.pop(0)[:3], line)
+        if not RECORD.match(line) and parse_ret(line) is not None:
+            value = parse_ret(line)
+            if pending is None:
+                if value == 0 and child_zero_owed:
+                    child_zero_owed -= 1
+                continue                    # a return of the child's, or of no record: it carries no call
+            ptid, pname, pargs, zero_seen = pending
+            if pname in ("clone", "clone3"):
+                if value == 0 and not zero_seen:
+                    pending = (ptid, pname, pargs, True)    # the child's 0; the parent's pid is still to come
+                    continue
+                judge(ptid, pname, pargs, line)
+                if forked and not zero_seen:
+                    child_zero_owed += 1
+            elif forked:
+                report(pname, und("its return came on a line of its own after a fork, where the child's returns land "
+                                  "too, so the trace does not say whose it is"))
+            else:
+                judge(ptid, pname, pargs, line)
+            pending = None
             continue
         for unknown in UNKNOWN_RECORD.finditer(line):
             calls += 1
@@ -3743,7 +3899,7 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
             if tid != owner:
                 # A fork still waiting for its return has made the child whose record this is; if the model refuses
                 # that fork, the fork itself is reported when its return comes.
-                if forked or any(p[1] in ("clone", "clone3") for p in pending):
+                if forked or (pending is not None and pending[1] in ("clone", "clone3")):
                     # Sys/Kernel/Fork.v: "the child is not executed by this model ([clone] describes the parent)".
                     child_records += 1
                     continue
@@ -3754,6 +3910,9 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
                 continue
             calls += 1
             names.add(name)
+            if pending is not None:
+                report(pending[1], unjudged)
+                pending = None
             if not closed:
                 report(name, und("the record has no closing parenthesis, so its arguments cannot be read (a guest "
                                  "string can hold any byte: qemu's print_string escapes nothing)"))
@@ -3764,12 +3923,19 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
                 report(name, "not an arm of spec_table (Sys/SyscallTable.v): the model answers every other number "
                              "unmodeled (Specs.v syscall_spec)")
                 continue
-            if parse_ret(tail) is None and not tail.strip() and name not in EXIT_NAMES:
-                pending.append((tid, name, args))
+            ret = parse_ret(tail)
+            if name in ("clone", "clone3") and ret == 0:
+                # The child returned first, on the parent's line: the parent's pid comes on a line of its own.
+                pending = (tid, name, args, True)
+                continue
+            if ret is None and name not in EXIT_NAMES:
+                pending = (tid, name, args, False)
                 continue
             judge(tid, name, args, tail)
-    for tid, name, args in pending:
-        judge(tid, name, args, "")
+            if name in ("clone", "clone3") and forked and ret is not None and ret > 0:
+                child_zero_owed += 1
+    if pending is not None:
+        report(pending[1], unjudged)
     exited = saw_exit or (saw_death and run.self_kill)
     host_log = "present" if (run.host.given and run.host.started) else "missing"
     if unmodeled:

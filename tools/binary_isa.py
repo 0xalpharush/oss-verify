@@ -72,7 +72,9 @@ nothing else (RiscvSemantics.v, code_read and fetch_byte_traps). Two sources are
 
 A section header is the producer's claim, and the loader does not read it: a section without SHF_EXECINSTR inside a
 PF_X segment is named and counted (data_in_x), and its bytes are decoded like a gap. Data mapped executable therefore
-fails the check, as data in code does; it never passes unexamined.
+fails the check, as data in code does; it never passes unexamined. The one exception is a note section (SHT_NOTE)
+whose bytes are, whole, a sequence of well-formed ELF notes: Go's linker puts two in front of .text, and they are
+named and not decoded, as the header tables are not.
 
 A file with no section headers is decoded from its PF_X segments, without the ELF header and program header table.
 The three header tables are the other bytes in an executable segment that are not decoded: the check trusts that a
@@ -109,6 +111,7 @@ ET_EXEC = 2
 ET_NAMES = {0: "ET_NONE", 1: "ET_REL", 2: "ET_EXEC", 3: "ET_DYN", 4: "ET_CORE"}
 SHT_SYMTAB = 2
 SHT_NOBITS = 8
+SHT_NOTE = 7
 SHF_EXECINSTR = 0x4
 PT_LOAD = 1
 PF_X = 0x1
@@ -789,6 +792,21 @@ def outside_sites(buf, base, clean, outw, pairs_fn):
     return res
 
 
+def whole_notes(data, off, size):
+    """True when the bytes [off, off + size) are exactly a sequence of ELF notes: each a 12-byte header (namesz,
+    descsz, type), then the name and the descriptor, each padded to 4 bytes, the last ending at the end."""
+    end = off + size
+    if off % 4 or size % 4 or end > len(data) or size == 0:
+        return False
+    at = off
+    while at < end:
+        if at + 12 > end:
+            return False
+        namesz, descsz, _ = struct.unpack_from("<III", data, at)
+        at += 12 + (namesz + 3) // 4 * 4 + (descsz + 3) // 4 * 4
+    return at == end
+
+
 def regions(data, e, secs, segs):
     """The byte ranges to decode (see WHERE THE CODE IS): (how the code was located, [PF_X segment], [region], {what
     the PF_X segments map besides executable sections}). An executable section inside a PF_X segment must say it is
@@ -820,6 +838,12 @@ def regions(data, e, secs, segs):
                                      f"maps it at {g['vaddr'] + s['off'] - lo:#x}")
                 if s["flags"] & SHF_EXECINSTR:
                     cover.append((a, b))
+                elif s["type"] == SHT_NOTE and (a, b) == (s["off"], s["off"] + s["size"]) and \
+                        whole_notes(data, a, b - a):
+                    # A note section (Go's linker puts .note.go.buildid and .note.gnu.build-id in front of .text) is
+                    # data only when its bytes are well-formed notes, whole; it is named, and not decoded.
+                    cover.append((a, b))
+                    notes["data_in_x"].append((s["name"], b - a))
                 else:
                     # The loader maps these bytes executable whatever the section header says, so they are not
                     # covered: like a gap, they are padding when all zero and decoded as code otherwise.

@@ -113,6 +113,7 @@ EXIT = "1 exit_group(0)"
 OPEN3 = '1 openat(AT_FDCWD,"in.bin",O_RDONLY|O_LARGEFILE) = 3\n'       # a read-only file at descriptor 3
 OPENDIR3 = '1 openat(AT_FDCWD,".",O_RDONLY|O_DIRECTORY|O_CLOEXEC) = 3\n'
 SOCKET3 = "1 socket(PF_INET,SOCK_STREAM|SOCK_CLOEXEC,IPPROTO_IP) = 3\n"
+BIND_ANY = '{sin_family=AF_INET,sin_port=htons(0),sin_addr=inet_addr("0.0.0.0")}'   # INADDR_ANY, port 0
 TID = "1 set_tid_address(0x64dbf0) = 1\n"                              # pins the model's m_tid at 1
 GUARD_IN_BRK = ("1 brk(NULL) = 0x100000\n1 brk(0x102000) = 0x102000\n"
                 "1 mmap(0x100000,4096,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0) = 0x100000\n" + EXIT)
@@ -313,8 +314,14 @@ ACCEPT = [
                                                           "errno=95\n" + EXIT),
     ("shutdown(SHUT_WR) of a listening socket",
      SOCKET3 + "1 listen(3,5) = 0\n1 shutdown(3,1,0,0,0,0) = 0\n" + EXIT),
-    ("a wait4 whose return came on a later line",
-     "1 wait4(-1,0x40007ff8b0,1,NULL)\n = -1 errno=10\n" + EXIT),
+    ("a send on an accepted socket", SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 listen(3,5) = 0\n"
+     "1 accept(3,NULL,NULL) = 4\n1 sendto(4,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+    ("-EPIPE on a bound socket",
+     SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = -1 errno=32\n" + EXIT),
+    ("two AF_UNSPEC connects on a fresh socket", SOCKET3 + "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n"
+     "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT),
+    ("a wait4 whose return came after a signal line on its line",
+     "1 wait4(-1,0x40007ff8b0,1,NULL)--- SIGALRM {si_signo=SIGALRM, si_code=SI_KERNEL} ---\n = -1 errno=10\n" + EXIT),
     # -- the answers the model gives ---------------------------------------------------------------------------------
     ("a write to /dev/null that took the whole count",
      '1 openat(AT_FDCWD,"/dev/null",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n1 write(3,0x1000,64) = 64\n' + EXIT),
@@ -326,7 +333,8 @@ ACCEPT = [
     ("a fork, and the records of its child (Fork.v: the child is not executed by this model)",
      "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n99 exit_group(0)\n" + EXIT),
     # -- the parser --------------------------------------------------------------------------------------------------
-    ("two modeled records on one interleaved line", "1 write(1,0x1000,2)1 close(9) = -1 errno=9\n" + EXIT),
+    ("a child's record on the line of a fork with no return yet",
+     "1 clone(SIGCHLD,0,0,0,0)99 exit_group(0)\n = 99\n" + EXIT),
     ("a quoted path that looks like a record", '1 openat(AT_FDCWD,"12 evil(x",O_RDONLY) = 3\n' + EXIT),
     ("qemu's errno text after a return",
      "1 ioctl(1,TIOCGWINSZ,0x40007ff8b0) = -1 errno=25 (Inappropriate ioctl for device)\n" + EXIT),
@@ -537,7 +545,7 @@ REJECT = [
     ("connect to an address that resolved", SOCKET3 + '1 connect(3,{sin_family=AF_INET,sin_port=htons(53),'
      'sin_addr=inet_addr("127.0.0.1")},16) = 0\n' + EXIT),
     ("connect with an AF_UNSPEC address on a socket a bind has used",
-     SOCKET3 + "1 bind(3,{sa_family=0, sa_data={00, 00}},16) = 0\n"
+     SOCKET3 + "1 bind(3,{sa_family=0, sa_data={00, 00, 00, 00, 00, 00}},16) = 0\n"
      "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT),
     ("connect on a file", OPEN3 + "1 connect(3,0x40007ff8b0,16) = -1 errno=97\n" + EXIT),
     ("recvfrom that received bytes", SOCKET3 + "1 recvfrom(3,0x1000,64,0,NULL,NULL) = 64\n" + EXIT),
@@ -584,7 +592,7 @@ REJECT = [
     ("setresgid answered -EAGAIN", "1 setresgid(0,0,0) = -1 errno=11\n" + EXIT),
     ("close of an open file that returned 5", OPEN3 + "1 close(3) = 5\n" + EXIT),
     ("close of an open file answered -EBADF", OPEN3 + "1 close(3) = -1 errno=9\n" + EXIT),
-    ("a fork that returned 0", "1 clone(SIGCHLD,0,0,0,0) = 0\n" + EXIT),
+    ("a fork whose two returns are both 0", "1 clone(SIGCHLD,0,0,0,0) = 0\n = 0\n" + EXIT),
     ("a fork that returned the task's own id", TID + "1 clone(SIGCHLD,0,0,0,0) = 1\n" + EXIT),
     ("a task id of 2^22", "1 set_tid_address(0x64dbf0) = 4194304\n" + EXIT),
     ("a second setsid that succeeded", "1 setsid() = 1\n1 setsid() = 1\n" + EXIT),
@@ -594,9 +602,38 @@ REJECT = [
      OPEN3 + "1 read(3,0x1000,4)\n = 8\n" + EXIT),
     ("sendto on a socket no connect has reached that sent bytes",
      SOCKET3 + "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
-    ("sendto on a connected socket that sent more than its count",
+    ("sendto on an accepted socket that sent more than its count",
+     SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 listen(3,5) = 0\n1 accept(3,NULL,NULL) = 4\n"
+     "1 sendto(4,0x1000,2,MSG_NOSIGNAL,NULL,0) = 99\n" + EXIT),
+    ("sendto on a bound socket that sent bytes",
+     SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+    ("sendto on a listening socket that sent bytes",
+     SOCKET3 + "1 listen(3,5) = 0\n1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+    ("sendto after an AF_UNSPEC connect that sent bytes",
      SOCKET3 + "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n"
-     "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 99\n" + EXIT),
+     "1 sendto(3,0x1000,2,MSG_NOSIGNAL,NULL,0) = 2\n" + EXIT),
+    ("bind to port 8080",
+     SOCKET3 + '1 bind(3,{sin_family=AF_INET,sin_port=htons(8080),sin_addr=inet_addr("0.0.0.0")},16) = 0\n' + EXIT),
+    ("bind to 127.0.0.1",
+     SOCKET3 + '1 bind(3,{sin_family=AF_INET,sin_port=htons(0),sin_addr=inet_addr("127.0.0.1")},16) = 0\n' + EXIT),
+    ("bind with addrlen 0 that succeeded", SOCKET3 + "1 bind(3,0x40007ff8b0,0) = 0\n" + EXIT),
+    ("a second bind that succeeded",
+     SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 bind(3," + BIND_ANY + ",16) = 0\n" + EXIT),
+    ("listen on a fresh socket answered -EINVAL", SOCKET3 + "1 listen(3,5) = -1 errno=22\n" + EXIT),
+    ("listen after a bind answered -EADDRINUSE",
+     SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 listen(3,5) = -1 errno=98\n" + EXIT),
+    ("accept on a listening socket answered -EBADF",
+     SOCKET3 + "1 listen(3,5) = 0\n1 accept(3,NULL,NULL) = -1 errno=9\n" + EXIT),
+    ("shutdown of a socket answered -ENOTSOCK", SOCKET3 + "1 shutdown(3,0,0,0,0,0) = -1 errno=88\n" + EXIT),
+    ("shutdown with how 2^32+1 that succeeded",
+     SOCKET3 + "1 listen(3,5) = 0\n1 shutdown(3,4294967297,0,0,0,0) = 0\n" + EXIT),
+    ("openat of /dev/null answered -ENOENT", '1 openat(AT_FDCWD,"/dev/null",O_RDONLY) = -1 errno=2\n' + EXIT),
+    ("openat of /dev/urandom answered -ENOENT", '1 openat(AT_FDCWD,"/dev/urandom",O_RDONLY) = -1 errno=2\n' + EXIT),
+    ("openat of input.bin answered -EISDIR", '1 openat(AT_FDCWD,"input.bin",O_RDONLY) = -1 errno=21\n' + EXIT),
+    ("openat of input.bin answered -EEXIST", '1 openat(AT_FDCWD,"input.bin",O_RDONLY) = -1 errno=17\n' + EXIT),
+    ("uid reads that disagree", "1 getuid() = 0\n1 getuid() = 5\n" + EXIT),
+    ("gettimeofday answered -EFAULT for a tv in range",
+     "1 gettimeofday(0x4000ff8b0000,NULL) = -1 errno=14\n" + EXIT),
     ("socket SOCK_STREAM with protocol 17 that succeeded", "1 socket(PF_INET,SOCK_STREAM,17) = 3\n" + EXIT),
     ("socket answered -EPERM", "1 socket(PF_INET,SOCK_STREAM,IPPROTO_IP) = -1 errno=1\n" + EXIT),
     ("socket of type 4 that succeeded", "1 socket(PF_INET,4,IPPROTO_IP) = 3\n" + EXIT),
@@ -615,7 +652,7 @@ REJECT = [
     ("faccessat F_OK that returned 7", '1 faccessat(AT_FDCWD,"in.bin",F_OK) = 7\n' + EXIT),
     ("getgroups(0) twice with different answers", "1 getgroups(0,NULL) = 0\n1 getgroups(0,NULL) = 5\n" + EXIT),
     ("bind on a file", OPEN3 + "1 bind(3,0x40007ff8b0,16) = 0\n" + EXIT),
-    ("bind on a socket answered -EPERM", SOCKET3 + "1 bind(3,0x40007ff8b0,16) = -1 errno=1\n" + EXIT),
+    ("bind on a socket answered -EPERM", SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = -1 errno=1\n" + EXIT),
     ("an openat of input.bin answered -EIO", '1 openat(AT_FDCWD,"input.bin",O_RDONLY) = -1 errno=5\n' + EXIT),
     ("an openat that returned a descriptor the run holds", OPEN3 + OPEN3 + EXIT),
     ("unlinkat of a bare name answered -EIO", '1 unlinkat(AT_FDCWD,"x.gz",0) = -1 errno=5\n' + EXIT),
@@ -992,6 +1029,14 @@ def test_a_long_run_of_digits_after_a_record_is_read_in_linear_time():
     assert [r[1] for r in records] == ["getpid"] and took < LINEAR_SECONDS, took
 
 
+@needs_model
+def test_many_records_waiting_for_their_returns_are_read_in_linear_time(model, image):
+    n = 100_000
+    text = "1 sched_yield()\n" * n + "2 sched_yield() = 0\n" * n + EXIT
+    result, took = _timed(lambda: check(model, image, text, lengths="exec\n"))
+    assert result["verdict"] == "fail" and took < LINEAR_SECONDS, took
+
+
 def test_matching_a_long_host_log_takes_linear_time():
     n = 30_000
     log = S.HostLog("exec\n" + "".join(f"read 2 3 {0x100000 + 16 * i:x} 2 0 0 0\n" for i in range(n)))
@@ -1022,6 +1067,21 @@ def test_only_the_first_records_task_is_the_run(model, image):
     assert (result["verdict"], result["child_records"]) == ("pass", 2), result
     # A fork qemu logged with no return yet (the child's records landed on its line) is a fork too.
     assert check(model, image, "1 clone(SIGCHLD,0,0,0,0)99 getppid() = 1\n = 99\n" + EXIT)["verdict"] == "pass"
+    # A real fork logs two returns, the parent's pid and the child's 0, in either order.
+    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0) = 0\n = 99\n" + EXIT)["verdict"] == "pass"
+    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0) = 99\n = 0\n" + EXIT)["verdict"] == "pass"
+    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0)\n = 0\n = 99\n" + EXIT)["verdict"] == "pass"
+    # After a fork, a return on a line of its own may be the child's: the run's call is not decided either way.
+    after = "1 clone(SIGCHLD,0,0,0,0) = 99\n = 0\n" + OPEN3
+    for tail in ("1 read(3,0x1000,4)99 getppid() = 8\n = 4\n", "1 lseek(3,100,SEEK_SET)99 getppid() = 100\n = 1\n"):
+        assert check(model, image, after + tail + EXIT)["verdict"] == "undecided"
+    # A record whose return never comes, or whose task's next record comes first, decides nothing.
+    for text in (OPEN3 + "1 read(3,0x1000,4)\n" + EXIT, OPEN3 + "1 fsync(3)\n" + EXIT,
+                 OPEN3 + "1 read(3,0x1000,4)--- SIGCHLD {si_signo=SIGCHLD} ---\n1 close(3) = 0\n" + EXIT):
+        assert check(model, image, text)["verdict"] == "undecided", text
+    # A signal line on the record's line moves its return to the next line, which is still the run's.
+    assert check(model, image, OPEN3 + "1 read(3,0x1000,4)--- SIGALRM {si_signo=SIGALRM} ---\n = 8\n" + EXIT)[
+        "verdict"] == "fail"
     # A fork the model refuses makes no child the run may have.
     refused = check(model, image, OPEN3 + "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n" + EXIT)
     assert any("not the run's task" in why for why in whys(refused)), whys(refused)
@@ -1641,7 +1701,10 @@ def test_the_real_runs_ledgers(model, giflib_image, line, verdict, needle):
     ("1 brk(0x102000) = 0x102000\n" + EXIT, "brk", "first brk call is not a query"),
     ('1 openat(AT_FDCWD,"a-very-long-name...",O_RDONLY) = 3\n' + EXIT, "openat", "cut short"),
     ('1 unlinkat(AT_FDCWD,"a-very-long-name...",0) = 0\n' + EXIT, "unlinkat", "cut short"),
-    ("1 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS)\n" + EXIT, "mmap", "unparseable"),
+    ("1 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS) = 0x100000\n" + EXIT, "mmap", "unparseable"),
+    ("1 write(1,0x1000,2)1 close(9) = -1 errno=9\n" + EXIT, "write", "not where qemu writes it"),
+    ('1 openat(AT_FDCWD,"f",O_WRONLY|O_CREAT|O_TRUNC,0644) = 3\n1 ftruncate(3,1099511627776) = 0\n' + EXIT,
+     "ftruncate", "modeled_truncate_gap"),
     ("1 madvise(0x100000,4096,MADV_HWPOISON) = 0\n" + EXIT, "madvise", "unparseable advice"),
     ('1 openat(AT_FDCWD,"a\n' + EXIT, "openat", "no closing parenthesis"),
 ])
@@ -1677,9 +1740,12 @@ def test_an_undecided_call_is_not_a_verdict_against_the_run(model, image):
 def test_connect_answers_0_for_an_af_unspec_address_on_a_fresh_socket(model, image):
     fresh = SOCKET3 + "1 connect(3,{sa_family=0, sa_data={00, 00, 00, 00, 00, 00}},16) = 0\n" + EXIT
     assert check(model, image, fresh)["verdict"] == "pass"
-    # A second one is on a socket the first took out of SkFresh.
+    # It changes nothing modeled (connect_spec: AF_UNSPEC on SkFresh), so a second one answers 0 too; after a bind
+    # the socket is SkBound, where AF_UNSPEC is unmodeled.
     twice = fresh.replace(EXIT, "1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT)
-    assert "fresh socket only" in one_why(check(model, image, twice), "connect")
+    assert check(model, image, twice)["verdict"] == "pass"
+    bound = SOCKET3 + "1 bind(3," + BIND_ANY + ",16) = 0\n1 connect(3,{sa_family=0, sa_data={00, 00}},16) = 0\n" + EXIT
+    assert "fresh socket only" in one_why(check(model, image, bound), "connect")
     # An address qemu could not read is printed as a pointer, and then the trace does not show its family.
     pointer = SOCKET3 + "1 connect(3,0x40007ff8b0,16) = 0\n" + EXIT
     assert "as a pointer" in one_undecided(check(model, image, pointer), "connect")
