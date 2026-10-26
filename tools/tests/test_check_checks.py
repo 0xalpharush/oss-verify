@@ -274,7 +274,7 @@ class ReviewComment(unittest.TestCase):
         self.assertLessEqual(len(text), 65_536)
         self.assertEqual(self.meta(text).group("head"), "a" * 40)
         self.assertIn("**Not current:**", text)
-        self.assertIn("Cut at", text)
+        self.assertIn("The review is cut at", text)
 
     def test_a_comment_without_a_review_is_replaced(self):
         none = self.comment("", "### report\n", "--head", "a" * 40)
@@ -323,16 +323,16 @@ class ReviewComment(unittest.TestCase):
             self.assertEqual(self.meta(none).group("status"), "none", why)
 
     def test_neutralize_is_linear_and_a_fixed_point(self):
+        # It removes only a comment that is complete and names this script; it never rewrites anything else.
         hostile = "<!--oss-verify" * 5_000  # 70,000 characters, no -->
         started = time.monotonic()
-        text = review_comment.neutralize(hostile)
+        self.assertEqual(review_comment.neutralize(hostile), hostile)
         self.assertLess(time.monotonic() - started, 1.0)
-        self.assertNotIn("<!--", text)
         for sample in (hostile, "<!-- oss-<!-- oss-verify-junk -->verify-meta v=1 status=none -->",
                        "a <!-- keep --> b <!-- oss-verify-x --> c <!-- tail", "<!-<!--oss-verify-->- oss-verify-x -->"):
             once = review_comment.neutralize(sample)
             self.assertEqual(review_comment.neutralize(once), once, sample)
-            self.assertNotRegex(once, r"<!--[^>]*oss-verify")
+            self.assertNotRegex(once, r"<!--[^>]*oss-verify[^>]*-->")
 
 
 class CredentialArguments(unittest.TestCase):
@@ -498,151 +498,61 @@ class Screening(unittest.TestCase):
             self.assertFalse(review_comment.credential(hostile))
             self.assertLess(time.monotonic() - started, 1.0, hostile[:20])
 
-    def comment(self, review, checks="### report\n"):
+    def comment(self, review, checks="### report\n", *extra):
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             (directory / "review.md").write_text(review)
             (directory / "checks.md").write_text(checks)
             return subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
-                                   "--checks", str(directory / "checks.md"), "--head", "a" * 40],
+                                   "--checks", str(directory / "checks.md"), "--head", "a" * 40, *extra],
                                   capture_output=True, text=True, check=True).stdout
 
-    def visible(self, text):
-        """Whether GitHub's renderer hides nothing at the end: no opener is left open. Python's own HTML parser
-        decides, so this test cannot be wrong about a shape the way a hand-written rule was about <!---> ."""
-        parser = html.parser.HTMLParser(convert_charrefs=False)
-        parser.feed(text)
-        left = parser.rawdata
-        parser.close()
-        return not left.startswith("<")
+    def generated_before_the_review(self, text):
+        """What this script writes, which must all come before the review the model wrote."""
+        review_at = text.rindex("\n\n") if "\n\n" in text else len(text)
+        return text[:review_at]
 
-    def test_a_cut_never_leaves_a_comment_open(self):
-        harmless = "\n\n<!-- harmless comment " + "z" * 200 + " -->"
-        review = "Safe review above.\n\n" + "x" * (review_comment.MAX_REVIEW - 60) + harmless
-        checks = "### report\n" + "y" * (review_comment.MAX_CHECKS - 60) + harmless
-        with tempfile.TemporaryDirectory() as directory:
-            directory = pathlib.Path(directory)
-            (directory / "review.md").write_text(review)
-            (directory / "checks.md").write_text(checks)
-            text = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
-                                   "--checks", str(directory / "checks.md"), "--head", "a" * 40],
-                                  capture_output=True, text=True, check=True).stdout
-            self.assertIn("Cut at 40,000", text)
-            self.assertIn("Cut at 20,000", text)
-            self.assertTrue(self.visible(text.split("<details>")[0]))
-            self.assertTrue(self.visible(text))
-            self.assertTrue(text.rstrip().endswith("</sub>"))
-            # A kept comment cut inside a comment: the same.
-            previous = text.split("\n## Enrollment review\n", 1)[0] + "\n## Enrollment review\n\n" + \
-                "w" * (review_comment.MAX_COMMENT - 400) + harmless
-            (directory / "previous.md").write_text(previous)
-            (directory / "empty.md").write_text("")
-            kept = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "empty.md"),
-                                   "--head", "b" * 40, "--previous", str(directory / "previous.md")],
-                                  capture_output=True, text=True, check=True).stdout
-            self.assertIn("**Not current:**", kept)
-            self.assertIn("Cut at", kept)
-            self.assertTrue(self.visible(kept))
+    def test_what_the_script_writes_comes_before_the_review(self):
+        # The review is last, so nothing it leaves open has anything of this script's after it to hide.
+        text = self.comment("The model's text.", "### report\n")
+        self.assertTrue(text.rstrip().endswith("The model's text."))
+        head = self.generated_before_the_review(text)
+        for mine in (review_comment.MARKER, "oss-verify-meta", review_comment.HEADING, "Claude wrote this review",
+                     review_comment.CHECKS_SUMMARY, "### report"):
+            self.assertIn(mine, head, mine)
 
-    def test_close_comments(self):
-        close = review_comment.close_comments
-        note = review_comment.UNFINISHED
-        # An unfinished comment or tag, and everything after it, goes; the text before it is untouched.
-        self.assertEqual(close("a <!-- b"), "a" + note)
-        self.assertEqual(close("a <!- b"), "a" + note)
-        self.assertEqual(close("a <b"), "a" + note)
-        # Quoting counts: this > is inside the attribute, so the tag is still unfinished.
-        self.assertEqual(close('a <div title="x >'), "a" + note)
-        # What is finished, and what HTML closes with a plain >, stays.
-        for ok in ("a <!-- b --> c", "<!-- a <!-- b -->", "<!--> after", "a <!- b > c",
-                   "<details><summary>x</summary>y</details>", "<sub>a</sub>", "a < b and 1 > 0"):
-            self.assertEqual(close(ok), ok)
+    def test_no_character_of_the_review_or_the_checks_is_changed(self):
+        # Markdown code holds characters that look like markup, spaced and unspaced. Each must arrive as written.
+        for text in ("Use `a<b` here.", "Use `a < b` here.", "```c\nif (a<b) return a;\n```",
+                     "See `<div title=\"x >`.", "`<!-- not mine -->`", "a <b> b </b> c", "&#", "<b", "1<2 and 3>2"):
+            posted = self.comment(text, "### report\n")
+            self.assertIn(text, posted, text)
+            posted = self.comment("Thanks.", text)
+            self.assertIn(text, posted, text)
 
-    def test_no_text_of_the_review_is_rewritten(self):
-        # Markdown code holds characters that look like markup. The renderer must show them as the model wrote them,
-        # so this script never rewrites any character of the body: it only drops an unfinished tail.
-        for review in ("Use `a < b` here.", "```c\nif (a < b) return a;\n```", "`<!-- not a comment -->`",
-                       "a <b> b </b> c", "1 < 2 and 3 > 2"):
-            text = self.comment(review)
-            self.assertIn(review, text, review)
-            self.assertNotIn("&lt;", text.split("<details>")[0], review)
-        # The same when the review is long enough to be cut, with the checks after it.
-        long = "Use `a < b` here.\n\n" + "x" * review_comment.MAX_REVIEW
-        text = self.comment(long)
-        self.assertIn("Use `a < b` here.", text)
-        self.assertNotIn("&lt;", text.split("<details>")[0])
-        self.assertIn("### report", text)
-        self.assertTrue(text.rstrip().endswith("</sub>"))
+    def test_nothing_in_the_checks_can_close_its_fence(self):
+        # The fence is longer than any run of backticks in the report, so the report cannot end it early.
+        for report in ("```\nnot a close\n", "`````\nlonger\n", "a ``` b ```` c", "<!-- open", '<div title="x >'):
+            text = self.comment("Thanks.", report)
+            bar = re.search(r"\n(`{3,})text\n", text).group(1)
+            self.assertNotIn(bar, report)
+            self.assertIn(report.strip(), text)
+            # The report is between the fences, and the review follows the closing one.
+            after = text.split(f"\n{bar}\n", 1)[1]
+            self.assertIn("Thanks.", after)
 
-    def test_close_comments_leaves_nothing_open_for_any_shape(self):
-        # Every string of up to three of these pieces, quotes included: Python's HTML parser finds nothing left open.
-        pieces = ("<!--", "-->", "<!-", "<!--->", "<!-->", "-", ">", "x", " ", "</s", "<b", "<details>",
-                  '<div title="', '"', "<![CDATA[")
-        for length in (1, 2, 3):
-            for combination in itertools.product(pieces, repeat=length):
-                text = "".join(combination)
-                self.assertTrue(self.visible(review_comment.close_comments(text)), text)
+    def test_the_whole_comment_stays_within_githubs_limit(self):
+        for review, checks in ((("<!--" * 11_000 + "-->"), "### report\n" + "<!--" * 2_000),
+                               ("x" * 90_000, "y" * 90_000), ("`" * 30_000, "`" * 30_000)):
+            text = self.comment(review, checks)
+            self.assertLessEqual(len(text), 65_536, (len(review), len(checks)))
+            self.assertIn("Claude wrote this review", text)
 
-    def test_a_cut_at_every_point_inside_a_comment_or_a_tag_leaves_nothing_open(self):
-        # Each limit that splits <!--, -->, or a tag with a quoted > in its attribute.
-        for text in ("<!-- first --> words <!-- c -->", 'ok <div title="x > y">text</div> tail'):
-            for limit in range(1, len(text)):
-                out = review_comment.cut(text, limit, "w")
-                self.assertTrue(self.visible(out), (text, limit, out))
-
-    def test_a_kept_comment_with_an_opener_left_open_is_closed_without_a_cut(self):
-        # A comment an older renderer posted, with an unclosed <!-- in its review, short enough not to be cut.
-        old = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n## Enrollment review\n\n"
-               "Thanks.\n\n<!-- left open by an old renderer\n\n1. Fix X.\n")
-        kept = review_comment.not_current(old, "b" * 40, "")
-        self.assertNotIn("Cut at", kept)
-        self.assertIn("Thanks.", kept)
-        self.assertIn(review_comment.UNFINISHED.strip(), kept)
-        # What followed the unfinished comment was hidden in the posted comment too, so it is not kept.
-        self.assertNotIn("1. Fix X.", kept)
-        self.assertTrue(self.visible(kept))
-
-    def test_closing_a_cut_never_takes_it_over_its_limit(self):
-        # Dropping an unfinished tail only shortens, and the note it leaves is bounded, so a cut stays within its
-        # limit; and the body is left with nothing open, whether or not it was cut.
-        import random
-        rng = random.Random(37)
-        pieces = ["<!--", "-->", "<!-", "<!--->", "<!-->", "x", " ", "\n", '<div title="', '"', "<b"]
-        note = len("\n\n(Cut at 0,000,000 characters: w.)") + len(review_comment.UNFINISHED)
-        for _ in range(5_000):
-            text = "x" + "".join(rng.choice(pieces) for _ in range(rng.randrange(1, 300)))
-            limit = rng.randrange(1, len(text) + 1)
-            out = review_comment.cut(text, limit, "w")
-            self.assertLessEqual(len(out), max(limit, len(text.strip())) + note, (text, limit))
-            if len(text.strip()) > limit:
-                self.assertLessEqual(len(out), limit + note, (text, limit))
-            body = review_comment.cut(review_comment.close_comments(text), limit, "w")
-            self.assertTrue(self.visible(body), (text, limit))
-
-    def test_a_comment_full_of_openers_stays_within_githubs_limit(self):
-        with tempfile.TemporaryDirectory() as directory:
-            directory = pathlib.Path(directory)
-            # A new review and checks report whose single comment the cut leaves open, so every opener is escaped.
-            (directory / "review.md").write_text("<!--" * 11_000 + "-->")
-            (directory / "checks.md").write_text("<!--" * 2_000 + "-->")
-            fresh = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "review.md"),
-                                    "--checks", str(directory / "checks.md"), "--head", "a" * 40],
-                                   capture_output=True, text=True, check=True).stdout
-            self.assertLessEqual(len(fresh), 65_536)
-            self.assertTrue(self.visible(fresh))
-            self.assertTrue(fresh.rstrip().endswith("</sub>"))
-            # A kept comment inside GitHub's limit whose body the cut leaves open: its stale update must fit too.
-            previous = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
-                        "## Enrollment review\n\n" + "<!--" * 16_200 + "x" * 190 + "-->")
-            self.assertLessEqual(len(previous), 65_536)
-            (directory / "previous.md").write_text(previous)
-            (directory / "empty.md").write_text("")
-            kept = subprocess.run([sys.executable, str(REVIEW_COMMENT), "--review", str(directory / "empty.md"),
-                                   "--head", "b" * 40, "--previous", str(directory / "previous.md")],
-                                  capture_output=True, text=True, check=True).stdout
-            self.assertIn("**Not current:**", kept)
-            self.assertLessEqual(len(kept), 65_536)
-            self.assertTrue(self.visible(kept))
+    def test_a_cut_says_so_before_the_text_it_cut(self):
+        text = self.comment("x" * (review_comment.MAX_REVIEW + 10), "y" * (review_comment.MAX_CHECKS + 10))
+        for note in ("The checks report is cut at 20,000 characters", "The review is cut at 40,000 characters"):
+            self.assertIn(note, text)
+            self.assertLess(text.index(note), text.rindex("x" * 100), note)
 
 
 class ReviewRun(unittest.TestCase):

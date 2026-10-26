@@ -5,20 +5,25 @@
 
     review-comment [--review <comment.md>] [--checks <checks.md>] [--head <sha>] [--run <url>] [--previous <comment>]
 
-It prints the comment: the marker that build.yaml's comment job finds it by, a metadata line, the review's comment to
-the maintainer (or, when there is none, why), and the report of tools/check --checks, folded. The review's text comes
-from a model that read the pull request and the checks text from the project's source, so each is screened on its own:
-a text that holds what looks like a credential is refused (and the other kept), each is cut to a length that GitHub
-takes, and each is stripped of any HTML comment that could read as this script's own.
+It prints the comment: the marker that build.yaml's comment job finds it by, a metadata line, what this script writes
+(the footer, a notice when the review is not current or did not run, a note where a text was cut), the report of
+tools/check --checks in a fenced block, and last the review's comment to the maintainer. The review's text comes from a
+model that read the pull request, and the checks text from the project's source, so each is screened on its own: a text
+that holds what looks like a credential is refused (and the other kept), each is cut to a length that GitHub takes, and
+each loses any HTML comment that names this script.
+
+Neither text is otherwise changed, character for character: Markdown code in them reaches GitHub as written. What they
+cannot reach is what this script writes. It all comes before them; the review comes last, so nothing it leaves open
+(an HTML comment, a tag, a code fence) has anything after it to hide; and the checks report sits in a fenced block
+whose fence is longer than any run of backticks in it, so nothing in the report can close it early or be read as HTML.
 
 The commit the review is of and whether there is a review live in the metadata line only, the second line of the
 comment, which this script alone writes. They are never read from the body. So with --previous and no usable review
 (the review of this push did not finish, or wrote nothing, or wrote what is refused), it keeps the comment already
-posted, unchanged but for a metadata line and a first paragraph that say it is not current, naming the commit it is of
-and the commit that had no review.
+posted, unchanged, below a metadata line and a notice that say it is not current, naming the commit it is of and the
+commit that had no review.
 """
 import argparse
-import html.parser
 import pathlib
 import re
 import sys
@@ -29,9 +34,6 @@ HEADING = "## Enrollment review"
 MAX_COMMENT = 65_000
 MAX_REVIEW = 40_000
 MAX_CHECKS = 20_000
-# What close_comments leaves where it drops an unfinished HTML construct, so that the loss is not silent.
-UNFINISHED = ("\n\n(The rest is not shown: it left an HTML comment or tag unfinished, which would hide the report "
-              "below.)")
 # What a credential looks like: a GitHub identity token (a JWT), an Anthropic token or key, a GitHub token. The scan
 # below reads each run of token characters once, rather than a regular expression of these four alternatives, whose
 # JWT branch reads the rest of the text again at every "eyJ" that no dot follows.
@@ -56,23 +58,20 @@ LEGACY_NO_REVIEW = re.compile(r"The review agent did not run on this push: [^\n]
 
 def neutralize(text):
     """text with each HTML comment that names this script's prefix replaced by a space, so that text this script did not
-    write never reads, to a person or a parser, as one of its own lines. One forward scan, linear in the text: a comment
-    runs from <!-- to the first --> after it, as in HTML, and the separator left in its place cannot join the text
-    around it into a new one. A <!-- with no --> after it is escaped, so it cannot hide the rest of the comment."""
+    write never reads, to a person, as one of its own lines (the metadata is read from line 2 only, so this is not what
+    keeps it safe). One forward scan, linear in the text: a comment runs from <!-- to the first --> after it, as in
+    HTML, and the space left in its place cannot join the text around it into a new one. Nothing else changes: a <!--
+    that nothing closes is left as it is, because the review comes last and the checks are fenced, so it hides nothing
+    of this script's."""
     out, at = [], 0
-    while True:
-        start = text.find("<!--", at)
-        if start == -1:
-            out.append(text[at:])
-            return "".join(out)
+    while (start := text.find("<!--", at)) != -1:
         end = text.find("-->", start + 4)
         if end == -1:
-            # No later --> exists, so every <!-- from here on is unterminated.
-            out += [text[at:start], text[start:].replace("<!--", "&lt;!--")]
-            return "".join(out)
+            break
         span = text[start:end + 3]
         out += [text[at:start], " " if "oss-verify" in span.lower() else span]
         at = end + 3
+    return "".join(out) + text[at:]
 
 
 def credential(text):
@@ -101,27 +100,12 @@ def credential(text):
     return False
 
 
-def close_comments(text):
-    """text without a construct at its end that nothing closes: an HTML comment, or a tag whose > never comes. GitHub's
-    renderer hides what follows such a construct, which would be the checks and the footer. A cut can leave one, and a
-    comment that an older renderer posted can hold one. Python's HTML parser finds where it starts, so quoting counts:
-    in <div title="x >, the > is inside the attribute and does not end the tag. Nothing before that point is touched,
-    so a < inside Markdown code, and any text the model or the project wrote, is left exactly as it is. What this drops
-    is the unfinished construct itself and what follows it, which the renderer would have hidden anyway."""
-    parser = html.parser.HTMLParser(convert_charrefs=False)
-    parser.feed(text)
-    left = parser.rawdata
-    parser.close()
-    if not left.startswith("<"):
-        return text
-    return text[:len(text) - len(left)].rstrip() + UNFINISHED
-
-
-def cut(text, limit, where):
-    text = text.strip()
-    if len(text) <= limit:
-        return close_comments(text)
-    return close_comments(text[:limit].rstrip()) + f"\n\n(Cut at {limit:,} characters: {where}.)"
+def fence(text):
+    """text in a fenced code block that nothing in it can close or leave: the fence is one backtick longer than the
+    longest run of backticks in it, and GitHub reads nothing inside a code block as Markdown or HTML."""
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    bar = "`" * max(3, longest + 1)
+    return f"{bar}text\n{text}\n{bar}"
 
 
 def meta_line(head, status):
@@ -141,28 +125,44 @@ def read_previous(previous):
     return status, head, body.strip()
 
 
-def assemble(head, status, body, footer=True):
-    """The comment: marker, metadata, heading, body, and (by default) the footer, cut so the whole stays in bounds."""
-    parts = [MARKER, meta_line(head, status), "", HEADING, ""]
-    tail = []
-    if footer:
-        of = f"It is the review of `{head[:7]}`. " if head else ""
-        tail = ["", "<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
-                f"`tools/check --checks` measured the checks. It can be wrong. {of}Each push replaces it, or marks it "
-                "not current if the push's review does not finish. It decides nothing: a person at Theorem reviews "
-                "the enrollment.</sub>"]
-    # Leave room for the note that cut() adds where it drops an unfinished construct; cut() closes every body, whether
-    # it clips it or not, so a kept comment that an older renderer wrote cannot hide the footer either.
-    room = MAX_COMMENT - len("\n".join(parts + ["", *tail])) - len(UNFINISHED) - 1
-    body = cut(body, room, "the rest is in the review job's log")
-    return "\n".join(parts + [body, *tail]) + "\n"
+FOOTER = ("<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
+          "`tools/check --checks` measured the checks. It can be wrong. {of}Each push replaces it, or marks it not "
+          "current if the push's review does not finish. It decides nothing: a person at Theorem reviews the "
+          "enrollment.</sub>")
+CHECKS_SUMMARY = "<details><summary>What the breakage and coverage checks measured</summary>"
+
+
+def assemble(head, status, notes, checks="", review="", where="the rest is in the review job's log",
+             review_limit=MAX_REVIEW):
+    """The comment, at most MAX_COMMENT characters: the marker and metadata, the heading, the notes (what this script
+    writes), the checks report fenced, and the review last. Only the checks and the review are cut, by slicing, and a
+    note before them says where; nothing else in them changes."""
+    notes = list(notes)
+    checks, review = checks.strip(), review.strip()
+    if len(checks) > MAX_CHECKS:
+        checks = checks[:MAX_CHECKS].rstrip()
+        notes.append(f"The checks report is cut at {MAX_CHECKS:,} characters: the rest is in the Build check's "
+                     "summary.")
+    blocks = [f"{MARKER}\n{meta_line(head, status)}", HEADING, *notes]
+    if checks:
+        blocks.append(f"{CHECKS_SUMMARY}\n\n{fence(checks)}\n\n</details>")
+    review_note = "The review is cut at {:,} characters: " + where + "."
+    # Room for the review: what is left once every other block, the note it may need and the joins are counted.
+    room = MAX_COMMENT - len("\n\n".join(blocks)) - len(review_note.format(10 ** 9)) - 6
+    limit = max(0, min(review_limit, room))
+    if len(review) > limit:
+        review = review[:limit].rstrip()
+        blocks.insert(2 + len(notes), review_note.format(limit))
+    if review:
+        blocks.append(review)
+    return "\n\n".join(blocks) + "\n"
 
 
 def not_current(previous, head, run):
     """The comment already posted, kept but marked not the review of head; None when it holds no review to keep."""
     status, of_head, body = read_previous(previous)
     if status == "stale":
-        # Drop the notice this script put first last time, so the marks do not stack; the review follows it.
+        # Drop the notice this script put first last time, so the marks do not stack; the old comment follows it.
         body = body.split("\n\n", 1)[1].strip() if "\n\n" in body else ""
     if status == "none" or not body.strip():
         return None
@@ -177,7 +177,10 @@ def not_current(previous, head, run):
     where = f" ([the run]({run}))" if run else ""
     note = (f"**Not current:** this is the review of {of}. The review of {this} did not finish with a review that "
             f"can be posted{where}. A person at Theorem reviews the enrollment.")
-    return assemble(of_head, "stale", f"{note}\n\n{body}", footer=False)
+    # The old comment, footer, checks and review as it was posted, goes last and unchanged, so the notice above it
+    # stays visible whatever it holds; only its length is cut, if it must be.
+    return assemble(of_head, "stale", [note], review=body, where="the rest is in an earlier run of the review job",
+                    review_limit=MAX_COMMENT)
 
 
 def main():
@@ -207,24 +210,21 @@ def main():
             if kept is not None:
                 sys.stdout.write(kept)
                 return 0
+    of = f"It is the review of `{head[:7]}`. " if head else ""
     if review:
-        body = cut(review, MAX_REVIEW, "the rest is in the review job's log")
-        status = "review"
+        notes, status = [FOOTER.format(of=of)], "review"
     else:
         this = f" (`{head[:7]}`)" if head else ""
         where = f" ([the run]({run}))" if run else ""
-        body = (f"The review agent did not run on this push{this}: {why or 'it wrote no comment'}{where}. "
-                "A person at Theorem reviews the enrollment.")
+        notes = [f"The review agent did not run on this push{this}: {why or 'it wrote no comment'}{where}. "
+                 "A person at Theorem reviews the enrollment.", FOOTER.format(of=of)]
         status = "none"
     checks = options.checks.read_text(encoding="utf-8", errors="replace") if options.checks else ""
     if credential(checks):
         # The checks text comes from the project's source: refused on its own, so a safe review is still posted.
         checks = ("The report held what looks like a credential, so it was not posted. It is in the Build check's "
                   "summary.")
-    if checks.strip():
-        body += ("\n\n<details><summary>What the breakage and coverage checks measured</summary>\n\n"
-                 + cut(neutralize(checks), MAX_CHECKS, "the rest is in the Build check's summary") + "\n\n</details>")
-    sys.stdout.write(assemble(head, status, body))
+    sys.stdout.write(assemble(head, status, notes, checks=neutralize(checks), review=review))
     return 0
 
 
