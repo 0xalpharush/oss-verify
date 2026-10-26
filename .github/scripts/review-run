@@ -29,8 +29,8 @@
 # collector an export of no records with the token. If the collector does not answer 200, it says so, writes the
 # reason to export-lost.txt (build.yaml shows it as a warning on the run's page), and runs the review with no export:
 # the export is a measurement, and a wrong or revoked token must never decide whether an enrollment gets its review.
-# After the review it sends one again: if the collector refuses it then, it writes the same file, and the review's
-# result stands. Without the two variables it exports nothing.
+# After a review that wrote its comment it sends one again: if the collector refuses it then, it writes the same file,
+# and the review's result stands. Without the two variables it exports nothing.
 # No value of that environment is ever an argument of a process: another user on the machine can read a process's
 # arguments, but not its environment.
 # In CI it keeps Claude Code's workload identity usable for a review of any length, and runs Claude Code once more when
@@ -52,6 +52,8 @@ in=${1:?usage: review-run <directory>}
 [[ $PR =~ ^[0-9]+$ ]] || { echo "review-run: PR is not a number" >&2; exit 2; }
 [[ $NAME =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || { echo "review-run: NAME is not a project name" >&2; exit 2; }
 case $(realpath "$in")/ in "$(pwd -P)"/*) ;; *) echo "review-run: $in is not inside this checkout" >&2; exit 2 ;; esac
+# This run's record of a lost export only: a file left by an earlier run in the same directory is not this run's.
+rm -f "$in/export-lost.txt"
 model=${REVIEW_MODEL:-claude-opus-5-5}
 # The seconds between two new identity tokens (below); a test makes it shorter.
 every=${REVIEW_TOKEN_EVERY:-60}

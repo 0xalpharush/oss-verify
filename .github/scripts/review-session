@@ -109,8 +109,8 @@ def key():
     """The AES-256 key, or None, with a warning, when the secret is not set. ValueError when it is not a key."""
     text = os.environ.get("REVIEW_CONVERSATION_KEY", "").strip()
     if not text:
-        print("::warning::The secret REVIEW_CONVERSATION_KEY of the review job's environment (enroll-review, or "
-              "enroll-review-test on a ci-test/ branch) is not set, so the review's conversation is neither restored "
+        print("::warning::The secret REVIEW_CONVERSATION_KEY of the review job's environment (enroll-review) is not "
+              "set, so the review's conversation is neither restored "
               "nor kept, and each push gets a fresh review.", flush=True)
         return None
     try:
