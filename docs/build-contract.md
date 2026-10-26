@@ -197,10 +197,10 @@ Thus an OSS-Fuzz testcase needs six zero bytes in front of it: `00 00 00 00 00 0
 |---:|---|
 | 0 | each call of the fuzz target returned 0 or -1 |
 | 2 | the driver refused the input and did not call the fuzz target, or the system refused memory to the Go runtime ([below](#go-fuzz-targets)) |
-| 77 | the fuzz target called `exit()` |
+| 77 | the fuzz target called `exit()` during a call, and no exit handler registered after the driver's guard ended the process first ([below](#what-the-driver-does-not-intercept)); in a Python fuzz target, an uncaught `SystemExit` in `TestOneInput`; in a Go fuzz target, `os.Exit` during a call ([below](#go-fuzz-targets)) |
 | 78 | a call of the fuzz target returned a value that is not 0 or -1 |
-| 79 | a Go fuzz target panicked: a `panic`, a runtime error, or `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test ([below](#go-fuzz-targets)) |
-| 80 | the Go runtime stopped with a fatal error that is not out of memory, for example a deadlock or a stack overflow ([below](#go-fuzz-targets)) |
+| 79 | a Rust fuzz target panicked; a Python fuzz target raised an exception that nothing caught (not `MemoryError`, which gives 2, or `SystemExit`); a Go fuzz target panicked: a `panic`, a runtime error, or `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test ([below](#go-fuzz-targets)) |
+| 80 | the Go runtime stopped with a fatal error that is not out of memory, for example a deadlock or a stack overflow ([below](#go-fuzz-targets)); in a Python fuzz target, the interpreter or the frozen harness failed before the first input, a defect of the build |
 | 132 | `SIGILL`: an UndefinedBehaviorSanitizer check failed (the check traps in these builds) |
 | 134 | `abort()`: a failed `assert()`, an AddressSanitizer detection, or an uncaught C++ exception |
 | 139 | `SIGSEGV`: a crash |
@@ -235,7 +235,15 @@ A sanitizer detection writes nothing. AddressSanitizer aborts silently. Undefine
 
 The driver changes a call of `exit()`, during a call of the fuzz target, into status 77. An `atexit` handler does this. The driver does not intercept `_exit`, `_Exit` or `quick_exit`, which do not run `atexit` handlers. A fuzz target that calls one of them ends the process with the status that it gave. `test_builder.py` shows this.
 
+Today's driver registers that handler once, before it calls `LLVMFuzzerInitialize`, and the handler gives 77 only while a call of the fuzz target runs. So an `exit()` in `LLVMFuzzerInitialize` is not 77: unless a handler ends the process first, it ends with the low 8 bits of its argument. Exit handlers run last-registered-first. Thus a handler that the fuzz target or the library registers later, in `LLVMFuzzerInitialize` or during a call, runs first. This includes the destructor of a C++ object that was first made then: a function-local `static`, or a `thread_local` object where the build registers its destructor with `__cxa_atexit`. If that handler does not return (it calls `_exit`, `_Exit`, `quick_exit` or `abort`, makes the `exit_group` system call, or jumps out of the handler), the `exit()` never reaches the guard. The status is then the one that the handler, or the code that it jumps to, gives, and it can be 0. `test_builder.py` shows both cases: a later handler that calls `_Exit(0)` gives status 0, and one that returns leaves the guard to give 77.
+
+The C, C++, Rust and Python adapters all register this guard. Two exits do not reach it: in a Python fuzz target, the interpreter host ends an uncaught `SystemExit` with `_exit(77)` itself; and a Go fuzz target has no C driver, and the patched Go runtime gives 77 for `os.Exit` itself. Native code that a Python fuzz target calls (an extension module, `ctypes` or `cffi`) obeys the rules above.
+
+> **WARNING:** Do not register an exit handler that does not return. It can hide a failed check: the process can then end with a status that a statement allows, for example 0.
+
 > **WARNING:** Do not install a handler for `SIGABRT`, `SIGSEGV` or another signal in a fuzz target. A handler hides a sanitizer detection.
+
+> **WARNING:** Do not call `std::set_terminate` in a C++ fuzz target. An uncaught exception then ends with the status that the terminate handler gives, not 134. Do not replace the panic hook in a Rust fuzz target (`std::panic::set_hook`, `take_hook` or `update_hook`). The driver installs a panic hook before `main` that gives 79, and these calls replace it.
 
 The driver itself never intercepts a signal or `abort()`.
 
@@ -245,7 +253,7 @@ An allocation-failure fuzz target shows that the library survives refused alloca
 
 The fuzz target must change an out-of-memory stop into a normal exit, and only that stop. To do this, catch `std::bad_alloc`, or use the library's own hooks for allocation failure.
 
-> **WARNING:** Do not catch all exceptions. Do not install a `SIGABRT` handler. Such code hides failures that the statements must show.
+> **WARNING:** Do not catch all exceptions. Do not call `std::set_terminate`. Do not install a `SIGABRT` handler. Such code hides failures that the statements must show.
 
 To make an allocation-failure fuzz target, link the object files of a fuzz target again, into a different binary, with `$LIB_ALLOCATION_FAILURE_ENGINE`:
 
@@ -294,7 +302,7 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 * For each property, a one-line change to the code makes the fuzz target abort on an input of the seed corpus. The change is a `mutant:` record in the check's comment, or a patch in the directory that `mutants` names ([below](#the-checks-of-a-fuzz-target), [project-yaml.md](project-yaml.md#mutants)).
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
-* `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+* `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()`. It registers no exit handler that does not return, installs no signal handler, calls no `std::set_terminate` and replaces no Rust panic hook ([above](#what-the-driver-does-not-intercept)).
 
 ## The checks of a fuzz target
 
