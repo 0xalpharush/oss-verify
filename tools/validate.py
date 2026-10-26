@@ -119,7 +119,7 @@ LANGUAGES = {
 }
 # Every suffix that some language permits.
 SOURCE_SUFFIXES = tuple(dict.fromkeys(suffix for suffixes in LANGUAGES.values() for suffix in suffixes))
-# The languages with halts statements only, about the plain build: they take no sanitizer builds.
+# The languages with the plain build only: they take no sanitizer builds.
 PLAIN_ONLY = ("go", "jvm")
 # The languages that the builder builds today: those of the toolchains in infra/toolchains.tsv. The builders of the
 # others are pending.
@@ -342,7 +342,7 @@ def check_builds(config):
             if len(set(sanitizers)) != len(sanitizers):
                 yield "sanitizers names a sanitizer twice"
             if language in PLAIN_ONLY and sanitizers:
-                yield (f"a {language} project has halts statements only, about the plain build: give sanitizers: [] "
+                yield (f"a {language} project has the plain build only: give sanitizers: [] "
                        "or leave it out")
 
     changes = ubsan_changes_of(config)

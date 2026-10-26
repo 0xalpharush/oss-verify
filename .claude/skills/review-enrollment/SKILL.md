@@ -81,7 +81,7 @@ Do the checks in this order. Write each verdict and its evidence in the summary 
 2. **OSI licence.** The triage row "License" gives the SPDX id. An id on the OSI list (https://opensource.org/licenses) is **pass**. No licence file is **fail**.
 3. **Public https repository.** `repo` starts with `https://`, and `git ls-remote <url>` works without a token: **pass**.
 4. **At least one fuzz target.** Each name in `fuzz_targets` is in the build output: **pass**. Also find where each fuzz target's source is: in `DIR`, or in the repository at the built commit. If it is only on a branch that is not the default branch, the condition is met, but check G1 applies.
-5. **Our builder can build it.** `language` has the status "statements today" or "halts statements only" in `docs/project-yaml.md`, and the build check passed: **pass**.
+5. **Our builder can build it.** `language` has the status "statements today", "halts statements only" or "builds today" in `docs/project-yaml.md`, and the build check passed: **pass**.
 6. **`primary_contact`.** It is one address, and `tools/validate.py` gives no warning about it: **pass**. Do not ask that it match `SECURITY.md`. The template no longer asks for that.
 
 ### B. The checklist against today's template
