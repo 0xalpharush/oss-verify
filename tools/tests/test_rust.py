@@ -3,8 +3,12 @@
 """Tests for infra/base-builder/rust/gen-shim.py, which need no Docker:  python3 -m pytest tools/tests
 
 It writes the static library crate of one cargo-fuzz [[bin]] of tests/fixtures/rust-example's crate.
+It also runs the crates line of infra/base-builder/lay-out-sources with a stand-in cargo.
 """
+import importlib.machinery
+import importlib.util
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -12,10 +16,15 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 TESTS = pathlib.Path(__file__).resolve().parent
 RUST = TESTS.parent.parent / "infra" / "base-builder" / "rust"
 CRATE = TESTS / "fixtures" / "rust-example" / "crate"
+LOADER = importlib.machinery.SourceFileLoader("lay_out_sources", str(RUST.parent / "lay-out-sources"))
+SPEC = importlib.util.spec_from_loader("lay_out_sources", LOADER)
+lay_out_sources = importlib.util.module_from_spec(SPEC)
+LOADER.exec_module(lay_out_sources)
 
 
 def gen_shim(src, out, *more):
@@ -68,6 +77,30 @@ class GenShim(unittest.TestCase):
             done = gen_shim(src, out)
             self.assertEqual(done.returncode, 3)
             self.assertIn("REFUSED(fuzz-package-build-script)", done.stderr)
+
+
+class Crates(unittest.TestCase):
+    def test_a_failed_cargo_vendor_says_why(self):
+        # lay-out-sources captures what cargo vendor prints, so the reason a vendoring failed (such as a lock that is
+        # not the shim package's) reaches the build log only through its error message
+        reason = "error: the lock file shim/Cargo.lock needs to be updated but --locked was passed to prevent this"
+        with tempfile.TemporaryDirectory() as scratch:
+            scratch = pathlib.Path(scratch)
+            root, bin_dir, sources = scratch / "root", scratch / "bin", scratch / "sources"
+            shutil.copytree(CRATE, root / "src")
+            shutil.copy(CRATE.parent / "Cargo.lock", root / "Cargo.lock")
+            bin_dir.mkdir()
+            (bin_dir / "cargo").write_text(f"#!/bin/sh\necho '{reason}' >&2\nexit 101\n")
+            (bin_dir / "cargo").chmod(0o755)
+            sources.write_text("crates\tvendor\tCargo.lock\tsrc\tfuzz\texample_fuzzer\n")
+            with (mock.patch.object(lay_out_sources, "RUST", RUST),
+                  mock.patch.object(sys, "argv", ["lay-out-sources", str(sources), str(root)]),
+                  mock.patch.dict(os.environ, {"PATH": f"{bin_dir}:{os.environ['PATH']}"}),
+                  self.assertRaises(SystemExit) as stopped):
+                lay_out_sources.main()
+        said = str(stopped.exception.code)
+        self.assertTrue(said.startswith(f"lay-out-sources: {sources}:1: "), said)
+        self.assertIn("returned non-zero exit status 101.\n" + reason, said)
 
 
 if __name__ == "__main__":

@@ -380,7 +380,12 @@ def main():
                 patch(destination, args[0], files)
             else:
                 raise Failed(f"not a directive this tool knows, with these fields: {line!r}")
-        except (Failed, OSError, ValueError, subprocess.CalledProcessError, tarfile.TarError, zipfile.BadZipFile) as error:
+        except subprocess.CalledProcessError as error:
+            # a command whose output this tool captured (cargo vendor, git rev-parse, git archive) says why it failed
+            # only in what it wrote to stderr
+            said = error.stderr.decode(errors="replace") if isinstance(error.stderr, bytes) else error.stderr or ""
+            sys.exit(f"lay-out-sources: {sources}:{number}: {error}" + (f"\n{said.rstrip()}" if said.strip() else ""))
+        except (Failed, OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
             sys.exit(f"lay-out-sources: {sources}:{number}: {error}")
         print(f"lay-out-sources: {kind} {where}")
     if patches != order:

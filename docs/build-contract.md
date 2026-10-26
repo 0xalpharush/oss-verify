@@ -332,6 +332,43 @@ The records and the quiet twins change no byte of a binary. With `--twice`, the 
 
 These checks find a build that did not do what it meant to, for example a library whose own build dropped the sanitizer flags. The records are written in the build's own container, so they do not stand against a `build.sh` written to deceive them; the review of the pull request does. The same holds for the runs: qemu writes the trace as the program's own user, so a binary written to deceive the checks can rewrite its trace. `tools/check` reads the records and the runs' results without following a symbolic link, and checks each kept file against its SHA-256.
 
+## Rust fuzz targets
+
+A Rust fuzz target is a cargo-fuzz `[[bin]]` of the project's repository. The Rust toolchain image adds Rust nightly-2025-07-16 (rustc 1.90.0, LLVM 20.1.8) and its sealed standard library to the C and C++ toolchain. Its row in infra/toolchains.tsv names it. The oss-fuzz-theorems 2026.10 release built its Rust binaries in this image. Code that needs a newer Rust than this one takes a build patch: [projects/sqlpage/rust-duration-compat.patch](../projects/sqlpage/rust-duration-compat.patch) replaces `Duration::from_mins` and `Duration::from_hours`, which this rustc does not have ([below](#build-patches)).
+
+rustc makes no static library from a `[[bin]]`. Thus the build makes one package for each fuzz target: [rust/gen-shim.py](../infra/base-builder/rust/gen-shim.py) writes a package named `oft-rust-shim`, whose library root is a copy of the bin's source without its `#![no_main]` lines, with the line `extern crate oft_rust_rt as _;` added at its end. The package depends on the adapter `oft-rust-rt`, on the dependencies of the fuzz package, and on the fuzz package itself when it has a `[lib]`. `build.sh` then builds this package and links it with the driver ([rust/recipes.sh](../infra/base-builder/rust/recipes.sh)).
+
+A Rust project has all four builds. Each one compiles the standard library with its own flags (`-Zbuild-std`). The table gives the flags that make the four builds different. In each build, `recipes.sh` also adds two `--remap-path-prefix` flags, `-Cdebug-assertions=on` when the target sets `CARGO_DEBUG_ASSERTIONS=1`, and the `--cfg` of the stdio seal when the target sets `OFT_RUST_QUIET_STDIO=1`:
+
+| build | what the compiler gets |
+|---|---|
+| `plain` | `--cfg fuzzing -Zub-checks=no` |
+| `ubsan` | `--cfg fuzzing -Zub-checks=yes` |
+| `asan` | `--cfg fuzzing -Zub-checks=no -Zsanitizer=address` |
+| `asan-ubsan` | `--cfg fuzzing -Zub-checks=yes -Zsanitizer=address` |
+
+The `ubsan` build is rustc's UB checks, which panic; it is not clang's UndefinedBehaviorSanitizer. Thus a Rust project may not set `ubsan_checks` ([project-yaml.md](project-yaml.md#ubsan_checks)).
+
+### The lock of a Rust fuzz target
+
+The lock in the project directory is the lock of the generated `oft-rust-shim` package, not of the fuzz package. The `crates` line of `sources` makes the shim package, copies this lock to `shim/Cargo.lock`, and vendors the crates with `cargo vendor --locked` ([lay-out-sources](../infra/base-builder/lay-out-sources)). The line gives the vendor directory, the lock, the source tree, the fuzz directory and the name of the bin. A `tree` line lays out the source tree before it, and the `patch` lines of that tree, if any, come between them ([projects/sqlpage/sources](../projects/sqlpage/sources)):
+
+    tree	ext/<target>/src	upstream/<repository>
+    copy	targets/<target>/Cargo.lock	Cargo.lock
+    crates	ext/<target>/vendor	targets/<target>/Cargo.lock	ext/<target>/src	fuzz	<bin>
+
+A lock of the fuzz package names neither `oft-rust-shim` nor `oft-rust-rt`. `cargo vendor --locked` refuses to update a lock and exits with status 101, so `lay-out-sources` stops the build, and the build log shows cargo's reason after the `lay-out-sources` line: `the lock file .../shim/Cargo.lock needs to be updated but --locked was passed to prevent this` (a newer cargo than the toolchain's words it `cannot update the lock file ... because --locked was passed to prevent this`). `lay-out-sources` also stops when `cargo vendor` changed the lock, so the lock must stay as it is.
+
+Make the lock in a checkout of this repository, from a checkout of the project with its build patches applied, with the steps that the `crates` line uses. Run the toolchain's cargo, nightly-2025-07-16, so that the cargo that makes the lock is the cargo that vendors it (with rustup, `cargo +nightly-2025-07-16`):
+
+    tmp=$(mktemp -d) && cp -a <project checkout> "$tmp/src" && touch "$tmp/src/.oft-scratch-copy"
+    python3 infra/base-builder/rust/gen-shim.py --src "$tmp/src" --fuzz-dir fuzz --bin <bin> \
+      --out "$tmp/pkg" --rt "$PWD/infra/base-builder/rust/oft-rust-rt"
+    cargo +nightly-2025-07-16 generate-lockfile --manifest-path "$tmp/pkg/Cargo.toml"
+    cp "$tmp/pkg/Cargo.lock" projects/<name>/Cargo.lock
+
+Two fuzz targets with the same dependencies can share one lock and one vendor directory: `tools/seeds/bincode/sources` lays out the second target's vendor directory as a `link` to the first.
+
 ## Go fuzz targets
 
 A Go fuzz target is an OSS-Fuzz Go fuzz target, as it is. OSS-Fuzz's Go helpers build it: `compile_go_fuzzer` for a go-fuzz `Fuzz(data []byte) int` function, and `compile_native_go_fuzzer` or `compile_native_go_fuzzer_v2` for a `testing.F` fuzz test. The Go toolchain image adds Go 1.27.1 and these helpers to the C and C++ toolchain. Its row in infra/toolchains.tsv names it. The oss-fuzz-theorems 2026.10 release built its Go binaries in this image, but did not publish them. Our builds make them again, byte for byte.
