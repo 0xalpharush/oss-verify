@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+"""Which provider and model answered the enrollment review, as Claude Code reports them, and whether that is the
+provider and model the review asked for.
+
+  .github/scripts/review-served run <directory> <provider>/<model> -- <Claude Code's command...>
+  .github/scripts/review-served check < <directory>/served
+  .github/scripts/review-served asked <provider>/<model>
+
+run first reads where the tool will send its requests (endpoint, below). When that is not the API of the provider
+asked for, it does not start Claude Code. Otherwise it runs Claude Code's command, whose standard output is its
+event stream (`--output-format stream-json --verbose`), in its own environment, which is Claude Code's (review-run
+starts it with that environment only), and writes into <directory>, beside the comment:
+  claude.jsonl  the stream, each line as it comes
+  claude.json   the stream's last `result` event, as it came: the object `--output-format json` writes; empty when
+                there is none
+  served        the record that build.yaml's comment job reads: the line `asked <provider>/<model>`; the line
+                `endpoint <where>`, where the tool sends its requests; a line `usage <provider>/<model>` for each entry
+                of the result's `.modelUsage` (its `provider`, and its `canonicalModel` or else its key); then one line
+                `<provider>/<model> <turns>` for each provider and model that answered, a turn being one model response
+                (one message id); `none` where Claude Code named none. It is written also when run is stopped.
+It reads each event as it comes and stops the agent at the first model response whose model is not the model asked
+for (or a dated snapshot of it, <model>-YYYYMMDD), or that names no model, and at a line of the stream that is not a
+JSON object, rather than let it spend more turns on a review that will not be posted. It exits with the agent's own
+status when the agent failed by itself, 4 when it did not start or stopped the agent or the record does not show the
+provider and model asked for (the reason on standard error), and 0 otherwise.
+
+check reads a record on standard input and prints one line. It exits 0, with the providers and models that answered
+and their turns, when the tool sent its requests to the provider's own API, the provider and model asked for answered
+every turn, and every `.modelUsage` entry names them too; 1, with why the review is not to be posted and the counts,
+when the endpoint, a provider or a model it names is another; 3, with why, when nothing it names is another but the
+review is not attributable: no endpoint or no turn recorded, a provider or model that the tool did not name, or a
+record it cannot read.
+
+asked exits 0 when run can check <provider>/<model>, and 2, saying why, when it cannot.
+
+What Claude Code reports, measured on its version 2.1.310, the one build.yaml installs:
+- each `assistant` event of the stream carries `.message.model` and `.message.id` from the API's own response (the
+  tool builds the event from the response's message_start); a response of two content blocks is two events with one
+  id. Nothing else in the stream names the model that answered. A message the tool writes itself (an API error's
+  text, for one) is an `assistant` event whose model is "<synthetic>" and which the tool itself marks
+  `"is_api_error_message": true`: no model answered it, so it is no turn. The model's name alone comes from the
+  response, so "<synthetic>" without that mark is a turn, of another model. The model of every event is checked, not
+  only the first of a message id: the tool can switch models within a response (its server fallback).
+- no event before the last names the provider: `system`/`init` names the model asked for (`.model`) and the key's
+  source, and an `assistant` event names no provider. So a turn's model is checked as it comes, and the provider at
+  the end.
+- the `result` event's `.modelUsage` is keyed by the model the tool asked for, not the one that answered, and each
+  entry's `provider` is the tool's API provider, set from its own configuration ("firstParty" for Anthropic's own API;
+  its schema lists "bedrock", "vertex", "foundry", "anthropicAws", "mantle" and "gateway" besides). `.modelUsage` is
+  {} when no request got a response (a refused key, a provider with no credentials): that names no provider.
+- "firstParty" does not say where the requests went: the tool reports it also when ANTHROPIC_BASE_URL names a proxy
+  (its own policy code calls that a custom endpoint), which could answer with any model and name it as it likes. So
+  the record names the endpoint, and run does not start the agent at another.
+"""
+import collections
+import glob
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import urllib.parse
+
+# The providers a review may ask for, each with the name the tool gives it in `.modelUsage[*].provider` and the host
+# of its own API. An allow list: a provider the tool names otherwise, a new one included, is never taken for the one
+# asked for.
+TOOL_PROVIDER = {"anthropic": ("firstParty", "api.anthropic.com")}
+# Variables that send the tool's requests elsewhere than the provider's own API, or let another party answer for it,
+# besides an ANTHROPIC_BASE_URL of another URL and any CLAUDE_CODE_USE_* (a provider of another name, or a gateway):
+# a socket or another base URL, a proxy (in any case), and the TLS settings that would let a proxy answer as the API.
+ELSEWHERE = ("ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BASE_URL", "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
+             "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR")
+PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")
+STOPPED = 4         # run: the agent was not started or was stopped, or the record does not show the provider asked for
+UNATTRIBUTED = 3    # check: no other provider or model answered, but a turn names none, or no turn answered
+NAME = re.compile(r"[A-Za-z0-9._:@+\[\]_-]{1,100}")
+SYNTHETIC = "<synthetic>"   # the model of a message the tool writes itself
+
+
+def clean(value):
+    """A provider's or model's name as the record writes it: `none` when there is none, and no character outside
+    NAME's, since the comment shows it."""
+    if not isinstance(value, str) or not value:
+        return "none"
+    return value if NAME.fullmatch(value) else (re.sub(r"[^A-Za-z0-9._:@+\[\]_-]", "?", value)[:100] or "none")
+
+
+def asked_for(asked):
+    """(provider, model, the tool's name for the provider, the provider's host) of `<provider>/<model>`."""
+    provider, _, model = asked.partition("/")
+    if provider not in TOOL_PROVIDER or not NAME.fullmatch(model) or model == "none":
+        raise ValueError(f"asked for {clean(asked)}: not <provider>/<model> with a provider of "
+                         f"{', '.join(sorted(TOOL_PROVIDER))}")
+    return (provider, model) + TOOL_PROVIDER[provider]
+
+
+def is_model(name, model):
+    """Whether `name` is the model `model`: the same id, or a dated snapshot of it (`<model>-YYYYMMDD`), the name the
+    API answers with for some aliases."""
+    return name == model or re.fullmatch(re.escape(model) + r"-[0-9]{8}", name) is not None
+
+
+def base_url(value, host):
+    """None when the URL `value` is https://<host> (port 443 at most), else how the record names it:
+    `<scheme>:<host>[:<port>]`, and `+userinfo` when it holds a user or a password, which the record never shows."""
+    try:
+        url = urllib.parse.urlsplit(str(value))
+        port = url.port
+    except ValueError:   # a URL the parser refuses, or a port that is not a number
+        return "unreadable-url"
+    if url.scheme == "https" and url.hostname == host and port in (None, 443) and "@" not in url.netloc:
+        return None
+    named = f"{url.scheme or 'none'}:{url.hostname or 'none'}{f':{port}' if port is not None else ''}"
+    return clean(named + ("+userinfo" if "@" in url.netloc else ""))
+
+
+def profile_base_url():
+    """The `base_url` of the Anthropic profile the tool reads, from <config dir>/configs/<profile>.json: the config dir
+    is ANTHROPIC_CONFIG_DIR, else $XDG_CONFIG_HOME/anthropic, else ~/.config/anthropic; the profile is
+    ANTHROPIC_PROFILE, else the one active_config names, else `default`. None when there is none;
+    `unreadable-profile` when the profile cannot be read."""
+    env = os.environ
+    directory = env.get("ANTHROPIC_CONFIG_DIR", "").strip() or (
+        os.path.join(env["XDG_CONFIG_HOME"].strip(), "anthropic") if env.get("XDG_CONFIG_HOME", "").strip()
+        else os.path.join(env.get("HOME", ""), ".config", "anthropic"))
+    try:
+        with open(os.path.join(directory, "active_config")) as f:
+            active = f.read().strip()
+    except FileNotFoundError:
+        active = ""
+    except (OSError, ValueError):
+        return "unreadable-profile"
+    name = env.get("ANTHROPIC_PROFILE", "").strip() or active or "default"
+    try:
+        with open(os.path.join(directory, "configs", f"{name}.json")) as f:
+            profile = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, RecursionError):
+        return "unreadable-profile"
+    if not isinstance(profile, dict):
+        return "unreadable-profile"
+    url = profile.get("base_url")
+    return url if isinstance(url, str) and url.strip() else None
+
+
+def endpoint(host):
+    """Where the tool will send its requests: `host` when nothing sends them elsewhere, else what does, `+`-joined: an
+    ANTHROPIC_BASE_URL, or a profile's base_url, other than https://<host> (as base_url names it), or the name of
+    another variable that does. It reads the agent's environment, which is this process's, the `env` of each of the
+    tool's settings files, which the tool applies as it starts, and the Anthropic profile the tool reads; one it cannot
+    read is `unreadable-settings` or `unreadable-profile`."""
+    sources = [os.environ]
+    config = [os.path.join(os.environ.get("HOME", ""), ".claude"), os.environ.get("CLAUDE_CONFIG_DIR")]
+    for path in [os.path.join(d, "settings.json") for d in config if d] + [".claude/settings.json",
+                 ".claude/settings.local.json", "/etc/claude-code/managed-settings.json"] \
+            + sorted(glob.glob("/etc/claude-code/managed-settings.d/*.json")):
+        try:
+            with open(path) as f:
+                env = json.load(f).get("env", {})
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError, RecursionError, AttributeError):
+            return "unreadable-settings"
+        sources.append(env if isinstance(env, dict) else {"unreadable-settings": ""})
+    found = set()
+    profile = profile_base_url()
+    if profile == "unreadable-profile":
+        found.add(profile)
+    elif profile is not None:
+        found.add(base_url(profile, host) or host)
+    for env in sources:
+        for name, value in env.items():
+            if name == "ANTHROPIC_BASE_URL":
+                found.add(base_url(value, host) or host)
+            elif name in ELSEWHERE or name.upper() in PROXIES or name.startswith("CLAUDE_CODE_USE_") \
+                    or name == "unreadable-settings":
+                found.add(clean(name))
+    found.discard(host)
+    return "+".join(sorted(found)) or host
+
+
+def turns(n):
+    return f"{n} turn" if n == 1 else f"{n} turns"
+
+
+def check(record):
+    """(exit status, line) for a record: 0 and the counts when the provider and model asked for answered every turn."""
+    asked, where, used, answered = None, [], [], []
+    for line in record.splitlines():
+        if line.startswith("asked "):
+            asked = line[len("asked "):]
+        elif line.startswith("endpoint "):
+            where.append(line[len("endpoint "):])
+        elif line.startswith("usage ") and "/" in line:
+            used.append(line[len("usage "):].split("/", 1))
+        elif line.strip():
+            served, _, n = line.rpartition(" ")
+            if "/" not in served or not (n.isascii() and n.isdigit()) or int(n) == 0:
+                return UNATTRIBUTED, f"a line of the record of what answered the review is not one: {clean(line)}"
+            answered.append((served.split("/", 1), int(n)))
+    if asked is None:
+        return UNATTRIBUTED, "nothing recorded which provider answered the review: it is not attributable"
+    try:
+        _, model, want, host = asked_for(asked)
+    except ValueError as e:
+        return UNATTRIBUTED, str(e)
+    counts = ", ".join(f"{provider}/{name} ({turns(n)})" for (provider, name), n in answered)
+    usage = ", ".join(f"{provider}/{name}" for provider, name in used) or "nothing"
+    if any(w != host for w in where):
+        return 1, f"it asked for {asked}, whose API is {host}, but the tool was set to send its requests to " \
+                  f"{', '.join(clean(w) for w in where)}, where {counts or 'no turn'} answered"
+    if any(provider not in ("none", want) or name != "none" and not is_model(name, model)
+           for (provider, name) in used + [served for served, _ in answered]):
+        return 1, f"it asked for {asked}, which the tool calls {want}/{model}, but {counts or 'no turn'} " \
+                  f"answered, and the tool's usage names {usage}"
+    if not where:
+        return UNATTRIBUTED, f"it asked for {asked}, and nothing recorded where the tool sent its requests, though " \
+                             f"{counts or 'no turn'} answered: it is not attributable"
+    if not answered:
+        return UNATTRIBUTED, f"it asked for {asked}, and no turn named the provider and model that answered it: it " \
+                             "is not attributable"
+    if any("none" in (provider, name) for (provider, name), _ in answered):
+        return UNATTRIBUTED, f"it asked for {asked}, and {counts} answered, where none is a provider or model the " \
+                             "tool did not name: it is not attributable"
+    if any("none" in (provider, name) for provider, name in used):
+        return UNATTRIBUTED, f"it asked for {asked}, and {counts} answered, but the tool's usage names {usage}, " \
+                             "where none is a provider or model the tool did not name: it is not attributable"
+    return 0, counts
+
+
+def stop(agent):
+    """Stop the agent and every process it started: it runs in a process group of its own. A second stop of this
+    script while it does so (SIGTERM, SIGINT) waits until it is done, so that the SIGKILL is always sent."""
+    held = {s: signal.signal(s, signal.SIG_IGN) for s in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        try:
+            os.killpg(agent.pid, signal.SIGTERM)
+            agent.wait(timeout=30)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            pass
+        try:
+            os.killpg(agent.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        agent.wait()
+    finally:
+        for s, handler in held.items():
+            signal.signal(s, handler)
+
+
+def write_record(directory, asked, where, seen):
+    """Writes `served`, then claude.json, from what read has seen so far: the record also when run is stopped."""
+    result = seen["result"]
+    usage = result.get("modelUsage") if result is not None else None
+    used = sorted({(clean(u.get("provider")), clean(u.get("canonicalModel") or key))
+                   for key, u in usage.items() if isinstance(u, dict)}) if isinstance(usage, dict) else []
+    provider = "+".join(sorted({provider for provider, _ in used})) or "none"
+    counts = collections.Counter(f"{provider}/{model}" for model in seen["answered"].values())
+    record = f"asked {asked}\nendpoint {where}\n" + "".join(f"usage {provider}/{model}\n" for provider, model in used) \
+        + "".join(f"{served} {n}\n" for served, n in sorted(counts.items()))
+    with open(f"{directory}/served", "w") as f:
+        f.write(record)
+    with open(f"{directory}/claude.json", "wb") as f:
+        if result is not None:
+            f.write(seen["result_line"].rstrip(b"\r\n"))
+    return record
+
+
+def run(directory, asked, command):
+    _, model, _, host = asked_for(asked)
+    where = endpoint(host)
+    # What read has seen: message id -> the model that answered it, and the last result event, parsed and as it came.
+    seen = {"answered": {}, "result": None, "result_line": None}
+    stopped, status = None, 0
+    for name in ("claude.json", "served"):
+        if os.path.exists(f"{directory}/{name}"):
+            os.remove(f"{directory}/{name}")
+    try:
+        with open(f"{directory}/claude.jsonl", "wb") as stream:
+            if where != host:
+                stopped = f"did not start Claude Code: the tool is set to send its requests to {where}, not to {host}"
+            else:
+                status, stopped = read(command, stream, model, seen)
+    finally:
+        record = write_record(directory, asked, where, seen)
+    if stopped:
+        print(f"review-served: {stopped}", file=sys.stderr)
+        return STOPPED
+    if status != 0:
+        return status if status > 0 else 128 - status
+    code, line = check(record)
+    if code != 0:
+        print(f"review-served: {line}", file=sys.stderr)
+        return STOPPED
+    return 0
+
+
+def read(command, stream, model, seen):
+    """Runs the agent and reads its stream into `stream` and `seen`, stopping it at the first model response that is
+    not of `model`, or at a line that is not a JSON object: (the agent's status, why it was stopped)."""
+    answered, stopped, agent = seen["answered"], None, None
+    try:
+        agent = subprocess.Popen(command, stdout=subprocess.PIPE, start_new_session=True)
+        for number, line in enumerate(agent.stdout, 1):
+            stream.write(line)
+            stream.flush()
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except (ValueError, RecursionError) as e:
+                event = e
+            if not isinstance(event, dict):
+                # A line that hides a turn would be a turn not checked. The tool writes only events, one a line.
+                why = "nested too deeply to read" if isinstance(event, RecursionError) else \
+                    "not JSON" if isinstance(event, ValueError) else "not a JSON object"
+                stopped = f"stopped Claude Code: line {number} of its stream is {why}: what answered is not " \
+                          "attributable"
+                seen["result"] = seen["result_line"] = None
+                break
+            if event.get("type") == "result":
+                seen["result"], seen["result_line"] = event, line
+            if event.get("type") != "assistant":
+                continue
+            message = event.get("message") if isinstance(event.get("message"), dict) else {}
+            if message.get("model") == SYNTHETIC and event.get("is_api_error_message") is True:
+                continue
+            key = message.get("id") if isinstance(message.get("id"), str) else f"#{len(answered)}"
+            name = clean(message.get("model"))
+            if key not in answered or not is_model(name, model):
+                answered[key] = name
+            if not is_model(name, model):
+                name = "no model it named" if name == "none" else name
+                stopped = f"stopped Claude Code: turn {list(answered).index(key) + 1} was answered by {name}, not " \
+                          f"{model}"
+                break
+        if stopped:
+            stop(agent)
+        return agent.wait(), stopped
+    except BaseException:
+        if agent is not None:
+            stop(agent)
+        raise
+    finally:
+        if agent is not None:
+            agent.stdout.close()
+
+
+def main(argv):
+    usage = "usage: review-served run <directory> <provider>/<model> -- <command...> | check < <record> | " \
+            "asked <provider>/<model>"
+    if argv[:1] == ["check"] and len(argv) == 1:
+        try:
+            code, line = check(sys.stdin.read())
+        except Exception as e:   # a record it cannot read is no evidence, and never the exit of another provider, 1
+            code, line = UNATTRIBUTED, f"the record of what answered the review could not be read " \
+                                       f"({type(e).__name__}): it is not attributable"
+        print(line)
+        return code
+    running = argv[:1] == ["run"] and len(argv) > 4 and argv[3] == "--"
+    if running or argv[:1] == ["asked"] and len(argv) == 2:
+        try:
+            asked_for(argv[2] if running else argv[1])
+        except ValueError as e:
+            print(f"review-served: {e}", file=sys.stderr)
+            return 2
+        if not running:
+            return 0
+        # A stop of this script (the step's timeout, a cancelled run) stops the agent too, through read's cleanup, and
+        # the record is written of what answered until then.
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(128 + signal.SIGTERM))
+        try:
+            return run(argv[1], argv[2], argv[4:])
+        except Exception as e:   # read stopped the agent already
+            print(f"review-served: could not record what answered the review ({type(e).__name__}): it is not "
+                  "attributable", file=sys.stderr)
+            return STOPPED
+    print(usage, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

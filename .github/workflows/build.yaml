@@ -55,7 +55,10 @@ name: "Build"
 # The review job runs no code of the pull request or the project. It holds the only identity token (id-token: write),
 # which it trades for a short-lived Anthropic token by workload identity federation: no API key is stored. Claude gets
 # three tools only, Read, Glob and Grep, inside the checkout (.github/scripts/review-run), and an environment without
-# the runner's tokens. The comment job alone writes: it posts text, refused if it holds what looks like a credential
+# the runner's tokens. Its review is posted only when the provider and model it asked for, at that provider's own API,
+# answered every turn, as Claude Code reported each turn (.github/scripts/review-served);
+# every comment names the providers and models that answered, with their turns, or says why nothing shows which.
+# The comment job alone writes: it posts text, refused if it holds what looks like a credential
 # (.github/scripts/review-comment), as the oss-verify GitHub App (oss-verify[bot]), with an installation token that
 # can write pull requests in this repository only. It makes that token from the App's client id below and its
 # private key, the repository secret OSS_VERIFY_APP_PRIVATE_KEY, and runs no code of the pull request or the project.
@@ -265,6 +268,8 @@ jobs:
       id-token: write
     outputs:
       comment: ${{ steps.review.outputs.comment }}
+      # What answered the review, as .github/scripts/review-served recorded it, for the comment job to check.
+      served: ${{ steps.review.outputs.served }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
@@ -353,11 +358,26 @@ jobs:
           code=0
           .github/scripts/review-run .review || code=$?
           rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE" "$ANTHROPIC_IDENTITY_TOKEN_FILE".new.*
+          # The record of what answered, also when the review is not to be posted or did not finish: the comment job
+          # checks it, and names what answered. Its names are ones review-served cleaned, so it holds no command.
+          if [ -f .review/served ]; then
+            delimiter="served-$(openssl rand -hex 16)"
+            { echo "served<<$delimiter"; cat .review/served; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+          fi
           echo "::$resume::"
           # 3: the review is written, but the collector refused the token after it. The comment is still posted, and
           # the next step fails the job.
           if [ "$code" = 3 ]; then
             echo "collector=refused" >> "$GITHUB_OUTPUT"
+          elif [ "$code" = 4 ]; then
+            # 4: another provider or model answered, or nothing shows which (review-served). The comment job posts
+            # none of the review, and says what answered. review-run's line names only what review-served cleaned.
+            failure=$(grep -m1 -xE "the review is not published: [][A-Za-z0-9 ,.:;@+?/*()'_-]{1,2100}" \
+              .review/failure.txt 2> /dev/null) \
+              || failure="the review is not published: review-run gave no reason"
+            echo "::error::${failure^}"
+            { echo "### The review is not published"; echo; echo "    $failure"; } >> "$GITHUB_STEP_SUMMARY"
+            exit "$code"
           elif [ "$code" != 0 ]; then
             # Why, on the run's page and in the job's summary, not only in the log above: review-run's own line of
             # plain words from failure.txt, and Claude Code's message from failure-detail.txt with no backtick, so
@@ -444,6 +464,9 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
           REVIEW: ${{ needs.review.outputs.comment }}
+          # The record of what answered the review: review-comment posts the review only if it shows the provider
+          # asked for, and otherwise says that it is not published, and why.
+          SERVED: ${{ needs.review.outputs.served }}
           CHECKS: ${{ needs.project-builds.outputs.checks }}
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -451,6 +474,7 @@ jobs:
           set -euo pipefail
           printf '%s' "$REVIEW" > "$RUNNER_TEMP/review.md"
           printf '%s' "$CHECKS" > "$RUNNER_TEMP/checks.md"
+          printf '%s' "$SERVED" > "$RUNNER_TEMP/served"
           # Only a run of the pull request's current head posts: a run of an older head that finished later would
           # replace the newer head's review, or mark it not current. The current head's own run posts.
           current=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
@@ -471,7 +495,8 @@ jobs:
             previous=(--previous "$RUNNER_TEMP/previous.md")
           fi
           python3 .github/scripts/review-comment --review "$RUNNER_TEMP/review.md" --checks "$RUNNER_TEMP/checks.md" \
-            --head "$HEAD_SHA" --run "$RUN_URL" "${previous[@]}" > "$RUNNER_TEMP/comment.md"
+            --head "$HEAD_SHA" --run "$RUN_URL" --served "$RUNNER_TEMP/served" "${previous[@]}" \
+            > "$RUNNER_TEMP/comment.md"
           if [ -n "$existing" ]; then
             jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \
               | gh api --method PATCH "repos/$REPO/issues/comments/$existing" --input - > /dev/null

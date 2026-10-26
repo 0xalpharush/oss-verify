@@ -126,22 +126,26 @@ if [ -n "$token_file" ]; then
   trap stop_rotating EXIT
 fi
 
-# Whether standard input holds what looks like a credential (an identity token, an Anthropic or GitHub token), by
-# review-comment's own scan, or the collector's token. Fails closed: an error of the scan counts as a credential.
+# Whether the file $1 holds what looks like a credential (an identity token, an Anthropic or GitHub token), by
+# review-comment's own scan, or the collector's token (compared in this shell, so that the token is no process's
+# argument). Both read the file without its NUL bytes: taking them out can only join what they split, so this finds
+# all that a scan of the bytes as they are finds, and a token that a log which drops them would show. Fails closed: an
+# error of the scan counts as a credential.
 holds_credential() {
-  local text scan=0
-  text=$(cat)
-  if [ -n "${OTEL_COLLECTOR_TOKEN:-}" ] && [[ $text == *"$OTEL_COLLECTOR_TOKEN"* ]]; then return 0; fi
-  builtin printf '%s' "$text" | python3 "$here/review-comment" --holds-credential || scan=$?
+  local scan=0
+  if [ -n "${OTEL_COLLECTOR_TOKEN:-}" ] && [[ $(tr -d '\0' < "$1") == *"$OTEL_COLLECTOR_TOKEN"* ]]; then return 0; fi
+  tr -d '\0' < "$1" | python3 "$here/review-comment" --holds-credential || scan=$?
   [ "$scan" != 3 ]
 }
 here=$(dirname "$(realpath "$0")")
 
 # The file tools never read the runner's temporary directory or the identity token's: --restricted keeps them inside
-# this checkout, and this deny rule says so again, should that ever change. `//` starts an absolute path in a rule.
+# this checkout, and these deny rules say so again, should that ever change: one for each of the three tools, so that
+# the protection does not rest on Claude Code applying a Read rule to Grep and Glob too. `//` starts an absolute path
+# in a rule.
 deny=()
 for directory in "${RUNNER_TEMP:-}" "${ANTHROPIC_IDENTITY_TOKEN_FILE:+$(dirname "$ANTHROPIC_IDENTITY_TOKEN_FILE")}"; do
-  [ -z "$directory" ] || deny+=("Read(/$(realpath -m "$directory")/**)")
+  [ -z "$directory" ] || for tool in Read Grep Glob; do deny+=("$tool(/$(realpath -m "$directory")/**)"); done
 done
 [ ${#deny[@]} = 0 ] || deny=(--disallowedTools "${deny[@]}")
 
@@ -149,12 +153,25 @@ done
 # tries stop at 40 minutes, inside the review step's 45, so that a review that runs too long says so too (exit status
 # 124). A try that ends without a review is tried once more if 10 minutes are left, and not after the time limit or
 # without a new identity token for it.
+# Claude Code runs under review-served, which reads its event stream (stream-json), stops it at a response that a
+# model other than the one asked for answers, and writes what answered, with its turns, to $in/served for the comment
+# job, and the stream's last event to claude.json, the object `--output-format json` writes. It does not start Claude
+# Code when the environment, Claude Code's settings or its Anthropic profile send its requests elsewhere than the API of
+# the provider asked for (REVIEW_PROVIDER, by default anthropic), ANTHROPIC_BASE_URL for one. Its exit status 4, with a
+# record that does not pass, means that another provider or model answered, or that nothing shows which: that review
+# is not published, and is not tried again. It runs in the environment below, the one it gives Claude Code, so it reads
+# that one.
+served="$(dirname "$0")/review-served"
+asked=${REVIEW_PROVIDER:-anthropic}/$model
+"$served" asked "$asked" || { echo "review-run: REVIEW_PROVIDER/REVIEW_MODEL is not one review-served can check" >&2
+                              exit 2; }
 deadline=$((SECONDS + 40 * 60))
 first_why=""
 for try in 1 2; do
   status=0
-  # Claude Code's whole environment, one NUL-ended entry each, goes through a pipe to a launcher that execs it with
-  # that environment only, as env -i would, and stdin from /dev/null. env -i took the entries as arguments. A loop of
+  # Claude Code's whole environment, one NUL-ended entry each, goes through a pipe to a launcher that execs
+  # review-served, with this same Python, with that environment only, as env -i would, and stdin from /dev/null;
+  # review-served starts Claude Code with that environment as it is. env -i took the entries as arguments. A loop of
   # `export -n` over `compgen -e` in this shell would not do it: bash passes on environment entries whose names are not
   # variable names, such as A.B=1, and the loop does not remove exported functions either.
   {
@@ -168,11 +185,25 @@ import os, sys
 environment = dict(entry.split(b"=", 1) for entry in sys.stdin.buffer.read().split(b"\0") if entry)
 with open(os.devnull, "rb") as empty:
     os.dup2(empty.fileno(), 0)
-os.execvpe(sys.argv[1], sys.argv[1:], environment)' \
+os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
+    "$served" run "$in" "$asked" -- \
     claude -p "$prompt" --restricted --tools Read,Glob,Grep --strict-mcp-config --permission-mode dontAsk \
       "${deny[@]}" \
-      --model "$model" --effort xhigh --max-turns 300 --output-format json > "$in/claude.json" 2> "$in/claude.err" \
-    || status=$?
+      --model "$model" --effort xhigh --max-turns 300 --output-format stream-json --verbose > /dev/null \
+      2> "$in/claude.err" || status=$?
+  # What answered, as review-served checks its record: the counts, or why the review is not to be posted.
+  served_status=0
+  answered=$({ cat "$in/served" 2> /dev/null || true; } | "$served" check) || served_status=$?
+  if [ "$status" = 4 ] && [ "$served_status" != 0 ]; then
+    echo "review-run: the review is not published: $answered" >&2
+    if [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
+      echo "review-run: Claude Code's standard error is not shown: it holds what looks like a credential" >&2
+    else
+      tail -c 2000 "$in/claude.err" >&2
+    fi
+    printf 'the review is not published: %s\n' "$answered" > "$in/failure.txt"
+    exit 4
+  fi
   # Its kind of ending (subtype), turns and seconds, each checked, so that failure.txt holds no text of Claude Code's.
   subtype=- turns=- seconds=-
   read -r subtype turns seconds < <(jq -r '[.subtype // "-", .num_turns // "-", ((.duration_ms // 0) / 1000 | floor)]
@@ -193,16 +224,17 @@ os.execvpe(sys.argv[1], sys.argv[1:], environment)' \
   # before they are cut, so that a cut cannot hide one.
   detail=$(jq -j '[.result, (.errors | if type == "array" then .[] else . end)] | map(select(type == "string"))
     | join("; ")' "$in/claude.json" 2> /dev/null | tr '[:cntrl:]' ' ') || true
-  if holds_credential <<< "$detail"; then
+  builtin printf '%s' "$detail" > "$in/claude.detail"
+  if holds_credential "$in/claude.detail"; then
     detail="(not shown: it holds what looks like a credential)"
   fi
   detail=${detail:0:1000}
   echo "review-run: $why (try $try): ${detail:-no message} ($(wc -c < "$in/claude.json") bytes in $in/claude.json)" >&2
-  errors=$(tail -c 2000 "$in/claude.err") || errors=""
-  if [ -n "$errors" ] && holds_credential < "$in/claude.err"; then
+  # The scan reads the whole file, and what is shown is the end of that same file, byte for byte.
+  if [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
     echo "review-run: Claude Code's standard error is not shown: it holds what looks like a credential" >&2
-  elif [ -n "$errors" ]; then
-    builtin printf '%s\n' "$errors" >&2
+  elif [ -s "$in/claude.err" ]; then
+    tail -c 2000 "$in/claude.err" >&2
   fi
   if [ "$try" = 2 ]; then
     if [ "$why" = "$first_why" ]; then why="$why, on both tries"; else why="$why, on the second try"; fi
@@ -228,8 +260,8 @@ if [ ! -s "$in/comment.md" ]; then
   echo "the review wrote no comment once its opening line was cut" > "$in/failure.txt"
   exit 1
 fi
-echo "review-run: $(wc -c < "$in/comment.md") bytes in $in/comment.md, by $model, $subtype after $turns turns and" \
-  "$seconds seconds (try $try)"
+echo "review-run: $(wc -c < "$in/comment.md") bytes in $in/comment.md, asked for $asked, answered by $answered," \
+  "$subtype after $turns turns and $seconds seconds (try $try)"
 if [ ${#telemetry[@]} != 0 ]; then
   answer=$(collector)
   if [ "$answer" != 200 ]; then
