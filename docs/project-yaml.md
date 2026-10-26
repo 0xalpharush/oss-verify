@@ -249,7 +249,7 @@ A seed corpus is a zip file of example inputs of one fuzz target. Together, its 
 * It holds at most 1,024 inputs.
 * Its size is at most 1 MiB, and at most 16 MiB when uncompressed.
 
-`tools/check` does not use a seed corpus.
+The seed corpus of a `python` project is an input of the build of its fuzz target. The build gives the seeds to `pyclosure.py`, which runs the harness on each one, and the modules that these runs reach go into the frozen module set of the binary ([infra/base-builder/python/recipes.sh](../infra/base-builder/python/recipes.sh), `oft_py_freeze`). Thus a change to such a seed corpus can change the bytes of the binaries. For each other language, no build reads the seeds. `tools/check --checks` runs the seeds of a `c` or `c++` project to measure its checks, and that run changes no binary ([build-contract.md](build-contract.md#the-checks-of-a-fuzz-target)).
 
 ### Build patches
 
