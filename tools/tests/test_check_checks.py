@@ -1317,6 +1317,35 @@ class ReviewRun(unittest.TestCase):
         self.assertNotIn("--resume", fresh)
         self.assertEqual(self.kept()[0]["id"], fresh[fresh.index("--session-id") + 1])
 
+    HELD = ("<!-- held finding -->\ntitle: [held] libreac/fuzz: heap-buffer-overflow in parse_SECRETBUG\n"
+            "project: libreac\nwhy held: memory safety\n\nparse_SECRETBUG reads past the end.\n")
+
+    def test_a_held_finding_is_cut_from_the_comment_never_shown_and_its_session_not_kept(self):
+        self.last_review()
+        (self.directory / "stream").write_text(stream({"type": "result", "is_error": False,
+                                                        "result": "Thanks.\n\nA finding was sent for private review.\n\n"
+                                                                  + self.HELD}))
+        out = self.run_review(**self.resume())
+        self.assertEqual(out.returncode, 0, out.stderr)
+        review = self.directory / "review"
+        self.assertEqual((review / "comment.md").read_text(), "Thanks.\n\nA finding was sent for private review.\n\n")
+        self.assertEqual((review / "held-finding.md").read_text().rstrip("\n"), self.HELD.rstrip("\n"))
+        self.assertNotIn("SECRETBUG", out.stdout + out.stderr)
+        self.assertIn("holds back a finding for private review", out.stdout)
+        self.assertIn(f"the session {self.OLD} holds a finding held back for private review, so it is not kept",
+                      out.stdout)
+        self.assertEqual(list(self.session.iterdir()), [])
+
+    def test_a_failed_try_never_shows_a_held_finding(self):
+        self.fake_claude(({"type": "result", "subtype": "success", "is_error": True, "num_turns": 3,
+                           "duration_ms": 1000, "result": "Thanks.\n" + self.HELD}, 1),
+                         ({"type": "result", "subtype": "success", "is_error": True, "num_turns": 3,
+                           "duration_ms": 1000, "result": "Thanks.\n" + self.HELD}, 1))
+        out = self.run_review(**self.identity())
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertNotIn("SECRETBUG", out.stdout + out.stderr + (self.failure()[1] or ""))
+        self.assertIn("not shown: it holds a finding held back for private review", out.stderr)
+
     def test_a_session_file_that_is_not_whole_gives_a_fresh_review(self):
         (self.session / "session").write_text(f"id=../../x\nhead={self.LAST}\ndir={self.FOLDER}\n")
         out = self.run_review(**self.resume())
@@ -1610,6 +1639,90 @@ def review_step():
     matches = [step for step in steps if step.get("id") == "review"]
     assert len(matches) == 1, matches
     return matches[0]
+
+
+class ReviewHeld(unittest.TestCase):
+    """review-held opens one private issue for each held finding, through a fake gh, and prints none of it."""
+
+    def run_held(self, held, open_issues=(), label=True, variable="theorem-labs/private"):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "bin").mkdir()
+            (root / "review").mkdir()
+            (root / "review" / "held-finding.md").write_text(held)
+            (root / "issues.json").write_text(json.dumps([{"number": n, "title": t} for n, t in open_issues]))
+            gh = root / "bin" / "gh"
+            gh.write_text(f"#!{sys.executable}\nimport json, pathlib, sys\nroot = pathlib.Path({str(root)!r})\n"
+                          "a = sys.argv[1:]\n"
+                          "with open(root / 'calls', 'a') as f: f.write(json.dumps(a) + '\\n')\n"
+                          "path = next(x for x in a[1:] if x.startswith('repos/'))\n"
+                          f"if path.endswith('/labels/held-finding'): sys.exit(0 if {label} else 1)\n"
+                          "if '/issues?' in path: print('\\n'.join(f\"{i['number']}\\t{i['title']}\" for i in "
+                          "json.loads((root / 'issues.json').read_text())))\n"
+                          "elif path.endswith('/comments'): print('https://example.test/comment')\n"
+                          "elif path.endswith('/issues'): print('https://example.test/issue')\n"
+                          "for x in a:\n"
+                          "    if x.startswith('body=@'):\n"
+                          "        with open(root / 'bodies', 'a') as f: f.write(open(x[6:]).read() + '\\0')\n")
+            gh.chmod(0o755)
+            run = subprocess.run([str(ROOT / ".github" / "scripts" / "review-held"), str(root / "review")],
+                                 env={**os.environ, "PATH": f"{root / 'bin'}:{os.environ['PATH']}",
+                                      "HELD_FINDINGS_REPO": variable, "REPO": "theorem-labs/oss-verify", "PR": "68",
+                                      "NAME": "libreac", "HEAD_SHA": "1" * 40, "RUN_URL": "https://example.test/run",
+                                      "COMMENT_URL": "https://example.test/pr-comment"},
+                                 capture_output=True, text=True)
+            calls = [json.loads(line) for line in (root / "calls").read_text().splitlines()] \
+                if (root / "calls").exists() else []
+            bodies = (root / "bodies").read_text().split("\0")[:-1] if (root / "bodies").exists() else []
+            return run, calls, bodies
+
+    def test_each_finding_is_one_labelled_issue_with_the_pull_request_and_nothing_is_printed(self):
+        two = ReviewRun.HELD + ReviewRun.HELD.replace("parse_SECRETBUG", "other_SECRETBUG")
+        run, calls, bodies = self.run_held(two, label=False)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertNotIn("SECRETBUG", run.stdout + run.stderr)
+        self.assertIn(["api", "repos/theorem-labs/private/labels", "-f", "name=held-finding", "-f", "color=b60205",
+                       "-f", "description=A finding held back from a public review, for the disclosure route"], calls)
+        created = [c for c in calls if c[1] == "repos/theorem-labs/private/issues"]
+        self.assertEqual([c[c.index("-f") + 1] for c in created],
+                         ["title=[held] libreac/fuzz: heap-buffer-overflow in parse_SECRETBUG",
+                          "title=[held] libreac/fuzz: heap-buffer-overflow in other_SECRETBUG"])
+        self.assertTrue(all("labels[]=held-finding" in c for c in created))
+        self.assertEqual(len(bodies), 2)
+        self.assertTrue(bodies[0].startswith(f"enrollment PR: theorem-labs/oss-verify#68\nenrollment PR head: {'1' * 40}\n"
+                                             "public PR comment: https://example.test/pr-comment\n"))
+        self.assertIn("project: libreac\nwhy held: memory safety\n", bodies[0])
+        self.assertNotIn("title:", bodies[0])
+
+    def test_a_finding_found_again_is_a_comment_on_its_open_issue(self):
+        run, calls, _ = self.run_held(ReviewRun.HELD, open_issues=[
+            (7, "[held] libreac/fuzz: heap-buffer-overflow in parse_SECRETBUG")])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("found again", run.stdout)
+        self.assertFalse([c for c in calls if c[1] == "repos/theorem-labs/private/issues"])
+        self.assertTrue([c for c in calls if c[1] == "repos/theorem-labs/private/issues/7/comments"])
+
+    def test_without_the_repository_or_a_finding_it_fails(self):
+        run, calls, _ = self.run_held(ReviewRun.HELD, variable="")
+        self.assertEqual(run.returncode, 2)
+        self.assertEqual(calls, [])
+        run, _, _ = self.run_held("<!-- held finding -->\n")
+        self.assertEqual(run.returncode, 1)
+
+    def test_build_yaml_gives_the_app_key_only_to_the_token_steps_and_reads_the_finding_from_disk(self):
+        jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())["jobs"]
+        holders = [(name, s.get("name", s.get("uses"))) for name, job in jobs.items() for s in job["steps"]
+                   if "OSS_VERIFY_APP_PRIVATE_KEY" in json.dumps(s)]
+        self.assertEqual(holders, [("review", "Get the oss-verify App's token for the held finding's repository"),
+                                   ("comment", "Get the oss-verify App's token")])
+        steps = {s.get("name"): s for s in jobs["review"]["steps"]}
+        self.assertNotIn("held", json.dumps(jobs["review"]["outputs"]))
+        send = steps["Send the held finding to the disclosure route"]
+        self.assertIn(".github/scripts/review-held .review", send["run"])
+        self.assertNotIn("APP_PRIVATE_KEY", json.dumps(steps["Review"]))
+        # The comment job posts nothing from a review job that failed, also when a comment was written.
+        self.assertEqual(jobs["comment"]["steps"][-1]["env"]["REVIEW"],
+                         "${{ needs.review.result == 'success' && needs.review.outputs.comment || '' }}")
 
 
 class SinceLastReview(unittest.TestCase):

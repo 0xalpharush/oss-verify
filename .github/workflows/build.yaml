@@ -482,6 +482,54 @@ jobs:
           delimiter="review-$(openssl rand -hex 16)"
           { echo "comment<<$delimiter"; head -c 60000 .review/comment.md; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
           if [ -s "$REVIEW_SESSION/session" ]; then echo "session=kept" >> "$GITHUB_OUTPUT"; fi
+          # A finding held back for private review (review.md, rule 6): its details stay in .review/held-finding.md,
+          # which the steps below read from this disk. Never an output: another job's log would show it.
+          if [ -s .review/held-finding.md ]; then echo "held=yes" >> "$GITHUB_OUTPUT"; fi
+
+      # A held finding goes to the disclosure route, as a private issue in the repository the variable
+      # HELD_FINDINGS_REPO names (.github/scripts/review-held says why this job sends it). If it cannot be sent, the job
+      # fails, and the comment job posts no review that says a finding was sent.
+      - name: Where the held finding goes
+        id: held
+        if: ${{ steps.review.outputs.held == 'yes' }}
+        env:
+          HELD_FINDINGS_REPO: ${{ vars.HELD_FINDINGS_REPO }}
+        run: |
+          if ! [[ $HELD_FINDINGS_REPO =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::The review holds back a finding, but the repository variable HELD_FINDINGS_REPO names no repository, so the finding is not sent and the review is not posted."
+            exit 1
+          fi
+          { echo "owner=${HELD_FINDINGS_REPO%%/*}"; echo "name=${HELD_FINDINGS_REPO#*/}"; } >> "$GITHUB_OUTPUT"
+
+      - name: Get the oss-verify App's token for the held finding's repository
+        id: held-app
+        if: ${{ steps.review.outputs.held == 'yes' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0 (sha-pinned)
+        with:
+          client-id: Iv23liAWPMahJZYsw3un
+          private-key: ${{ secrets.OSS_VERIFY_APP_PRIVATE_KEY }}
+          owner: ${{ steps.held.outputs.owner }}
+          repositories: ${{ steps.held.outputs.name }}
+          permission-issues: write
+
+      - name: Send the held finding to the disclosure route
+        if: ${{ steps.review.outputs.held == 'yes' }}
+        env:
+          GH_TOKEN: ${{ steps.held-app.outputs.token }}
+          READ_TOKEN: ${{ github.token }}
+          HELD_FINDINGS_REPO: ${{ vars.HELD_FINDINGS_REPO }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          NAME: ${{ needs.project-builds.outputs.name }}
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # The review comment's address, when there is one already: the comment job keeps it in place.
+          COMMENT_URL=$(GH_TOKEN=$READ_TOKEN gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.user.login == "oss-verify[bot]" and (.body | startswith("<!-- oss-verify-review -->"))) | .html_url' \
+            | head -n 1) || COMMENT_URL=""
+          export COMMENT_URL="${COMMENT_URL:-not posted yet: the review comment on $REPO#$PR}"
+          .github/scripts/review-held .review
 
       # For the keep job, the only job that writes the cache (the top of this file).
       - name: Hand this review's session to the keep job
@@ -549,7 +597,9 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
-          REVIEW: ${{ needs.review.outputs.comment }}
+          # Only from a review job that succeeded: a held finding that could not be sent fails the job after the
+          # comment, which says it was sent, is written.
+          REVIEW: ${{ needs.review.result == 'success' && needs.review.outputs.comment || '' }}
           # The record of what answered the review: review-comment posts the review only if it shows the provider
           # asked for, and otherwise says that it is not published, and why.
           SERVED: ${{ needs.review.outputs.served }}

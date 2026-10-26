@@ -308,7 +308,10 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
   detail=$(jq -j '[.result, (.errors | if type == "array" then .[] else . end)] | map(select(type == "string"))
     | join("; ")' "$in/claude.json" 2> /dev/null | tr '[:cntrl:]' ' ') || true
   builtin printf '%s' "$detail" > "$in/claude.detail"
-  if holds_credential "$in/claude.detail"; then
+  # A finding held back for private review (review.md, rule 6) is never shown, also in a try that failed.
+  if [[ $detail == *'<!-- held finding -->'* ]]; then
+    detail="(not shown: it holds a finding held back for private review)"
+  elif holds_credential "$in/claude.detail"; then
     detail="(not shown: it holds what looks like a credential)"
   fi
   detail=${detail:0:1000}
@@ -338,6 +341,16 @@ jq -r 'if .is_error then error("the review ended with an error: \(.result // .su
                           NR <= 6 && !cut { held = held $0 "\n"; next }
                           { printf "%s", held; held = ""; print }
                           END { printf "%s", held }' > "$in/comment.md"
+# A finding held back for private review (review.md, rule 6): from the first line `<!-- held finding -->` on, the
+# message goes to held-finding.md, which nothing here prints and build.yaml's review job sends to the disclosure route
+# (.github/scripts/review-held); the comment keeps only what is before it.
+rm -f "$in/held-finding.md"
+if grep -qx '<!-- held finding -->[[:space:]]*' "$in/comment.md"; then
+  awk -v held="$in/held-finding.md" '!h && /^<!-- held finding -->[[:space:]]*$/ { h = 1 } h { print > held; next } { print }' \
+    "$in/comment.md" > "$in/comment.public"
+  mv "$in/comment.public" "$in/comment.md"
+  echo "review-run: the review holds back a finding for private review; no log shows it"
+fi
 if [ ! -s "$in/comment.md" ]; then
   echo "review-run: the review wrote no comment" >&2
   echo "the review wrote no comment once its opening line was cut" > "$in/failure.txt"
@@ -354,7 +367,10 @@ if [ -n "$session_dir" ]; then
   file=$(find "$HOME/.claude/projects" -name "$id.jsonl" -print -quit 2> /dev/null || true)
   identity=""
   [ ! -f "${ANTHROPIC_IDENTITY_TOKEN_FILE:-}" ] || identity=$(< "$ANTHROPIC_IDENTITY_TOKEN_FILE")
-  if [ -z "$file" ] || [ ! -s "$file" ]; then
+  if [ -s "$in/held-finding.md" ]; then
+    # The session would hold the finding, and main's Actions cache is readable by a pull request's own run.
+    echo "review-run: the session $id holds a finding held back for private review, so it is not kept"
+  elif [ -z "$file" ] || [ ! -s "$file" ]; then
     echo "review-run: Claude Code kept no conversation of the session $id, so it is not kept"
   elif holds_credential "$file" || { [ -n "$identity" ] && [[ $(tr -d '\0' < "$file") == *"$identity"* ]]; }; then
     echo "review-run: the conversation of the session $id holds what looks like a credential, so it is not kept"

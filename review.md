@@ -15,6 +15,7 @@ Before you start, read `README.md` ("Who can enroll"), `CONTRIBUTING.md`, `.gith
 3. **Post one comment, and nothing else.** Do not approve, request changes, merge, close, label, edit the pull request or comment on another repository.
 4. **Give evidence for each verdict**: a file and line, a command and its output, or a URL. If you cannot get the evidence, the verdict is **person**, not **pass**.
 5. **Do not guess what the maintainer meant.** If a rule can be read two ways, give the verdict **person** and write both readings in the summary.
+6. **Hold back a real bug in the project's own code.** If you find a crash, memory-safety defect or other real bug in the project's own code (not in its fuzz targets or build), do not describe it in the comment. Write only that a finding was sent for private review, and record it in the review's private output for the disclosure route. The section "In CI" of the skill says where that output goes and what it holds. Fill each field that you have evidence for, write `not known` for the rest, and never invent a value. A fault in a fuzz target, its seed corpus or the build files is not held back: it is a request in the comment, as the checks below say.
 
 ## Verdicts
 
