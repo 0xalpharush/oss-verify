@@ -16,9 +16,10 @@ name: "Build"
 #            .claude/skills/review-enrollment/SKILL.md for where those are. It writes a comment that asks the
 #            maintainer for each fix. On a later push it resumes the same Claude Code session as the last review, so it
 #            knows what it asked for and why, and reviews only the diff since the commit it reviewed then.
-#   hold     when the review held back a real bug in the project's own code from its comment (review.md, rule 6),
-#            sends it to the disclosure route as a private issue (.github/scripts/review-held). The review job stores
-#            it in a private bucket that only this job can read; it never reaches a log, an output or an artifact.
+#   hold     sends each real bug in a project's own code that a review held back from its comment (review.md, rule 6)
+#            to the disclosure route as a private issue (.github/scripts/review-hold): the review job stores it in a
+#            private bucket that only this job can read, and this job sends every finding stored there, a cancelled
+#            run's too. A finding never reaches a log, an output or an artifact.
 #   keep     saves that review's session in the Actions cache, for the next push's review.
 #   comment  posts that comment, with the checks' report folded under it, or replaces the one already there. The
 #            comment starts with <!-- oss-verify-review -->, as the triage comment starts with its own marker.
@@ -348,10 +349,9 @@ jobs:
       # that a re-run of the keep job alone reads it.
       session: ${{ steps.review.outputs.session }}
       artifact: enroll-review-session-${{ github.run_attempt }}
-      # The object that holds a finding the review held back (review.md, rule 6), and its generation: names only, for
-      # the hold job, which reads that one object. Never the finding: another job's log would show it.
+      # The name of the object that holds a finding this review held back (review.md, rule 6): a name only, for the
+      # comment job's check that the hold job sent it. Never the finding: another job's log would show it.
       held_object: ${{ steps.held.outputs.object }}
-      held_generation: ${{ steps.held.outputs.generation }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
@@ -577,7 +577,9 @@ jobs:
 
       # The finding goes to the private bucket theorem-agent-infra-oss-verify-held-findings (Theorem's infrastructure
       # code), as held/<this run>/<32 random hex digits>, created only when no object has that name (ifGenerationMatch
-      # = 0). Only ossv-app-comment, which the hold job acts as, can read it, and the bucket deletes it after 7 days.
+      # = 0). Its first lines, written here and not by the model, say which pull request, head, project and run it is of,
+      # for the hold job of this run or of a later one (.github/scripts/review-held reads them). Only ossv-app-comment,
+      # which the hold job acts as, can read it; the hold job deletes it once it is sent, and the bucket after 7 days.
       # Any failure fails this job, and the comment job then posts no review that says a finding was sent.
       - name: Store the held finding for the hold job
         id: held
@@ -585,19 +587,27 @@ jobs:
         env:
           GCP_ACCESS_TOKEN: ${{ steps.gcp-held.outputs.access_token }}
           RUN_ID: ${{ github.run_id }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          NAME: ${{ needs.project-builds.outputs.name }}
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          # At most 1 MiB, the most the hold job reads.
-          [ "$(wc -c < .review/held-finding.md)" -le 1048576 ] \
+          object="$RUNNER_TEMP/held-object"
+          printf 'oss-verify held finding v1\npr: %s\nhead: %s\nproject: %s\nrun: %s\n---\n' \
+            "$PR" "$HEAD_SHA" "$NAME" "$RUN_URL" > "$object"
+          cat .review/held-finding.md >> "$object"
+          # At most 1 MiB, within what the hold job reads.
+          [ "$(wc -c < "$object")" -le 1048576 ] \
             || { echo "::error::The held finding is larger than 1 MiB, so it is not stored and the review is not posted."; exit 1; }
           name="held/$RUN_ID/$(openssl rand -hex 16)"
           # The token reaches curl through a pipe that the builtin printf writes, not an argument.
           generation=$(curl -q -sSf --max-time 60 -X POST \
             -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
-            -H 'Content-Type: text/plain; charset=utf-8' --data-binary @.review/held-finding.md \
+            -H 'Content-Type: text/plain; charset=utf-8' --data-binary @"$object" \
             "https://storage.googleapis.com/upload/storage/v1/b/theorem-agent-infra-oss-verify-held-findings/o?uploadType=media&ifGenerationMatch=0&name=${name//\//%2F}" \
             | jq -er '.generation | select(type == "string" and test("^[0-9]{1,20}$"))')
-          { echo "object=$name"; echo "generation=$generation"; } >> "$GITHUB_OUTPUT"
+          echo "object=$name" >> "$GITHUB_OUTPUT"
           echo "Stored the held finding as $name, generation $generation, for the hold job."
 
       # For the keep job, the only job that writes the cache (the top of this file).
@@ -617,16 +627,17 @@ jobs:
         run: rm -f "$RUNNER_TEMP/oidc/jwt"
 
   hold:
-    # Sends a finding the review held back from its public comment (review.md, rule 6) to the disclosure route: a
-    # private issue (.github/scripts/review-held). It reads the finding from the one object the review job stored,
-    # never from an output, and the App's key as the comment job does, so it runs in the environment comment, the only
-    # one whose jobs can act as ossv-app-comment and read the variable HELD_FINDINGS_REPO. It runs no code of the pull
-    # request.
+    # Sends every finding stored in the held-findings bucket to the disclosure route as a private issue
+    # (.github/scripts/review-hold, .github/scripts/review-held): this run's, if its review held one back from the
+    # public comment (review.md, rule 6), and any that an earlier run stored but did not send (a newer push cancelled
+    # it). It reads the findings from the bucket, never from an output, and the App's key and the repository's name from
+    # Secret Manager, as the comment job reads the key: so it runs in the environment comment, the only one whose jobs
+    # can act as ossv-app-comment. It runs no code of the pull request.
     needs: [project-builds, review]
-    if: ${{ !cancelled() && needs.review.outputs.held_object != '' }}
+    if: ${{ !cancelled() && needs.review.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Not in a concurrency group of its own: each finding's issue is keyed on the stored object, so two hold jobs
+    # Not in a concurrency group of its own: each finding's issue is keyed on its stored object, so two hold jobs
     # cannot file one finding twice.
     environment:
       name: comment
@@ -635,7 +646,7 @@ jobs:
       # contents: read only for the checkout of .github/scripts. It writes with the oss-verify App's token.
       contents: read
       # Only for the GitHub identity token that Google's federation trades for an access token of
-      # ossv-app-comment@theorem-agent-infra, which reads the App's key and the held finding.
+      # ossv-app-comment@theorem-agent-infra, which reads the App's key, the repository's name and the held findings.
       id-token: write
     env:
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
@@ -657,29 +668,23 @@ jobs:
           create_credentials_file: false
           export_environment_variables: false
 
-      # Only the object of this run that the review job names, at that generation, at most 1 MiB, and only its bytes:
-      # its metadata is not read. It goes to a file, never to the log or an output.
-      - name: Read the held finding
+      # Whether the bucket holds any finding at all: most runs end here.
+      - name: Look for stored held findings
+        id: list
         env:
           GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
-          OBJECT: ${{ needs.review.outputs.held_object }}
-          GENERATION: ${{ needs.review.outputs.held_generation }}
-          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          if ! [[ $OBJECT =~ ^held/$RUN_ID/[0-9a-f]{32}$ && $GENERATION =~ ^[0-9]{1,20}$ ]]; then
-            echo "::error::The review job named no held finding of this run, so nothing is sent."
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/held"
-          curl -q -sSf --max-time 60 --max-filesize 1048576 -o "$RUNNER_TEMP/held/held-finding.md" \
-            -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
-            "https://storage.googleapis.com/storage/v1/b/theorem-agent-infra-oss-verify-held-findings/o/${OBJECT//\//%2F}?alt=media&generation=$GENERATION"
-          [ -s "$RUNNER_TEMP/held/held-finding.md" ]
+          count=$(curl -q -sSf --max-time 60 -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
+            'https://storage.googleapis.com/storage/v1/b/theorem-agent-infra-oss-verify-held-findings/o?prefix=held%2F&fields=items(name)' \
+            | jq -er '(.items // []) | length')
+          echo "The bucket holds $count stored held findings."
+          if [ "$count" -gt 0 ]; then echo "any=true" >> "$GITHUB_OUTPUT"; fi
 
       # The App's private key, as the comment job reads it (that job's comment says how it is masked).
       - name: Read the oss-verify App's key
         id: key
+        if: ${{ steps.list.outputs.any == 'true' }}
         env:
           GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
         run: |
@@ -695,48 +700,48 @@ jobs:
           delimiter="key-$(openssl rand -hex 16)"
           { echo "key<<$delimiter"; builtin printf '%s\n' "$key"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
 
-      # The repository the disclosure route reads: the variable HELD_FINDINGS_REPO of the environment comment, which
-      # Theorem's infrastructure code declares. review-held refuses it unless GitHub says it is private.
-      - name: Where the held finding goes
+      # The name of the private repository the disclosure route reads, in this repository's organisation: Secret
+      # Manager oss-verify-held-findings-repo, which Theorem's infrastructure code declares and only ossv-app-comment can
+      # read. It is masked before any step uses it, so no log of this public repository shows it. review-held refuses
+      # it unless GitHub says it is private.
+      - name: Where the held findings go
         id: where
+        if: ${{ steps.list.outputs.any == 'true' }}
         env:
-          HELD_FINDINGS_REPO: ${{ vars.HELD_FINDINGS_REPO }}
+          GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
         run: |
-          if ! [[ $HELD_FINDINGS_REPO =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-            echo "::error::The review holds back a finding, but the environment variable HELD_FINDINGS_REPO of the environment comment names no repository, so the finding is not sent and the review is not posted."
+          set -euo pipefail
+          name=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
+            'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/oss-verify-held-findings-repo/versions/latest:access' \
+            | jq -er '.payload.data | select(type == "string" and length > 0)' | base64 -d) || name=""
+          if ! [[ $name =~ ^[A-Za-z0-9_.-]{1,100}$ ]]; then
+            echo "::error::Could not read the held findings' repository (Secret Manager oss-verify-held-findings-repo), so no held finding is sent, and a review that holds one is not posted."
             exit 1
           fi
-          { echo "owner=${HELD_FINDINGS_REPO%%/*}"; echo "name=${HELD_FINDINGS_REPO#*/}"; } >> "$GITHUB_OUTPUT"
+          builtin printf '::add-mask::%s\n' "$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
 
-      - name: Get the oss-verify App's token for the held finding's repository
+      - name: Get the oss-verify App's token for the held findings' repository
         id: app
+        if: ${{ steps.list.outputs.any == 'true' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0 (sha-pinned)
         with:
           client-id: Iv23liAWPMahJZYsw3un
           private-key: ${{ steps.key.outputs.key }}
-          owner: ${{ steps.where.outputs.owner }}
+          owner: ${{ github.repository_owner }}
           repositories: ${{ steps.where.outputs.name }}
           permission-issues: write
 
-      - name: Send the held finding to the disclosure route
+      # Each stored finding, read, sent and then deleted; one that is not sent stays for the next run.
+      - name: Send every stored held finding to the disclosure route
+        if: ${{ steps.list.outputs.any == 'true' }}
         env:
+          GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
           GH_TOKEN: ${{ steps.app.outputs.token }}
           READ_TOKEN: ${{ github.token }}
-          HELD_FINDINGS_REPO: ${{ vars.HELD_FINDINGS_REPO }}
+          HELD_FINDINGS_REPO: ${{ github.repository_owner }}/${{ steps.where.outputs.name }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number || inputs.pr }}
-          NAME: ${{ needs.project-builds.outputs.name }}
-          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          # The stored object's name, made after the review ended and new for each attempt: each issue's key.
-          HELD_OBJECT: ${{ needs.review.outputs.held_object }}
-        run: |
-          # The review comment's address, when there is one already: the comment job keeps it in place.
-          COMMENT_URL=$(GH_TOKEN=$READ_TOKEN gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.user.login == "oss-verify[bot]" and (.body | startswith("<!-- oss-verify-review -->"))) | .html_url' \
-            | head -n 1) || COMMENT_URL=""
-          export COMMENT_URL="${COMMENT_URL:-not posted yet: the review comment on $REPO#$PR}"
-          .github/scripts/review-held "$RUNNER_TEMP/held"
+        run: .github/scripts/review-hold "$RUNNER_TEMP/held"
 
   keep:
     # Saves this review's session for the next push's review (the top of this file).
@@ -845,9 +850,9 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
-          # Only from a review job that succeeded, and a hold job that sent the held finding or had none: a comment that
-          # says a finding was sent is posted only once it was.
-          REVIEW: ${{ needs.review.result == 'success' && (needs.hold.result == 'success' || needs.hold.result == 'skipped') && needs.review.outputs.comment || '' }}
+          # Only from a review job that succeeded, and, when it held a finding back, a hold job that sent it: a comment
+          # that says a finding was sent is posted only once it was.
+          REVIEW: ${{ needs.review.result == 'success' && (needs.review.outputs.held_object == '' || needs.hold.result == 'success') && needs.review.outputs.comment || '' }}
           # The record of what answered the review: review-comment posts the review only if it shows the provider
           # asked for, and otherwise says that it is not published, and why.
           SERVED: ${{ needs.review.outputs.served }}

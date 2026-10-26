@@ -2,38 +2,53 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
 #
-# Sends each finding that the enrollment review held back from its public comment (review.md, rule 6) to the
-# disclosure route: one new issue for each finding, labelled held-finding, in the private repository
-# HELD_FINDINGS_REPO, at most 10 for one review. Each issue's body has the line `held finding key: <object> <n>`:
-# HELD_OBJECT, the name the review job gave the stored finding after the review ended (new for each attempt, so the
-# model cannot know it), and the finding's place in it. A re-run of the hold job sends no finding that it already sent,
-# whether that issue is open or closed; a re-run of the review stores a new object, and its findings are sent. The same
-# bug found on a later push is a new issue: the disclosure route merges them.
+# Sends each finding of one stored object to the disclosure route: one new issue for each finding, labelled
+# held-finding, in the private repository HELD_FINDINGS_REPO, at most 10 for one object. Each issue's body has the line
+# `held finding key: <object> <n>`: HELD_OBJECT, the name the review job gave the object after the review ended (new
+# for each attempt, so the model cannot know it), and the finding's place in it. Run again on the same object, it sends
+# no finding that it already sent, whether that issue is open or closed; a re-run of the review stores a new object,
+# and its findings are sent. The same bug found on a later push is a new issue: the disclosure route merges them.
 #
 #   GH_TOKEN=<token that can write issues in HELD_FINDINGS_REPO> HELD_FINDINGS_REPO=<owner/name> REPO=<owner/name> \
-#     PR=<number> NAME=<project> HEAD_SHA=<commit> RUN_URL=<url> HELD_OBJECT=<name> [COMMENT_URL=<url>] \
-#     .github/scripts/review-held <directory>
+#     READ_TOKEN=<token that can read REPO's issues> HELD_OBJECT=<name> .github/scripts/review-held <directory>
 #
-# It reads <directory>/held-finding.md, which review-run wrote: each finding starts with a marker line
-# (`<!-- held finding -->`, matched as review-run matches it), then `key: value` lines (`title:` is the issue's title),
-# then free text. It prints only how many findings it sent, never a finding or the repository: the job's log is public.
+# It reads <directory>/object, as build.yaml's review job stored it: six lines that the workflow wrote, not the model
+# (`oss-verify held finding v1`, then `pr:`, `head:`, `project:` and `run:`, then `---`), and then the held part of
+# the review, as review-run cut it: each finding starts with a marker line (`<!-- held finding -->`, matched as
+# review-run matches it), then `key: value` lines (`title:` is the issue's title), then free text. It prints only how
+# many findings it sent, never a finding or the repository: the job's log is public.
 #
-# build.yaml's hold job runs it, in the environment comment, with a token of the oss-verify App for HELD_FINDINGS_REPO
-# only, with issues: write only. The review job, which runs the model, never holds the App's key: it stores the
-# finding in a private bucket where it can only create objects, as held/<run id>/<32 random hex digits>, and passes
-# only that name to the hold job, which alone can read it. A finding cannot pass between jobs any other way without
-# reaching the public log: the runner prints a step's env and script there, and every artifact of this repository is
-# public. Nothing deletes the object: the bucket deletes it after 7 days.
+# .github/scripts/review-hold runs it, in build.yaml's hold job, with a token of the oss-verify App for
+# HELD_FINDINGS_REPO only, with issues: write only. The review job, which runs the model, never holds the App's key: it
+# stores the finding in a private bucket where it can only create objects, and only the hold job can read it. A
+# finding cannot pass between jobs any other way without reaching the public log: the runner prints a step's env and
+# script there, and every artifact of this repository is public.
 set -euo pipefail
 
 in=${1:?usage: review-held <directory>}
+[[ ${HELD_FINDINGS_REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && ${REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+  || { echo "review-held: HELD_FINDINGS_REPO or REPO is not owner/name" >&2; exit 2; }
+[[ ${HELD_OBJECT:-} =~ ^held/([0-9]+)/[0-9a-f]{32}$ ]] \
+  || { echo "review-held: HELD_OBJECT is not the name of a stored held finding" >&2; exit 2; }
+run_id=${BASH_REMATCH[1]}
+# The object's six lines of the workflow's own, each checked, and the run it names is the run in its name.
+header=$(head -n 6 "$in/object" 2> /dev/null) || header=""
+line() { sed -n "$1p" <<< "$header"; }
+PR=$(line 2 | sed -n 's/^pr: //p') HEAD_SHA=$(line 3 | sed -n 's/^head: //p')
+NAME=$(line 4 | sed -n 's/^project: //p') RUN_URL=$(line 5 | sed -n 's/^run: //p')
+if [ "$(line 1)" != "oss-verify held finding v1" ] || [ "$(line 6)" != --- ] || ! [[ $PR =~ ^[0-9]+$ \
+    && $HEAD_SHA =~ ^[0-9a-f]{40}$ && $NAME =~ ^[a-z0-9][a-z0-9._-]{0,62}$ \
+    && $RUN_URL == "https://github.com/$REPO/actions/runs/$run_id" ]]; then
+  echo "review-held: $HELD_OBJECT does not start with the lines the review job writes" >&2
+  exit 1
+fi
 held="$in/held-finding.md"
-[ -s "$held" ] || { echo "review-held: no finding is held"; exit 0; }
-[[ ${HELD_FINDINGS_REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
-  || { echo "review-held: HELD_FINDINGS_REPO is not owner/name" >&2; exit 2; }
-[[ $PR =~ ^[0-9]+$ && ${HEAD_SHA:-} =~ ^[0-9a-f]{40}$ && -n ${RUN_URL:-} \
-   && ${HELD_OBJECT:-} =~ ^held/[0-9]+/[0-9a-f]{32}$ ]] \
-  || { echo "review-held: PR, HEAD_SHA, RUN_URL or HELD_OBJECT is not what the hold job gives" >&2; exit 2; }
+tail -n +7 "$in/object" > "$held"
+# The review comment's address, when there is one already: the comment job keeps it in place.
+COMMENT_URL=$(GH_TOKEN=${READ_TOKEN:-} gh api "repos/$REPO/issues/$PR/comments" --paginate \
+  --jq '.[] | select(.user.login == "oss-verify[bot]" and (.body | startswith("<!-- oss-verify-review -->")))
+        | .html_url' | head -n 1) || COMMENT_URL=""
+COMMENT_URL=${COMMENT_URL:-not posted yet: the review comment on $REPO#$PR}
 # Never a public or internal repository: a held finding must not reach a reader the disclosure route does not choose.
 visibility=$(gh api "repos/$HELD_FINDINGS_REPO" --jq .visibility) || visibility=""
 [ "$visibility" = private ] \

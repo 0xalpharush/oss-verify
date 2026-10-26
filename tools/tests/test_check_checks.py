@@ -721,10 +721,14 @@ class WorkflowArguments(unittest.TestCase):
              {"ACTIONS_ID_TOKEN_REQUEST_TOKEN": request, "ACTIONS_ID_TOKEN_REQUEST_URL": "http://127.0.0.1:9/?x=1"},
              [request, "jwt-not-a-secret"]),
             ("build.yaml review held finding store", steps("build.yaml", "review", "Store the held finding for the hold job"),
-             json.dumps({"generation": "1761500000000000"}), {"GCP_ACCESS_TOKEN": gcp, "RUN_ID": "7"}, [gcp]),
-            ("build.yaml hold held finding read", steps("build.yaml", "hold", "Read the held finding"),
-             "a held finding", {"GCP_ACCESS_TOKEN": gcp, "RUN_ID": "7", "OBJECT": "held/7/" + "a" * 32,
-                                "GENERATION": "1761500000000000"}, [gcp]),
+             json.dumps({"generation": "1761500000000000"}),
+             {"GCP_ACCESS_TOKEN": gcp, "RUN_ID": "7", "PR": "68", "NAME": "libreac", "HEAD_SHA": "1" * 40,
+              "RUN_URL": "https://github.com/theorem-labs/oss-verify/actions/runs/7"}, [gcp]),
+            ("build.yaml hold listing", steps("build.yaml", "hold", "Look for stored held findings"),
+             json.dumps({"items": [{"name": "held/7/" + "a" * 32}]}), {"GCP_ACCESS_TOKEN": gcp}, [gcp]),
+            ("build.yaml hold repository", steps("build.yaml", "hold", "Where the held findings go"),
+             json.dumps({"payload": {"data": base64.b64encode(b"private-repository").decode()}}),
+             {"GCP_ACCESS_TOKEN": gcp}, [gcp]),
             ("build.yaml hold key", steps("build.yaml", "hold", "Read the oss-verify App's key"),
              json.dumps({"payload": {"data": base64.b64encode(key.encode()).decode()}}),
              {"GCP_ACCESS_TOKEN": gcp}, [gcp, base64.b64encode(key.encode()).decode()] + key_lines[1:3]),
@@ -1966,16 +1970,19 @@ def review_step():
 class ReviewHeld(unittest.TestCase):
     """review-held opens one private issue for each held finding, through a fake gh, and prints none of it."""
 
-    RUN = "https://example.test/run"
+    RUN = "https://github.com/theorem-labs/oss-verify/actions/runs/7"
     OBJECT = "held/7/" + "a" * 32
+    HEADER = f"oss-verify held finding v1\npr: 68\nhead: {'1' * 40}\nproject: libreac\nrun: {RUN}\n---\n"
 
-    def run_held(self, held, bodies_on_github=(), label=True, variable="theorem-labs/private", visibility="private"):
-        """bodies_on_github: the bodies of the label's issues already there, open or closed."""
+    def run_held(self, held, bodies_on_github=(), label=True, variable="theorem-labs/private", visibility="private",
+                 header=None):
+        """bodies_on_github: the bodies of the label's issues already there, open or closed. held follows the six
+        lines the review job writes (header, by default HEADER)."""
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "bin").mkdir()
             (root / "review").mkdir()
-            (root / "review" / "held-finding.md").write_text(held)
+            (root / "review" / "object").write_text((self.HEADER if header is None else header) + held)
             (root / "issues.json").write_text(json.dumps(list(bodies_on_github)))
             gh = root / "bin" / "gh"
             # gh api: the repository's visibility, the key lines of the label's issues (as --jq selects them), or the
@@ -1996,9 +2003,8 @@ class ReviewHeld(unittest.TestCase):
             gh.chmod(0o755)
             run = subprocess.run([str(ROOT / ".github" / "scripts" / "review-held"), str(root / "review")],
                                  env={**os.environ, "PATH": f"{root / 'bin'}:{os.environ['PATH']}",
-                                      "HELD_FINDINGS_REPO": variable, "REPO": "theorem-labs/oss-verify", "PR": "68",
-                                      "NAME": "libreac", "HEAD_SHA": "1" * 40, "RUN_URL": self.RUN,
-                                      "COMMENT_URL": "https://example.test/pr-comment", "HELD_OBJECT": self.OBJECT},
+                                      "HELD_FINDINGS_REPO": variable, "REPO": "theorem-labs/oss-verify",
+                                      "READ_TOKEN": "read-not-a-secret", "HELD_OBJECT": self.OBJECT},
                                  capture_output=True, text=True)
             calls = [json.loads(line) for line in (root / "calls").read_text().splitlines()] \
                 if (root / "calls").exists() else []
@@ -2019,7 +2025,8 @@ class ReviewHeld(unittest.TestCase):
         self.assertTrue(all("labels[]=held-finding" in c for c in created))
         self.assertEqual(len(bodies), 2)
         self.assertTrue(bodies[0].startswith(f"enrollment PR: theorem-labs/oss-verify#68\nenrollment PR head: {'1' * 40}\n"
-                                             "public PR comment: https://example.test/pr-comment\n"
+                                             "public PR comment: not posted yet: the review comment on "
+                                             "theorem-labs/oss-verify#68\n"
                                              f"review run: {self.RUN}\nheld finding key: {self.OBJECT} 1\n"))
         self.assertIn(f"held finding key: {self.OBJECT} 2\n", bodies[1])
         self.assertNotIn("theorem-labs/private", run.stdout + run.stderr)
@@ -2071,40 +2078,121 @@ class ReviewHeld(unittest.TestCase):
         run, _, _ = self.run_held("<!-- held finding -->\n")
         self.assertEqual(run.returncode, 1)
 
+    def test_an_object_that_does_not_start_with_the_workflows_lines_sends_nothing(self):
+        for header in ("", "oss-verify held finding v1\npr: 68\nhead: x\nproject: libreac\nrun: r\n---\n",
+                       self.HEADER.replace("runs/7", "runs/8")):
+            with self.subTest(header=header):
+                run, calls, bodies = self.run_held(ReviewRun.HELD, header=header)
+                self.assertEqual(run.returncode, 1)
+                self.assertEqual(bodies, [])
+
     def test_the_finding_reaches_the_hold_job_only_through_the_private_bucket(self):
         jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())["jobs"]
-        # No job holds the App's key as a repository secret: the comment and hold jobs read it from Secret Manager.
-        self.assertNotIn("OSS_VERIFY_APP_PRIVATE_KEY", json.dumps(jobs))
+        text = (ROOT / ".github" / "workflows" / "build.yaml").read_text()
+        # No job holds the App's key as a repository secret, and nothing reads a variable for the repository.
+        self.assertNotIn("OSS_VERIFY_APP_PRIVATE_KEY", text)
+        self.assertNotIn("HELD_FINDINGS_REPO }}", text)
         review = {s.get("name"): s for s in jobs["review"]["steps"]}
-        store = review["Store the held finding for the hold job"]
-        self.assertIn("ifGenerationMatch=0", store["run"])
-        self.assertIn('name="held/$RUN_ID/$(openssl rand -hex 16)"', store["run"])
+        store = review["Store the held finding for the hold job"]["run"]
+        self.assertIn("ifGenerationMatch=0", store)
+        self.assertIn('name="held/$RUN_ID/$(openssl rand -hex 16)"', store)
+        self.assertIn("oss-verify held finding v1", store)
         self.assertEqual(jobs["review"]["outputs"]["held_object"], "${{ steps.held.outputs.object }}")
         # The review job passes names only: no output holds a file's text or the finding.
         self.assertNotIn("held-finding.md", json.dumps(jobs["review"]["outputs"]))
-        hold = jobs["hold"]
-        self.assertEqual(hold["environment"], {"name": "comment", "deployment": False})
-        self.assertEqual(hold["needs"], ["project-builds", "review"])
-        self.assertNotIn("vars.", hold["if"])
-        self.assertNotIn("concurrency", hold)
         # The finding is stored also when the review job fails after cutting it out (a comment that still names it).
         for name in ("Sign in to Google Cloud to store the held finding", "Store the held finding for the hold job"):
             self.assertEqual(review[name]["if"], "${{ !cancelled() && steps.review.outputs.held == 'yes' }}")
         self.assertLess(review["Review"]["run"].index("held=yes"), review["Review"]["run"].index("exit \"$code\""))
-        send = [s for s in hold["steps"] if s.get("name") == "Send the held finding to the disclosure route"][0]
-        self.assertEqual(send["env"]["HELD_OBJECT"], "${{ needs.review.outputs.held_object }}")
+        hold = jobs["hold"]
+        self.assertEqual(hold["environment"], {"name": "comment", "deployment": False})
+        self.assertEqual(hold["needs"], ["project-builds", "review"])
+        # Every run that reviewed anything sweeps the bucket, so a cancelled run's finding goes with the next run.
+        self.assertEqual(hold["if"], "${{ !cancelled() && needs.review.result != 'skipped' }}")
+        self.assertNotIn("concurrency", hold)
         steps = {s.get("name"): s for s in hold["steps"]}
-        read = steps["Read the held finding"]["run"]
-        self.assertIn("^held/$RUN_ID/[0-9a-f]{32}$", read)
-        self.assertIn("--max-filesize 1048576", read)
-        self.assertIn("generation=$GENERATION", read)
-        self.assertEqual(steps["Where the held finding goes"]["env"]["HELD_FINDINGS_REPO"], "${{ vars.HELD_FINDINGS_REPO }}")
-        self.assertIn('.github/scripts/review-held "$RUNNER_TEMP/held"', steps["Send the held finding to the disclosure route"]["run"])
-        # The comment job posts no review unless the review job succeeded and the hold job sent or had nothing.
+        where = steps["Where the held findings go"]["run"]
+        self.assertIn("secrets/oss-verify-held-findings-repo/versions/latest:access", where)
+        self.assertLess(where.index("::add-mask::"), where.index('echo "name=$name"'))
+        token = steps["Get the oss-verify App's token for the held findings' repository"]["with"]
+        self.assertEqual((token["owner"], token["repositories"], token["permission-issues"]),
+                         ("${{ github.repository_owner }}", "${{ steps.where.outputs.name }}", "write"))
+        send = steps["Send every stored held finding to the disclosure route"]
+        self.assertEqual(send["run"], '.github/scripts/review-hold "$RUNNER_TEMP/held"')
+        # The comment job posts no review unless the review job succeeded and, if it held a finding, hold sent it.
         self.assertIn("hold", jobs["comment"]["needs"])
         self.assertEqual(jobs["comment"]["steps"][-1]["env"]["REVIEW"],
-                         "${{ needs.review.result == 'success' && (needs.hold.result == 'success' || "
-                         "needs.hold.result == 'skipped') && needs.review.outputs.comment || '' }}")
+                         "${{ needs.review.result == 'success' && (needs.review.outputs.held_object == '' || "
+                         "needs.hold.result == 'success') && needs.review.outputs.comment || '' }}")
+
+
+class ReviewHold(unittest.TestCase):
+    """review-hold sends every stored finding in the bucket, its own run's and a cancelled run's, through a fake curl for
+    the bucket and a stand-in review-held, and deletes each object once it is sent."""
+
+    def sweep(self, objects, held_fails=(), delete_fails=False):
+        """objects: name -> stored bytes. held_fails: names whose review-held fails."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            shutil.copy(ROOT / ".github" / "scripts" / "review-hold", scripts / "review-hold")
+            (root / "store").mkdir()
+            listing = {"items": [{"name": n, "generation": str(100 + i), "size": str(len(b))}
+                                 for i, (n, b) in enumerate(objects.items())]}
+            (root / "listing.json").write_text(json.dumps(listing))
+            for name, data in objects.items():
+                (root / "store" / name.replace("/", "%2F")).write_bytes(data)
+            # review-held stand-in: records the object it was given, and fails for the names in held_fails.
+            (scripts / "review-held").write_text(
+                f"#!/bin/bash\necho \"$HELD_OBJECT $(head -c 20 \"$1/object\")\" >> {root}/sent\n"
+                f"case \"$HELD_OBJECT\" in {'|'.join(held_fails) or 'none'}) exit 1 ;; esac\n")
+            (scripts / "review-held").chmod(0o755)
+            bin = root / "bin"
+            bin.mkdir()
+            (bin / "curl").write_text(
+                f"#!{sys.executable}\nimport pathlib, sys, urllib.parse\nroot = pathlib.Path({str(root)!r})\n"
+                "a = sys.argv[1:]\nurl = a[-1]\n"
+                "with open(root / 'curl', 'a') as f: f.write(' '.join(a) + '\\n')\n"
+                "if '-X' in a and a[a.index('-X') + 1] == 'DELETE':\n"
+                f"    sys.exit(22 if {delete_fails} else 0)\n"
+                "if '?prefix=' in url: print((root / 'listing.json').read_text()); sys.exit(0)\n"
+                "name = url.split('/o/')[1].split('?')[0]\n"
+                "pathlib.Path(a[a.index('-o') + 1]).write_bytes((root / 'store' / name).read_bytes())\n")
+            (bin / "curl").chmod(0o755)
+            run = subprocess.run([str(scripts / "review-hold"), str(root / "work")],
+                                 env={**os.environ, "PATH": f"{bin}:{os.environ['PATH']}",
+                                      "GCP_ACCESS_TOKEN": "gcp-not-a-secret"}, capture_output=True, text=True)
+            sent = (root / "sent").read_text().splitlines() if (root / "sent").exists() else []
+            curl = (root / "curl").read_text()
+            return run, sent, curl
+
+    def test_a_cancelled_runs_finding_is_sent_by_the_next_run_and_both_are_deleted(self):
+        mine, cancelled = "held/9/" + "a" * 32, "held/8/" + "b" * 32
+        run, sent, curl = self.sweep({cancelled: b"oss-verify held finding v1\n", mine: b"oss-verify held finding v1\n"})
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(sorted(s.split()[0] for s in sent), sorted([mine, cancelled]))
+        self.assertEqual(curl.count("-X DELETE"), 2)
+        self.assertIn(f"sent and deleted {cancelled}", run.stdout)
+        self.assertNotIn("gcp-not-a-secret", curl)
+
+    def test_an_object_that_is_not_sent_stays_and_the_job_fails(self):
+        good, bad = "held/9/" + "a" * 32, "held/8/" + "b" * 32
+        run, sent, curl = self.sweep({bad: b"x", good: b"x"}, held_fails=(bad,))
+        self.assertEqual(run.returncode, 1)
+        self.assertEqual(curl.count("-X DELETE"), 1)
+        self.assertIn(f"could not send {bad}; it stays for the next run", run.stderr)
+
+    def test_a_sent_object_that_cannot_be_deleted_does_not_fail_the_job(self):
+        run, sent, curl = self.sweep({"held/9/" + "a" * 32: b"x"}, delete_fails=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("could not delete it: the next run finds its issues and sends nothing twice", run.stdout)
+
+    def test_an_object_that_is_not_a_held_finding_is_skipped(self):
+        run, sent, curl = self.sweep({"held/9/short": b"x", "other/9/" + "a" * 32: b"x"})
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(sent, [])
+        self.assertEqual(run.stdout.count("skipped an object that is not a held finding"), 2)
 
 
 class SinceLastReview(unittest.TestCase):
