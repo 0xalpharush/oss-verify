@@ -215,7 +215,7 @@ Today's driver counts a return value of -1 as 0. It also writes each return valu
 > | 3 | one or more calls returned -1, and no call returned another value |
 > | 78 | a call of the fuzz target returned a value that is not 0 or -1 |
 >
-> The statuses 2 and 77, and the statuses of the signals, do not change. A call of `exit()` during `LLVMFuzzerInitialize` with a status other than 0 or 2 becomes status 77. For a fuzz target in C, C++ or Rust, and for a DSL fuzz target, a halts statement then accepts the statuses 0, 2 and 3. The drivers for Python, JavaScript, Go and JVM fuzz targets do not give status 3, so a halts statement for them accepts only 0 and 2. A project with proofs keeps today's driver, through the vintage that its lock pins ([Toolchains](#toolchains)).
+> The statuses 2 and 77, and the statuses of the signals, do not change. A call of `exit()` during `LLVMFuzzerInitialize` with a status other than 0 or 2 becomes status 77. For a fuzz target in C, C++ or Rust, and for a DSL fuzz target, a halts statement then accepts the statuses 0, 2 and 3. The drivers for Python, JavaScript, Go and JVM fuzz targets do not give status 3, so a halts statement for them accepts only 0 and 2 (our tools do not write theorem statements for Go yet). A project with proofs keeps today's driver, through the vintage that its lock pins ([Toolchains](#toolchains)).
 
 > **WARNING:** Do not return -1 for a failed property. The driver counts -1 as a pass: status 0 today, and status 3 in the next toolchain version. A halts statement accepts both. For a failed property, call `abort()`. Return -1 only for a failed expectation that the input chooses, or for an input outside a property's domain. Step 3.7 of [the add-project skill](../.claude/skills/add-project/SKILL.md) tells why.
 
@@ -340,14 +340,14 @@ A Go fuzz target is an OSS-Fuzz Go fuzz target, as it is. OSS-Fuzz's Go helpers 
 
 A `go.lock` in the project directory pins the modules. It has one row for each `.mod`, `.zip` and `.info` file of the module proxy, with the SHA-256 of each `.mod` and `.zip` file. The `gomodules` line of the `sources` file gets these files from proxy.golang.org while the `Dockerfile` builds, and checks them. `compile` then builds with `GOPROXY` set to these files, with no network.
 
-These items are different from a Go fuzz target in OSS-Fuzz:
+Our tools do not write theorem statements for Go fuzz targets yet. These items are different from a Go fuzz target in OSS-Fuzz:
 
 * The build uses a patched Go runtime. The patches are an overlay of the standard library (the `-overlay` flag of `go build`), and a rebuilt compiler. The Go toolchain itself does not change. The patches remove what LPS does not have: signal handlers, the second thread of the scheduler, reads of the environment, of `/proc` and of `/sys`, and the vector instructions of riscv64. They also give the exit statuses below.
-* A load through a nil pointer is a segmentation fault (status 139), not a panic, because the runtime installs no signal handler. A statement counts 139 as a failure, as it counts a panic.
+* A load through a nil pointer is a segmentation fault (status 139), not a panic, because the runtime installs no signal handler. A statement for a Go fuzz target will count 139 as a failure, as it counts a panic.
 * A panic, a runtime error, and `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test exit with status 79. In OSS-Fuzz, they crash the fuzz target.
 * `os.Exit` during a call of the fuzz target exits with status 77.
 * A fatal error of the runtime that is not out of memory exits with status 80. Examples are a deadlock, a stack overflow and a write to a map from two goroutines. Stock Go exits with status 2.
-* The runtime exits with status 2 only after the system refused it memory: an `mmap` for the heap, a stack or the runtime's own data failed. The premise of a statement excludes this. A request larger than the runtime's limit for one allocation (2^48 bytes), for example a `make()` that is too large, panics without asking the system (status 79).
+* The runtime exits with status 2 only after the system refused it memory: an `mmap` for the heap, a stack or the runtime's own data failed. The premise of a statement for a Go fuzz target will exclude this. A request larger than the runtime's limit for one allocation (2^48 bytes), for example a `make()` that is too large, panics without asking the system (status 79).
 * `os.Getenv` returns `""` for each variable, and `GOGC`, `GODEBUG`, `GOMAXPROCS` and `GOMEMLIMIT` have no effect.
 * The program runs on one CPU.
 * The return value of a `Fuzz` function does not change the exit status. OSS-Fuzz also ignores it. The driver writes it on standard output.

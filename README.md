@@ -47,7 +47,7 @@ You need a Linux x86-64 machine with Docker and its buildx plugin, git, and Pyth
 ## After we merge
 
 1. We build the fuzz targets two times, and pin the SHA-256 of each binary in a lock.
-2. We state theorems about these binaries and prove them ([docs/what-gets-proven.md](docs/what-gets-proven.md)).
+2. We state theorems about these binaries and prove them ([docs/what-gets-proven.md](docs/what-gets-proven.md)). Our tools do not write theorem statements for Go projects yet ([docs/project-yaml.md](docs/project-yaml.md#language)).
 3. We send each finding privately to `primary_contact`, with a patch when we have one. There is no disclosure deadline, and we do not publish findings.
 4. We publish the proofs when the `publish` field tells us to.
 

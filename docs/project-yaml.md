@@ -64,7 +64,7 @@ This table is the only list of languages in these documents. It gives the status
 | `c++` | C++, or C and C++ together | statements today | |
 | `rust` | Rust | statements today | `*.rs` |
 | `python` | Python | statements today | `*.py` |
-| `go` | Go | halts statements only | `*.go` |
+| `go` | Go | builds today (plain build only, no cgo); our tools do not write theorem statements for Go yet | `*.go` |
 | `jvm` | Java, Kotlin and the other JVM languages | halts statements only; JVM binaries are not byte-reproducible yet | `*.java` `*.kt` |
 | `javascript` | JavaScript | held | `*.js` `*.mjs` `*.cjs` `*.ts` |
 | | Ruby, Lua | in progress: `tools/validate.py` does not accept them yet | |
@@ -75,7 +75,7 @@ Our builder builds `c`, `c++`, `rust`, `python` and `go` projects today. `tools/
 
 A `rust` project has all four builds. Its `ubsan` build uses rustc's UB checks, not UndefinedBehaviorSanitizer. A `python` project has all four builds: each build compiles CPython with its own flags.
 
-A `go` or `jvm` project has only the plain build, because it has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`. A `go` project's fuzz targets are its OSS-Fuzz Go fuzz targets, which OSS-Fuzz's Go helpers build ([build-contract.md](build-contract.md#go-fuzz-targets)).
+A `go` or `jvm` project has only the plain build. Go has no UndefinedBehaviorSanitizer or AddressSanitizer build, and the Go builder does not support cgo. Our tools do not write theorem statements for Go yet. A `jvm` project has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`. A `go` project's fuzz targets are its OSS-Fuzz Go fuzz targets, which OSS-Fuzz's Go helpers build ([build-contract.md](build-contract.md#go-fuzz-targets)).
 
 A fuzz target source in the project directory has a suffix of C or C++: `*.c` `*.cc` `*.cpp` `*.h` `*.hh` `*.hpp`. Each other language also permits the suffixes that the table gives.
 

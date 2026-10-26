@@ -170,7 +170,7 @@ class Languages(unittest.TestCase):
             self.assertIn("builds: plain;", check(text)[2])
             self.assertIn("builds: plain;", check(text + "sanitizers: []\n")[2])
             problems, _, _ = check(text + "sanitizers: [address]\n")
-            self.assertTrue(any("halts statements only" in problem for problem in problems), problems)
+            self.assertTrue(any("plain build only" in problem for problem in problems), problems)
         self.assertEqual(validate.builds_of({"language": "go"}), ["plain"])
         self.assertEqual(validate.builds_of({"language": "rust"}), ["plain", "ubsan", "asan", "asan-ubsan"])
 
