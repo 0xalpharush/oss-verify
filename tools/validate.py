@@ -97,6 +97,10 @@ FULL_COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 SHORT_COMMIT = re.compile(r"[0-9a-f]{7,39}")
 TARGET = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}")
 SIZE = re.compile(r"([1-9][0-9]{0,15})(KiB|MiB|GiB|TiB)?")
+# The only halts budget the statements carry (docs/what-gets-proven.md, Memory budgets).
+DEFAULT_HALTS_BUDGET = 16 << 30
+# The smallest plain-side agrees budget: one page. Below it, no run is in the statement.
+MIN_PLAIN_BUDGET = 4096
 PGP_BEGIN = "-----BEGIN PGP PUBLIC KEY BLOCK-----"
 PGP_END = "-----END PGP PUBLIC KEY BLOCK-----"
 
@@ -373,8 +377,13 @@ def check_budgets(config):
     for key in budgets:
         if key not in ("halts", "agrees"):
             yield f"budgets: unknown field {key!r} (allowed: halts, agrees)"
-    if "halts" in budgets and size_in_bytes(budgets["halts"]) is None:
-        yield "budgets.halts must be a size: a positive number of bytes, or a number with KiB, MiB, GiB or TiB"
+    if "halts" in budgets:
+        halts = size_in_bytes(budgets["halts"])
+        if halts is None:
+            yield "budgets.halts must be a size: a positive number of bytes, or a number with KiB, MiB, GiB or TiB"
+        elif halts != DEFAULT_HALTS_BUDGET:
+            yield ("budgets.halts: only 16GiB is supported; a project's own halts budget is not carried into the "
+                   "statements yet")
     agrees = budgets.get("agrees")
     if agrees is None:
         return
@@ -390,6 +399,12 @@ def check_budgets(config):
             yield f"budgets.agrees.{sanitizer} is set, but {sanitizer} is not one of this project's sanitizers"
         if not (isinstance(pair, list) and len(pair) == 2 and all(size_in_bytes(size) for size in pair)):
             yield f"budgets.agrees.{sanitizer} must be two sizes: [plain side, sanitizer side]"
+            continue
+        plain, sanitizer_side = (size_in_bytes(size) for size in pair)
+        if plain < MIN_PLAIN_BUDGET:
+            yield f"budgets.agrees.{sanitizer}: the plain side must be at least {MIN_PLAIN_BUDGET} bytes"
+        if sanitizer_side < plain:
+            yield f"budgets.agrees.{sanitizer}: the sanitizer side must be at least the plain side"
 
 
 def check_proofs(config):

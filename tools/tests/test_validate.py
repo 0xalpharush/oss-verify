@@ -353,6 +353,19 @@ class Problems(unittest.TestCase):
             "is not one of this project's sanitizers",
         )
 
+    def test_budget_floor_and_order(self):
+        self.assertProblem(MINIMAL + "budgets: {agrees: {undefined: [4095, 5TiB]}}\n", "at least 4096 bytes")
+        self.assertProblem(MINIMAL + "budgets: {agrees: {undefined: [5TiB, 2GiB]}}\n", "at least the plain side")
+        for ok in ("[4096, 4096]", "[2GiB, 5TiB]", "[16GiB, 512GiB]"):
+            problems = check(MINIMAL + "budgets: {agrees: {undefined: %s}}\n" % ok)[0]
+            self.assertFalse(any("budgets" in problem for problem in problems), problems)
+
+    def test_only_the_default_halts_budget(self):
+        self.assertProblem(MINIMAL + "budgets: {halts: 8GiB}\n", "only 16GiB is supported")
+        for ok in ("16GiB", "16384MiB", str(16 << 30)):
+            problems = check(MINIMAL + "budgets: {halts: %s}\n" % ok)[0]
+            self.assertFalse(any("budgets" in problem for problem in problems), problems)
+
     def test_proofs(self):
         self.assertProblem(MINIMAL + "proofs: {branch: x}\n", "unknown field 'branch'")
         self.assertProblem(MINIMAL + "proofs: {repo: 'git://x/y'}\n", "proofs.repo must be")

@@ -64,25 +64,28 @@ The default of a `c` or `python` project is the same, less `function`, and so ar
 
 A program can run out of memory, and a statement must tell what happens then. The statements obey these rules:
 
-* **Exhaustion is part of the statement.** LPS refuses a memory request only when the build has used its budget. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
+* **Exhaustion is part of the statement.** LPS refuses a memory request only when the build has used its budget or no address range is free, in each statement except a may-fail one. The program can then stop because it has no memory, and the statement permits this. But each run must halt.
 * **Refusals at start do not count.** A statement is not about a program that gets no memory before it gets to the fuzz target.
-* **No allocation fails at random.** No statement lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
+* **No allocation fails at random.** No statement except a may-fail one lets an allocation fail without a cause. There is no setting in `project.yaml` for out-of-memory behaviour.
 
 A budget is a quantity of memory that a build can allocate. It is a condition of the statement: an input that needs more memory is not in the statement. It is not a failure. These are the defaults, which the oss-fuzz-theorems 2026.10 release uses:
 
 ```yaml
 budgets:
-  halts: 16GiB               # each build that runs alone
+  halts: 16GiB               # each build that runs alone; only 16GiB
   agrees:                    # for each sanitizer: [plain side, sanitizer side]
     address: [2GiB, 512GiB]  # also for asan-ubsan
     undefined: [16GiB, 512GiB]
 ```
 
-* `halts` is the budget of each build in its halts statement.
+* `halts` is the budget of each build in its halts statement. It is always 16 GiB: a project's own halts budget is not carried into the statements yet.
 * `agrees.<sanitizer>` gives the two budgets of the agrees statement: the plain build's budget, which is the condition, and the sanitizer build's budget. The sanitizer build's budget is large, because a sanitizer needs memory of its own. `address` applies to the `asan` and `asan-ubsan` builds, and `undefined` to the `ubsan` build.
 * The plain side of `address` is 2 GiB, because the AddressSanitizer allocator limits each size class to 3.5 GiB on riscv64. The address space that the AddressSanitizer runtime reserves at start, more than 100 GiB, is not part of a budget.
+* A plain side of `address` that is more than 2 GiB can make an agrees statement false for a correct program, because the AddressSanitizer allocator limits each size class to 3.5 GiB on riscv64.
 
 A project can set its own budgets in `project.yaml` ([project-yaml.md](project-yaml.md#budgets)).
+
+A statement made under a project's own budgets names both of them. A smaller plain-side budget covers fewer inputs. A larger sanitizer-side budget lets the sanitizer build use more memory before a refusal counts as a difference. So two agrees statements with different budgets claim different things: compare the budgets before you compare the statements.
 
 **Not decided yet:** maybe the `asan` and `asan-ubsan` builds need a smaller `halts` budget. Their allocator can refuse memory to an input that is in the 16 GiB budget.
 
