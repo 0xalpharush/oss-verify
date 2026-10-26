@@ -2,8 +2,9 @@
 # Copyright 2026 Theorem Labs, PBC
 # SPDX-License-Identifier: Apache-2.0
 #
-# Runs the enrollment review: Claude Code follows .claude/skills/review-enrollment/SKILL.md on the files that
-# review-gather wrote, and its last message, the comment to the maintainer, is written to <directory>/comment.md.
+# Runs the enrollment review: Claude Code checks what review.md says (main's copy, at the root of this checkout) on the
+# files that review-gather wrote, with .claude/skills/review-enrollment/SKILL.md for where they are, and its last
+# message, the comment to the maintainer, is written to <directory>/comment.md.
 #
 #   PR=<number> NAME=<project> [HEAD_SHA=<head commit> REVIEW_SESSION=<directory>] \
 #     .github/scripts/review-run <directory inside this checkout>
@@ -20,7 +21,7 @@
 # `realpath -m`).
 # The model gets three tools only, Read, Glob and Grep, in Claude Code's restricted mode, which also keeps them inside
 # this checkout: no shell, no network tool, no file writes, no MCP server. It reads what the pull request and the
-# project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the
+# project say as data (rule 1 of review.md). Its environment holds only what it needs: PATH, HOME, the locale, the
 # ANTHROPIC_* variables of its credential (in CI, those of workload identity federation), and, when
 # both OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_COLLECTOR_TOKEN are set, the OpenTelemetry settings that send its usage to
 # Theorem's cost collector, tagged theorem.project=oss-verify, theorem.subproject=<name> and
@@ -37,15 +38,16 @@
 # it ends without a review (both below). A run that ends without a comment writes why, in plain words, to
 # <directory>/failure.txt, and Claude Code's own message, for the job's summary, to <directory>/failure-detail.txt.
 # With REVIEW_SESSION=<directory outside this checkout> and HEAD_SHA=<the pull request's head commit>, the review keeps
-# its conversation: build.yaml's review job restores that directory from the sealed artifact of the last review
-# (.github/scripts/review-session), so that the review of each push resumes the conversation of the last review of the
-# pull request, and knows what it asked for and why. The directory holds `session` (id=<the conversation's id>,
-# head=<the commit it reviewed>, dir=<its folder in ~/.claude/projects>) and the conversation, <id>.jsonl. The first
-# try resumes it in a fork with a new id (--resume --fork-session), so a review that fails leaves the last one whole;
-# when that try ends without a review ("No conversation found", a conversation too long to load, or any other reason),
-# the second try is a fresh review. When the directory holds no conversation, the review starts fresh. The log says
-# which: "resuming the conversation <id> of the review of <commit>", or "a fresh review". After a review that wrote a
-# comment, the directory holds this review's conversation instead, unless it holds what looks like a credential.
+# its session: build.yaml's review job restores that directory from the Actions cache, so that the review of each push
+# resumes the same Claude Code session as the last review of the pull request, and knows what it asked for and why. The
+# directory holds `session` (id=<the session's id>, head=<the commit it reviewed>, dir=<its folder in
+# ~/.claude/projects>) and the conversation, <id>.jsonl. The first try resumes that session (claude --resume <id>),
+# which keeps its id, and tells the model to look only at the diff since the commit it reviewed, which review-gather
+# wrote to <directory>/since-last-review.diff. When that try ends without a review, the second try is a fresh review,
+# under a new id. When the directory holds no session, or review-gather could not write the diff, the review is fresh.
+# The log says which: "resuming the session <id> (the review of <commit>), to review only <commit>..<commit>", or "a
+# fresh review". After a review that wrote a comment, the directory holds the session of that review, unless its
+# conversation holds what looks like a credential.
 set -euo pipefail
 
 in=${1:?usage: review-run <directory>}
@@ -69,34 +71,45 @@ fi
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 
 prompt="You are the agent of OSS Verify's enrollment check, in CI, on pull request #$PR of theorem-labs/oss-verify, \
-which adds or changes projects/$NAME/. Read .claude/skills/review-enrollment/SKILL.md and do the review that it \
-describes, as its section \"In CI\" says. The workflow gathered the inputs into $in/, and the pull request's \
-projects/$NAME/ is in this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing \
-else: it starts with the sentence of thanks, with no line before it about you or your review."
+which adds or changes projects/$NAME/. Read review.md, at the root of this checkout: it says what you check and how \
+you write the comment. Read .claude/skills/review-enrollment/SKILL.md for where your inputs are, and do the review as \
+its section \"In CI\" says. The workflow gathered the inputs into $in/, and the pull request's projects/$NAME/ is in \
+this checkout. Your last message is the comment to the maintainer, in Markdown, and nothing else: it starts with the \
+sentence of thanks, with no line before it about you or your review."
 
-# The conversation of the last review, when REVIEW_SESSION holds one that is whole.
+# The session of the last review, when REVIEW_SESSION holds one that is whole and review-gather wrote a diff since its
+# commit that is not empty (keep's last line is the command's exit status). review-gather writes none when the head
+# does not descend from that commit (a force-push) or is that commit (an edit of the pull request): then the review is
+# fresh, and reads every input again.
 last_id="" last_head=""
 if [ -n "$session_dir" ] && [ -f "$session_dir/session" ]; then
   last_id=$(sed -n 's/^id=//p' "$session_dir/session")
   last_head=$(sed -n 's/^head=//p' "$session_dir/session")
   last_dir=$(sed -n 's/^dir=//p' "$session_dir/session")
-  if [[ $last_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ && $last_head =~ ^[0-9a-f]{40}$ \
-        && $last_dir =~ ^-[A-Za-z0-9-]{1,200}$ ]] && [ -s "$session_dir/$last_id.jsonl" ]; then
+  if ! [[ $last_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ && $last_head =~ ^[0-9a-f]{40}$ \
+        && $last_dir =~ ^-[A-Za-z0-9-]{1,200}$ ]] || [ ! -s "$session_dir/$last_id.jsonl" ]; then
+    echo "review-run: $session_dir/session does not name a whole session"
+    last_id=""
+  elif [ "$(tail -n 1 "$in/since-last-review.diff" 2> /dev/null)" != "(exit status 0)" ] \
+      || ! sed '$d' "$in/since-last-review.diff" | grep -q .; then
+    echo "review-run: review-gather wrote no diff since $last_head, the commit of the last review"
+    last_id=""
+  else
     mkdir -p "$HOME/.claude/projects/$last_dir"
     cp "$session_dir/$last_id.jsonl" "$HOME/.claude/projects/$last_dir/"
-  else
-    echo "review-run: $session_dir/session does not name a whole conversation"
-    last_id=""
   fi
 fi
-again="This is a new push to pull request #$PR. Earlier in this conversation you reviewed its commit \
-${last_head:0:12}, and your last message was the comment that the workflow posted. The workflow gathered the inputs \
-again into $in/, for its commit ${HEAD_SHA:-}, and put the pull request's projects/$NAME/ in this checkout again. Any \
-of those files can have changed: read again each one that you use, and use nothing that you read before. \
-$in/since-last-review.diff has the changes to projects/$NAME/ since the commit that you reviewed. Read \
-.claude/skills/review-enrollment/SKILL.md again, because main can have changed it, and do the review again, as its \
-section \"In CI\" says for a later push. Your last message is the new comment to the maintainer, in Markdown, and \
-nothing else: it starts with the sentence of thanks, with no line before it about you or your review."
+again="This is a new push to pull request #$PR. Earlier in this session you reviewed its commit $last_head, and your \
+last message was your comment on it. This review looks only at the diff since the head you last reviewed: \
+$in/since-last-review.diff holds the changes to projects/$NAME/ from $last_head to ${HEAD_SHA:-}. Review that diff \
+against review.md (read it again: main can have changed it). Do not review again what the diff does not change: a \
+new request comes only from the diff. For each request of your last comment, read again the current input it is \
+about (the files of projects/$NAME/, the build's results, the description, the checks, the project's source): drop \
+the request when that input shows its fix, and keep it otherwise. The workflow gathered those inputs again into \
+$in/, and put the pull request's projects/$NAME/ in this checkout again. Your new comment replaces the last one, so \
+it must be complete without it. Do the review as the section \"In CI\" of .claude/skills/review-enrollment/SKILL.md \
+says for a later push. Your last message is the new comment to the maintainer, in Markdown, and nothing else: it \
+starts with the sentence of thanks, with no line before it about you or your review."
 
 # The HTTP status that the collector answers to an export of no records with the token (000 when it did not answer in
 # time). The header reaches curl through a pipe that the builtin printf writes, not an argument; -q, first, keeps a
@@ -207,8 +220,8 @@ done
 # Claude Code's exit status is kept, and how it ended is read from claude.json and written where a reader sees it. All
 # tries stop at 40 minutes, inside the review step's 45, so that a review that runs too long says so too (exit status
 # 124). A try that ends without a review is tried once more if 10 minutes are left, and not after the time limit or
-# without a new identity token for it. Each try is a conversation of its own id: the first resumes the last review's
-# conversation when there is one, and the second is a fresh review. A resumed try keeps --model as it is.
+# without a new identity token for it. The first try resumes the last review's session when there is one, under its
+# own id; the second is a fresh review, under a new id. A resumed try keeps --model as it is.
 # Claude Code runs under review-served, which reads its event stream (stream-json), stops it at a response that a
 # model other than the one asked for answers, and writes what answered, with its turns, to $in/served for the comment
 # job, and the stream's last event to claude.json, the object `--output-format json` writes. It does not start Claude
@@ -231,12 +244,14 @@ for try in 1 2; do
   id=$(uuid)
   text=$prompt conversation=(--session-id "$id") resumed=""
   if [ -n "$last_id" ] && [ "$try" = 1 ]; then
-    echo "review-run: resuming the conversation $last_id of the review of $last_head, as $id"
-    text=$again conversation=(--resume "$last_id" --fork-session --session-id "$id") resumed=yes
+    id=$last_id
+    echo "review-run: resuming the session $id (the review of $last_head), to review only $last_head..$HEAD_SHA"
+    text=$again conversation=(--resume "$id") resumed=yes
   elif [ -n "$last_id" ]; then
-    echo "review-run: the resumed review of the conversation $last_id ended without a review: a fresh review, as $id"
+    echo "review-run: the resumed review of the session $last_id ended without a review: a fresh review, as $id"
   elif [ "$try" = 1 ]; then
-    echo "review-run: no conversation of an earlier review of pull request #$PR: a fresh review, as $id"
+    echo "review-run: no session to resume (none was kept, or a line above says why it is not used):" \
+      "a fresh review, as $id"
   fi
   # Claude Code's whole environment, one NUL-ended entry each, goes through a pipe to a launcher that execs
   # review-served, with this same Python, with that environment only, as env -i would, and stdin from /dev/null;
@@ -296,7 +311,10 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
   detail=$(jq -j '[.result, (.errors | if type == "array" then .[] else . end)] | map(select(type == "string"))
     | join("; ")' "$in/claude.json" 2> /dev/null | tr '[:cntrl:]' ' ') || true
   builtin printf '%s' "$detail" > "$in/claude.detail"
-  if holds_credential "$in/claude.detail"; then
+  # A finding held back for private review (review.md, rule 6) is never shown, also in a try that failed.
+  if [[ $detail == *'<!-- held finding -->'* ]]; then
+    detail="(not shown: it holds a finding held back for private review)"
+  elif holds_credential "$in/claude.detail"; then
     detail="(not shown: it holds what looks like a credential)"
   fi
   detail=${detail:0:1000}
@@ -326,6 +344,16 @@ jq -r 'if .is_error then error("the review ended with an error: \(.result // .su
                           NR <= 6 && !cut { held = held $0 "\n"; next }
                           { printf "%s", held; held = ""; print }
                           END { printf "%s", held }' > "$in/comment.md"
+# A finding held back for private review (review.md, rule 6): from the first line `<!-- held finding -->` on, the
+# message goes to held-finding.md, which nothing here prints and build.yaml stores for its hold job, which sends it to
+# the disclosure route (.github/scripts/review-held); the comment keeps only what is before it.
+rm -f "$in/held-finding.md"
+if grep -qx '<!-- held finding -->[[:space:]]*' "$in/comment.md"; then
+  awk -v held="$in/held-finding.md" '!h && /^<!-- held finding -->[[:space:]]*$/ { h = 1 } h { print > held; next } { print }' \
+    "$in/comment.md" > "$in/comment.public"
+  mv "$in/comment.public" "$in/comment.md"
+  echo "review-run: the review holds back a finding for private review; no log shows it"
+fi
 if [ ! -s "$in/comment.md" ]; then
   echo "review-run: the review wrote no comment" >&2
   echo "the review wrote no comment once its opening line was cut" > "$in/failure.txt"
@@ -333,24 +361,26 @@ if [ ! -s "$in/comment.md" ]; then
 fi
 echo "review-run: $(wc -c < "$in/comment.md") bytes in $in/comment.md, asked for $asked, answered by $answered," \
   "$subtype after $turns turns and $seconds seconds (try $try${resumed:+, resumed})"
-# This review's conversation, for the next push's review, in place of the last one. The review cannot read this run's
+# This review's session, for the next push's review, in place of the last one. The review cannot read this run's
 # tokens, so its conversation holds none of them; it is not kept if it holds what looks like a credential, or the
-# identity token now in the file.
+# identity token now in the file. When it is not kept, the cache keeps the last session that was.
 if [ -n "$session_dir" ]; then
   mkdir -p "$session_dir"
   rm -f "$session_dir/session" "$session_dir"/*.jsonl
   file=$(find "$HOME/.claude/projects" -name "$id.jsonl" -print -quit 2> /dev/null || true)
   identity=""
   [ ! -f "${ANTHROPIC_IDENTITY_TOKEN_FILE:-}" ] || identity=$(< "$ANTHROPIC_IDENTITY_TOKEN_FILE")
-  if [ -z "$file" ] || [ ! -s "$file" ]; then
-    echo "review-run: Claude Code kept no conversation $id: the next push's review starts fresh"
+  if [ -s "$in/held-finding.md" ]; then
+    # The session would hold the finding, and main's Actions cache is readable by a pull request's own run.
+    echo "review-run: the session $id holds a finding held back for private review, so it is not kept"
+  elif [ -z "$file" ] || [ ! -s "$file" ]; then
+    echo "review-run: Claude Code kept no conversation of the session $id, so it is not kept"
   elif holds_credential "$file" || { [ -n "$identity" ] && [[ $(tr -d '\0' < "$file") == *"$identity"* ]]; }; then
-    echo "review-run: the conversation $id holds what looks like a credential, so it is not kept: the next push's" \
-      "review starts fresh"
+    echo "review-run: the conversation of the session $id holds what looks like a credential, so it is not kept"
   else
     cp "$file" "$session_dir/"
     printf 'id=%s\nhead=%s\ndir=%s\n' "$id" "$HEAD_SHA" "$(basename "$(dirname "$file")")" > "$session_dir/session"
-    echo "review-run: kept the conversation $id of the review of $HEAD_SHA, for the next push's review to resume"
+    echo "review-run: kept the session $id, the review of $HEAD_SHA, for the next push's review to resume"
   fi
 fi
 if [ ${#telemetry[@]} != 0 ]; then

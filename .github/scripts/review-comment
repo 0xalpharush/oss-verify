@@ -192,7 +192,7 @@ def read_previous(previous):
     return status, head, version, trim(body)
 
 
-FOOTER = ("<sub>Claude wrote this review, following `.claude/skills/review-enrollment/SKILL.md`, and "
+FOOTER = ("<sub>Claude wrote this review, following `review.md`, and "
           "`tools/check --checks` measured the checks. It can be wrong. {of}Each push replaces it, or marks it not "
           "current if the push's review does not finish. It decides nothing: a person at Theorem reviews the "
           "enrollment.</sub>")

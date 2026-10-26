@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# Sends each finding that the enrollment review held back from its public comment (review.md, rule 6) to the
+# disclosure route: one issue for each finding, labelled held-finding, in the private repository HELD_FINDINGS_REPO.
+# A finding the review found again on a later push gets a comment on its open issue instead of a second issue, and a
+# re-run of the same run sends nothing that run already sent: each issue and comment names the run.
+#
+#   GH_TOKEN=<token that can write issues in HELD_FINDINGS_REPO> HELD_FINDINGS_REPO=<owner/name> REPO=<owner/name> \
+#     PR=<number> NAME=<project> HEAD_SHA=<commit> RUN_URL=<url> [COMMENT_URL=<url>] \
+#     .github/scripts/review-held <directory>
+#
+# It reads <directory>/held-finding.md, which review-run wrote: each finding starts with the line
+# `<!-- held finding -->`, then `key: value` lines (the first, `title:`, is the issue's title), then free text. It
+# prints only the issues' addresses, never a finding: the job's log is public.
+#
+# build.yaml's hold job runs it, in the environment comment, with a token of the oss-verify App for HELD_FINDINGS_REPO
+# only, with issues: write only. The review job, which runs the model, never holds the App's key: it stores the
+# finding in a private bucket where it can only create objects, as held/<run id>/<32 random hex digits>, and passes
+# only that name to the hold job, which alone can read it. A finding cannot pass between jobs any other way without
+# reaching the public log: the runner prints a step's env and script there, and every artifact of this repository is
+# public. Nothing deletes the object: the bucket deletes it after 7 days.
+set -euo pipefail
+
+in=${1:?usage: review-held <directory>}
+held="$in/held-finding.md"
+[ -s "$held" ] || { echo "review-held: no finding is held"; exit 0; }
+[[ ${HELD_FINDINGS_REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+  || { echo "review-held: HELD_FINDINGS_REPO is not owner/name" >&2; exit 2; }
+[[ $PR =~ ^[0-9]+$ && ${HEAD_SHA:-} =~ ^[0-9a-f]{40}$ && -n ${RUN_URL:-} ]] \
+  || { echo "review-held: PR is not a number, HEAD_SHA is not a commit, or RUN_URL is empty" >&2; exit 2; }
+# Never a public repository: a held finding must not become public.
+private=$(gh api "repos/$HELD_FINDINGS_REPO" --jq .private) || private=""
+[ "$private" = true ] \
+  || { echo "review-held: $HELD_FINDINGS_REPO is not a private repository, so nothing is sent" >&2; exit 2; }
+label="held-finding"
+
+# The label, made once (any colour), so the disclosure route's watcher finds the issues.
+if ! gh api "repos/$HELD_FINDINGS_REPO/labels/$label" > /dev/null 2>&1; then
+  gh api "repos/$HELD_FINDINGS_REPO/labels" -f name="$label" -f color=b60205 \
+    -f description="A finding held back from a public review, for the disclosure route" > /dev/null
+fi
+
+# One file for each finding, without its marker line.
+parts="$in/held-findings"
+rm -rf "$parts" && mkdir -p "$parts"
+awk -v dir="$parts" '/^<!-- held finding -->[[:space:]]*$/ { n++; next } n { print > (dir "/" n) }' "$held"
+
+# Every issue of the label: its number, state, title, and whether this run filed it (a re-run sends it no second time).
+issues=$(RUN_URL=$RUN_URL gh api "repos/$HELD_FINDINGS_REPO/issues?labels=$label&state=all&per_page=100" --paginate \
+  --jq '.[] | [.number, .state, .title, ((.body // "") | contains("review run: " + env.RUN_URL) | tostring)] | @tsv')
+sent=0
+for part in $(seq -f "$parts/%g" "$(find "$parts" -type f | wc -l)"); do
+  title=$(sed -n 's/^title:[[:space:]]*//p' "$part" | head -n 1 | tr -d '\r' | cut -c1-240)
+  [ -n "$title" ] || title="[held] $NAME: a finding of the enrollment review of pull request #$PR"
+  body="$part.body"
+  {
+    echo "enrollment PR: $REPO#$PR"
+    echo "enrollment PR head: $HEAD_SHA"
+    echo "public PR comment: ${COMMENT_URL:-not known}"
+    echo "review run: ${RUN_URL:-not known}"
+    grep -v '^title:' "$part"
+  } > "$body"
+  if [ -n "$(awk -F '\t' -v t="$title" '$3 == t && $4 == "true" { print $1; exit }' <<< "$issues")" ]; then
+    echo "review-held: this run already sent this finding"
+    sent=$((sent + 1))
+    continue
+  fi
+  number=$(awk -F '\t' -v t="$title" '$2 == "open" && $3 == t { print $1; exit }' <<< "$issues")
+  if [ -n "$number" ]; then
+    again=$(RUN_URL=$RUN_URL gh api "repos/$HELD_FINDINGS_REPO/issues/$number/comments" --paginate \
+      --jq '.[] | select((.body // "") | contains("review run: " + env.RUN_URL)) | .id')
+    if [ -n "$again" ]; then
+      echo "review-held: this run already sent this finding"
+    else
+      url=$(gh api "repos/$HELD_FINDINGS_REPO/issues/$number/comments" -F body=@"$body" --jq .html_url)
+      echo "review-held: the finding was found again: $url"
+    fi
+  else
+    url=$(gh api "repos/$HELD_FINDINGS_REPO/issues" -f title="$title" -F body=@"$body" -f "labels[]=$label" \
+      --jq .html_url)
+    echo "review-held: sent a finding for private review: $url"
+  fi
+  sent=$((sent + 1))
+done
+[ "$sent" -gt 0 ] || { echo "review-held: held-finding.md holds no finding after its marker" >&2; exit 1; }
