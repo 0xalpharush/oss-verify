@@ -1639,18 +1639,34 @@ class ReviewRun(unittest.TestCase):
                 out = self.run_review()
                 self.assertEqual(out.returncode, 1, out.stderr)
                 self.assertIn("named a held finding outside its own part", self.failure()[0])
-                self.assertFalse((self.directory / "review" / "held-finding.md").exists())
+                # The held part is kept, for the review job to store all the same; only the comment is refused.
+                held = self.directory / "review" / "held-finding.md"
+                self.assertEqual(held.exists(), "\n<!-- held finding -->\n" in result)
                 self.assertNotIn("SECRETBUG", out.stdout + out.stderr)
 
+    def test_the_opening_line_cut_runs_after_the_held_cut(self):
+        # "Here is the comment:" and a rule in the first six lines are cut, but only from what is left once the held
+        # part is out: a marker among those lines still holds back its finding.
+        result = "Here is the comment:\n<!-- held finding -->\ntitle: x\nparse_SECRETBUG\n---\nThanks.\n"
+        (self.directory / "stream").write_text(stream({"type": "result", "is_error": False, "result": result}))
+        out = self.run_review()
+        comment = self.directory / "review" / "comment.md"
+        self.assertNotIn("SECRETBUG", comment.read_text() if comment.exists() else "")
+        self.assertIn("SECRETBUG", (self.directory / "review" / "held-finding.md").read_text())
+        self.assertNotIn("SECRETBUG", out.stdout + out.stderr)
+
     def test_a_failed_try_never_shows_a_held_finding(self):
-        self.fake_claude(({"type": "result", "subtype": "success", "is_error": True, "num_turns": 3,
-                           "duration_ms": 1000, "result": "Thanks.\n" + self.HELD}, 1),
-                         ({"type": "result", "subtype": "success", "is_error": True, "num_turns": 3,
-                           "duration_ms": 1000, "result": "Thanks.\n" + self.HELD}, 1))
-        out = self.run_review(**self.identity())
-        self.assertEqual(out.returncode, 1, out.stderr)
-        self.assertNotIn("SECRETBUG", out.stdout + out.stderr + (self.failure()[1] or ""))
-        self.assertIn("not shown: it holds a finding held back for private review", out.stderr)
+        for text in (self.HELD, "<!-- held: finding -->\nparse_SECRETBUG\n", "a Held  Finding: parse_SECRETBUG\n"):
+            with self.subTest(text=text):
+                (self.directory / "calls").unlink(missing_ok=True)
+                self.fake_claude(({"type": "result", "subtype": "success", "is_error": True, "num_turns": 3,
+                                   "duration_ms": 1000, "result": "Thanks.\n" + text}, 1),
+                                 ({"type": "result", "subtype": "success", "is_error": True, "num_turns": 3,
+                                   "duration_ms": 1000, "result": "Thanks.\n" + text}, 1))
+                out = self.run_review(**self.identity())
+                self.assertEqual(out.returncode, 1, out.stderr)
+                self.assertNotIn("SECRETBUG", out.stdout + out.stderr + (self.failure()[1] or ""))
+                self.assertIn("not shown: it holds a finding held back for private review", out.stderr)
 
     def test_a_session_file_that_is_not_whole_gives_a_fresh_review(self):
         (self.session / "session").write_text(f"id=../../x\nhead={self.LAST}\ndir={self.FOLDER}\n")
@@ -1951,6 +1967,7 @@ class ReviewHeld(unittest.TestCase):
     """review-held opens one private issue for each held finding, through a fake gh, and prints none of it."""
 
     RUN = "https://example.test/run"
+    OBJECT = "held/7/" + "a" * 32
 
     def run_held(self, held, bodies_on_github=(), label=True, variable="theorem-labs/private", visibility="private"):
         """bodies_on_github: the bodies of the label's issues already there, open or closed."""
@@ -1981,7 +1998,7 @@ class ReviewHeld(unittest.TestCase):
                                  env={**os.environ, "PATH": f"{root / 'bin'}:{os.environ['PATH']}",
                                       "HELD_FINDINGS_REPO": variable, "REPO": "theorem-labs/oss-verify", "PR": "68",
                                       "NAME": "libreac", "HEAD_SHA": "1" * 40, "RUN_URL": self.RUN,
-                                      "COMMENT_URL": "https://example.test/pr-comment"},
+                                      "COMMENT_URL": "https://example.test/pr-comment", "HELD_OBJECT": self.OBJECT},
                                  capture_output=True, text=True)
             calls = [json.loads(line) for line in (root / "calls").read_text().splitlines()] \
                 if (root / "calls").exists() else []
@@ -2003,8 +2020,9 @@ class ReviewHeld(unittest.TestCase):
         self.assertEqual(len(bodies), 2)
         self.assertTrue(bodies[0].startswith(f"enrollment PR: theorem-labs/oss-verify#68\nenrollment PR head: {'1' * 40}\n"
                                              "public PR comment: https://example.test/pr-comment\n"
-                                             f"review run: {self.RUN}\nheld finding key: {self.RUN} 1\n"))
-        self.assertIn(f"held finding key: {self.RUN} 2\n", bodies[1])
+                                             f"review run: {self.RUN}\nheld finding key: {self.OBJECT} 1\n"))
+        self.assertIn(f"held finding key: {self.OBJECT} 2\n", bodies[1])
+        self.assertNotIn("theorem-labs/private", run.stdout + run.stderr)
         self.assertIn("project: libreac\nwhy held: memory safety\n", bodies[0])
         self.assertNotIn("title:", bodies[0])
 
@@ -2013,21 +2031,26 @@ class ReviewHeld(unittest.TestCase):
         # issue with the same title does not stop either.
         two = "<!-- held finding -->\nproject: libreac\n<!-- held finding -->\nproject: libreac\nsecond\n"
         run, calls, bodies = self.run_held(two, bodies_on_github=[
-            f"review run: {self.RUN}\nheld finding key: {self.RUN} 1\n", "held finding key: https://old 2\n"])
+            f"review run: {self.RUN}\nheld finding key: {self.OBJECT} 1\n", f"held finding key: held/1/{'b' * 32} 2\n"])
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn("this run already sent finding 1", run.stdout)
+        self.assertIn("finding 1 was already sent", run.stdout)
         self.assertEqual(len(bodies), 1)
-        self.assertIn(f"held finding key: {self.RUN} 2\n", bodies[0])
+        self.assertIn(f"held finding key: {self.OBJECT} 2\n", bodies[0])
         self.assertIn("second", bodies[0])
 
-    def test_empty_markers_are_no_findings_and_at_most_ten_are_sent(self):
+    def test_a_finding_with_only_a_title_is_sent(self):
+        run, _, bodies = self.run_held("<!-- held finding -->\ntitle: [held] libreac/x: crash in f\n")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(bodies), 1)
+
+    def test_empty_markers_are_no_findings_and_more_than_ten_sends_none(self):
         run, calls, bodies = self.run_held("<!-- held finding -->\n<!-- held finding -->\nproject: libreac\n")
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(len(bodies), 1)
         eleven = "".join(f"<!-- held finding -->\ntitle: t{i}\nproject: libreac\n" for i in range(11))
         run, calls, bodies = self.run_held(eleven)
         self.assertEqual(run.returncode, 1)
-        self.assertEqual(len(bodies), 10)
+        self.assertEqual(len(bodies), 0)
         self.assertIn("more than 10 findings", run.stderr)
 
     def test_a_loose_marker_splits_findings_as_review_run_cuts_them(self):
@@ -2043,7 +2066,7 @@ class ReviewHeld(unittest.TestCase):
             with self.subTest(visibility=visibility):
                 run, calls, _ = self.run_held(ReviewRun.HELD, visibility=visibility)
                 self.assertEqual(run.returncode, 2)
-                self.assertIn("is not a private repository", run.stderr)
+                self.assertIn("names is not private, so nothing is sent", run.stderr)
                 self.assertFalse([c for c in calls if "-F" in c or "-f" in c])
         run, _, _ = self.run_held("<!-- held finding -->\n")
         self.assertEqual(run.returncode, 1)
@@ -2063,6 +2086,13 @@ class ReviewHeld(unittest.TestCase):
         self.assertEqual(hold["environment"], {"name": "comment", "deployment": False})
         self.assertEqual(hold["needs"], ["project-builds", "review"])
         self.assertNotIn("vars.", hold["if"])
+        self.assertNotIn("concurrency", hold)
+        # The finding is stored also when the review job fails after cutting it out (a comment that still names it).
+        for name in ("Sign in to Google Cloud to store the held finding", "Store the held finding for the hold job"):
+            self.assertEqual(review[name]["if"], "${{ !cancelled() && steps.review.outputs.held == 'yes' }}")
+        self.assertLess(review["Review"]["run"].index("held=yes"), review["Review"]["run"].index("exit \"$code\""))
+        send = [s for s in hold["steps"] if s.get("name") == "Send the held finding to the disclosure route"][0]
+        self.assertEqual(send["env"]["HELD_OBJECT"], "${{ needs.review.outputs.held_object }}")
         steps = {s.get("name"): s for s in hold["steps"]}
         read = steps["Read the held finding"]["run"]
         self.assertIn("^held/$RUN_ID/[0-9a-f]{32}$", read)

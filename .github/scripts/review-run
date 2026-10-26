@@ -69,6 +69,12 @@ if [ -n "$session_dir" ]; then
   [[ ${HEAD_SHA:-} =~ ^[0-9a-f]{40}$ ]] || { echo "review-run: REVIEW_SESSION needs HEAD_SHA, a commit" >&2; exit 2; }
 fi
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
+# A finding held back for private review (review.md, rule 6). held_marker is a line that starts one:
+# `<!-- held finding -->` in any case, with any spacing, after any indent, list bullet or quote mark, as a model can
+# write it (review-held splits the findings with the same pattern). held_mention is anything that names one: a text
+# that holds it is never shown or published, in a comment, a failed try's message or Claude Code's standard error.
+held_marker='^[[:space:]>*+-]*<!--[[:space:]]*held[[:space:]_-]*finding[[:space:]]*-->[[:space:]]*$'
+held_mention='<!--[[:space:]]*held|held[^[:alnum:]]{0,3}finding'
 
 prompt="You are the agent of OSS Verify's enrollment check, in CI, on pull request #$PR of theorem-labs/oss-verify, \
 which adds or changes projects/$NAME/. Read review.md, at the root of this checkout: it says what you check and how \
@@ -283,7 +289,9 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
   # model answered a run that also failed by itself, or a try that ended well has no record that passes.
   if [ "$served_status" = 1 ] || { [ "$served_status" != 0 ] && { [ "$status" = 4 ] || [ "$status" = 0 ]; }; }; then
     echo "review-run: the review is not published: $answered" >&2
-    if [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
+    if [ -s "$in/claude.err" ] && grep -qiE "$held_mention" "$in/claude.err"; then
+      echo "review-run: Claude Code's standard error is not shown: it names a finding held back for private review" >&2
+    elif [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
       echo "review-run: Claude Code's standard error is not shown: it holds what looks like a credential" >&2
     else
       tail -c 2000 "$in/claude.err" >&2
@@ -313,7 +321,7 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
     | join("; ")' "$in/claude.json" 2> /dev/null | tr '[:cntrl:]' ' ') || true
   builtin printf '%s' "$detail" > "$in/claude.detail"
   # A finding held back for private review (review.md, rule 6) is never shown, also in a try that failed.
-  if grep -qiE 'held[[:space:]_-]*finding' "$in/claude.detail"; then
+  if grep -qiE "$held_mention" "$in/claude.detail"; then
     detail="(not shown: it holds a finding held back for private review)"
   elif holds_credential "$in/claude.detail"; then
     detail="(not shown: it holds what looks like a credential)"
@@ -321,7 +329,9 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
   detail=${detail:0:1000}
   echo "review-run: $why (try $try): ${detail:-no message} ($(wc -c < "$in/claude.json") bytes in $in/claude.json)" >&2
   # The scan reads the whole file, and what is shown is the end of that same file, byte for byte.
-  if [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
+  if [ -s "$in/claude.err" ] && grep -qiE "$held_mention" "$in/claude.err"; then
+    echo "review-run: Claude Code's standard error is not shown: it names a finding held back for private review" >&2
+  elif [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
     echo "review-run: Claude Code's standard error is not shown: it holds what looks like a credential" >&2
   elif [ -s "$in/claude.err" ]; then
     tail -c 2000 "$in/claude.err" >&2
@@ -338,33 +348,28 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
   fi
   first_why=$why
 done
-# The comment only: a line that ends in a colon, such as "Here is the comment:", and a rule (---) after it, in its first
-# six lines, go. Any other rule stays.
-jq -r 'if .is_error then error("the review ended with an error: \(.result // .subtype)") else .result end' \
-  "$in/claude.json" | awk 'NR <= 6 && !cut && /^---+[[:space:]]*$/ && held ~ /:[[:space:]]*\n[[:space:]]*$/ { cut = 1; held = ""; next }
-                          NR <= 6 && !cut { held = held $0 "\n"; next }
-                          { printf "%s", held; held = ""; print }
-                          END { printf "%s", held }' > "$in/comment.md"
-# A finding held back for private review (review.md, rule 6): from the first marker line on, the message goes to
-# held-finding.md, which nothing here prints and build.yaml stores for its hold job, which sends it to the disclosure
-# route (.github/scripts/review-held); the comment keeps only what is before it. A marker line is `<!-- held finding -->`
-# in any case, with any spacing, and after any indent, list bullet or quote mark, as a model can write it; review-held
-# splits the findings with the same pattern. If anything that names a held finding is still in the comment after the
-# cut, nothing is published.
-held_marker='^[[:space:]>*+-]*<!--[[:space:]]*held[[:space:]_-]*finding[[:space:]]*-->[[:space:]]*$'
+# A held finding comes out of the result first, before anything else is cut from it: from the first held_marker line
+# on, the result goes to held-finding.md, which nothing here prints and build.yaml stores for its hold job, which sends
+# it to the disclosure route (.github/scripts/review-held). If anything that names a held finding is still in the rest,
+# nothing is published, and the held part is kept: the review job stores it all the same.
 rm -f "$in/held-finding.md"
-awk -v held="$in/held-finding.md" -v marker="$held_marker" \
-  '!h && tolower($0) ~ marker { h = 1 } h { print > held; next } { print }' "$in/comment.md" > "$in/comment.public"
-mv "$in/comment.public" "$in/comment.md"
+jq -r 'if .is_error then error("the review ended with an error") else .result end' "$in/claude.json" \
+  | awk -v held="$in/held-finding.md" -v marker="$held_marker" \
+      '!h && tolower($0) ~ marker { h = 1 } h { print > held; next } { print }' > "$in/comment.raw"
 if [ -s "$in/held-finding.md" ]; then
   echo "review-run: the review holds back a finding for private review; no log shows it"
 fi
-if grep -qiE '<!--[[:space:]]*held|held[[:space:]_-]*finding' "$in/comment.md"; then
-  rm -f "$in/held-finding.md"
-  echo "review-run: the comment still names a held finding after the cut, so nothing of it is published" >&2
+if grep -qiE "$held_mention" "$in/comment.raw"; then
+  echo "review-run: the comment still names a held finding outside its own part, so nothing of it is published" >&2
   echo "the comment named a held finding outside its own part, so it is not posted" > "$in/failure.txt"
   exit 1
 fi
+# The comment only: a line that ends in a colon, such as "Here is the comment:", and a rule (---) after it, in its first
+# six lines, go. Any other rule stays.
+awk 'NR <= 6 && !cut && /^---+[[:space:]]*$/ && held ~ /:[[:space:]]*\n[[:space:]]*$/ { cut = 1; held = ""; next }
+     NR <= 6 && !cut { held = held $0 "\n"; next }
+     { printf "%s", held; held = ""; print }
+     END { printf "%s", held }' "$in/comment.raw" > "$in/comment.md"
 if [ ! -s "$in/comment.md" ]; then
   echo "review-run: the review wrote no comment" >&2
   echo "the review wrote no comment once its opening line was cut" > "$in/failure.txt"

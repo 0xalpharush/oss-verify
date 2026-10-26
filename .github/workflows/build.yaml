@@ -493,6 +493,9 @@ jobs:
           echo "::stop-commands::$resume"
           code=0
           .github/scripts/review-run .review || code=$?
+          # A finding held back for private review (review.md, rule 6) stays in .review/held-finding.md on this disk,
+          # also when the comment is not to be posted: the steps below store it where only the hold job can read it.
+          if [ -s .review/held-finding.md ]; then echo "held=yes" >> "$GITHUB_OUTPUT"; fi
           rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE" "$ANTHROPIC_IDENTITY_TOKEN_FILE".new.*
           # The record of what answered, also when the review is not to be posted or did not finish: the comment job
           # checks it, and names what answered. Its names are ones review-served cleaned, so it holds no command.
@@ -556,16 +559,13 @@ jobs:
           delimiter="review-$(openssl rand -hex 16)"
           { echo "comment<<$delimiter"; head -c 60000 .review/comment.md; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
           if [ -s "$REVIEW_SESSION/session" ]; then echo "session=kept" >> "$GITHUB_OUTPUT"; fi
-          # A finding held back for private review (review.md, rule 6) stays in .review/held-finding.md on this disk;
-          # the next steps store it where only the hold job can read it.
-          if [ -s .review/held-finding.md ]; then echo "held=yes" >> "$GITHUB_OUTPUT"; fi
 
       # The Google access token from before the review has expired: it lives five minutes, and a review takes longer.
       # A held finding needs a new one. ossv-ci may only create objects in the held-findings bucket: it cannot read,
       # list or delete them.
       - name: Sign in to Google Cloud to store the held finding
         id: gcp-held
-        if: ${{ steps.review.outputs.held == 'yes' }}
+        if: ${{ !cancelled() && steps.review.outputs.held == 'yes' }}
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (sha-pinned)
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -581,7 +581,7 @@ jobs:
       # Any failure fails this job, and the comment job then posts no review that says a finding was sent.
       - name: Store the held finding for the hold job
         id: held
-        if: ${{ steps.review.outputs.held == 'yes' }}
+        if: ${{ !cancelled() && steps.review.outputs.held == 'yes' }}
         env:
           GCP_ACCESS_TOKEN: ${{ steps.gcp-held.outputs.access_token }}
           RUN_ID: ${{ github.run_id }}
@@ -626,10 +626,8 @@ jobs:
     if: ${{ !cancelled() && needs.review.outputs.held_object != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # One hold job at a time for a pull request, so two runs cannot both find no issue of a finding and both file it.
-    concurrency:
-      group: build-hold-${{ github.event.pull_request.number || inputs.pr }}
-      cancel-in-progress: false
+    # Not in a concurrency group of its own: each finding's issue is keyed on the stored object, so two hold jobs
+    # cannot file one finding twice.
     environment:
       name: comment
       deployment: false
@@ -730,6 +728,8 @@ jobs:
           NAME: ${{ needs.project-builds.outputs.name }}
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # The stored object's name, made after the review ended and new for each attempt: each issue's key.
+          HELD_OBJECT: ${{ needs.review.outputs.held_object }}
         run: |
           # The review comment's address, when there is one already: the comment job keeps it in place.
           COMMENT_URL=$(GH_TOKEN=$READ_TOKEN gh api "repos/$REPO/issues/$PR/comments" --paginate \
