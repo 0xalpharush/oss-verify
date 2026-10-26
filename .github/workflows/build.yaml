@@ -6,12 +6,15 @@ name: "Build"
 # time from scratch, and the two builds must have the same bytes, as they must before we pin a binary. The output is in
 # the run's log; the step summary also has one row for each binary: its target, build, file size, .text size and whether
 # it is statically linked. With --checks, tools/check also measures what the fuzz targets' checks catch on their seed
-# inputs (docs/build-contract.md, "The checks of a fuzz target"), and the step summary has that report too.
+# inputs (docs/build-contract.md, "The checks of a fuzz target"), and does four checks on each binary: its instructions,
+# its system calls against the process model of the published proofs, its quiet twin, and the code it links
+# uninstrumented (docs/build-contract.md, "The checks of the binaries"). The step summary has both reports too.
 #
 # Then two more jobs:
 #   review   Claude Code follows .claude/skills/review-enrollment/SKILL.md on what the workflow gathered: the pull
 #            request, the project's source at the built commit, and the build's results. It writes a comment that asks
-#            the maintainer for each fix.
+#            the maintainer for each fix. On a later push it resumes the conversation of the last review, so it knows
+#            what it asked for and why, and checks those requests against the changes since then.
 #   comment  posts that comment, with the checks' report folded under it, or replaces the one already there. The
 #            comment starts with <!-- oss-verify-review -->, as the triage comment starts with its own marker.
 #
@@ -57,7 +60,10 @@ name: "Build"
 # federation, so no API key is stored, and both jobs' for a Google access token by Google workload identity
 # federation (agent-infra bootstrap/, declareOssvCI). Claude
 # gets three tools only, Read, Glob and Grep, inside the checkout (.github/scripts/review-run), and an environment
-# without the runner's tokens. The comment job alone writes: it posts text, refused if it holds what looks like a
+# without the runner's tokens. Its review is posted only when the provider and model it asked for, at that provider's
+# own API, answered every turn, as Claude Code reported each turn (.github/scripts/review-served);
+# every comment names the providers and models that answered, with their turns, or says why nothing shows which.
+# The comment job alone writes: it posts text, refused if it holds what looks like a
 # credential (.github/scripts/review-comment), as the oss-verify GitHub App (oss-verify[bot]), with an installation
 # token that can write pull requests in this repository only. It makes that token from the App's client id below and
 # its private key, which it reads at run time from Secret Manager (oss-verify-github-app-key), and runs no code of the
@@ -69,6 +75,8 @@ name: "Build"
 # review job acts as ossv-ci, which reads the cost collector's token and nothing else; the comment job declares
 # `environment: comment`, whose claim is the only way to act as ossv-app-comment, the one account that reads the
 # App's key. project-builds, the job that builds the pull request's code, must never be given id-token: write.
+# A pull request from a fork gets the same identity tokens: pull_request_target runs this file from the base branch,
+# never the fork's, so the fork's code never holds them.
 # Runs do not wait for a maintainer's approval. To build only on request, remove pull_request_target below.
 #
 # The review reaches Claude by workload identity federation, with no stored key: the review job's GitHub identity token
@@ -79,22 +87,22 @@ name: "Build"
 #            audience "https://api.anthropic.com", claims {"repository_id": "1429568498",
 #            "ref": "refs/heads/main", "workflow": "Build"}
 #   test     fdrl_019NVessgKqckm7owmasqfm7: subject_prefix
-#            "repo:theorem-labs@212152656/oss-verify@1429568498:ref:refs/heads/ci-test/*", audience
-#            "https://api.anthropic.com", claims {"repository_id": "1429568498", "workflow": "Build"}
+#            "repo:theorem-labs@212152656/oss-verify@1429568498:environment:enroll-review-test" (an exact match: the
+#            review job runs in that environment on a ci-test/ branch), audience "https://api.anthropic.com", claims:
+#            repository_id 1429568498, workflow "Build", event_name workflow_dispatch, and a workflow_ref of
+#            .github/workflows/build.yaml on a ci-test/ branch
 #   target   the service account oss-verify-ci (svac_01WdHTLcJPEfiPttcuLK1hGT), with the developer role
 #   scope    workspace:inference, in the workspace Default+CVP, with a token lifetime of 3600 seconds
 # The numbers are the immutable ids of theorem-labs and of this repository. The Review step takes the test rule when
-# the run's ref is a ci-test/ branch, and the main rule otherwise. Neither rule checks which workflow file the run is:
-# `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So the main rule
-# gives a token to any workflow named "Build" that runs on main, from any event, and the test rule to any workflow
-# named "Build" on any ci-test/ branch, from any event: a person with write access can push a branch ci-test/<x>
-# with a workflow of that name triggered on push. GitHub's `workflow_ref` claim (the file and the ref) would tie each
-# rule to this file, and `event_name` to an event; the rules do not check them yet. The review and comment jobs of
-# this file ask for an identity token; no other job of it does. A ci-test/ branch cannot run a review any more: the
-# review job now signs in to Google for the collector's token, and Google's provider admits refs/heads/main alone, so
-# `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>` fails at that step. A change to the review is tested by
-# running this file on main against a test pull request (`gh workflow run build.yaml -f pr=<n>`), which is also what
-# the Anthropic test rule's ci-test/ branch was for.
+# the run's ref is a ci-test/ branch, and the main rule otherwise. The main rule does not check which workflow file the
+# run is: `workflow` is the workflow's display name (its `name:`), not its file, and `ref` is the run's ref. So it
+# gives a token to any workflow named "Build" that runs on main, from any event. The test rule checks the file and the
+# event (workflow_ref and event_name): only this file, started by hand on a ci-test/ branch, in the environment
+# enroll-review-test. The review and comment jobs of this file ask for an identity token; no other job of it does.
+# A ci-test/ branch cannot run a review any more: the review job also signs in to Google for the collector's token,
+# and Google's provider admits refs/heads/main alone, so `gh workflow run build.yaml --ref ci-test/<name> -f pr=<n>`
+# fails at that step. A change to the review is tested by running this file on main against a test pull request
+# (`gh workflow run build.yaml -f pr=<n>`, one opened by this repository, not a maintainer's open enrollment).
 #
 # The review's Claude Code exports its usage by OpenTelemetry to Theorem's cost collector, at the public URL below
 # (agent-infra spend/'s stack output publicCollectorUrl, a literal here because it is public), with the collector's
@@ -104,6 +112,28 @@ name: "Build"
 # (.github/scripts/review-run sets them). The review fails if the token cannot be read, or if the collector does not
 # answer 200 to an empty export with the token before the review starts, rather than lose the review's spend in
 # silence. If it refuses one after the review, the comment is still posted and the review job fails.
+#
+# The review's conversation goes from one push to the next as an artifact of the review's run, named
+# enroll-review-<pull request>-<project>, sealed (AES-256-GCM) by .github/scripts/review-session under a key derived
+# from REVIEW_CONVERSATION_KEY (32 random bytes, base64), a secret of the environment enroll-review. The review job
+# restores the newest one of the pull request and project that build.yaml uploaded, that opens with the key, and whose
+# review is the one the review comment shows; review-run resumes it in a fork (claude --resume <id> --fork-session) and
+# keeps the new conversation, and the review job seals and uploads that once the review has written a comment. The logs
+# of the Restore and Review steps say which it did: "review-run: resuming the conversation <id> of the review of
+# <commit>", or "a fresh review". A conversation holds the public inputs the review read and the review's own
+# reasoning, which no log or comment shows, and no token: review-run keeps none that looks like a credential. It is
+# sealed because anyone signed in to GitHub can download this repository's artifacts, and it is not in the Actions
+# cache because every pull request's own run, a fork's too, can read main's caches (the header of
+# .github/scripts/review-session has the measurement).
+# Only the review job holds the key: the environment's deployment branch rule allows main alone, and GitHub checks it
+# against the run's ref, which is main for pull_request_target and refs/pull/<n>/merge for a pull request's own run
+# (https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes).
+# A run on a ci-test/ branch uses the environment enroll-review-test instead, which holds no key unless someone gives it
+# one, so it reviews fresh. Without the key the review runs fresh on each push, with a warning. An artifact lasts as
+# long as the repository's artifact retention (90 days by default). The environments, their deployment branch rule and
+# the key are declared in the organisation's infrastructure code, and made by its apply: do not make them by hand, which
+# the next apply would undo or fail on. A new key, or a new seal version in review-session, discards every kept
+# conversation.
 #
 # To build a pull request by number:
 #   gh workflow run build.yaml -f pr=123
@@ -133,10 +163,10 @@ jobs:
   project-builds:
     # A static name: GitHub reports the check under it on every run, and a required job has no job-level if:.
     name: project-builds
-    # 24.04, not ubuntu-latest: Ubuntu 26.04 has no qemu-user-static package, which --checks takes qemu from.
     runs-on: ubuntu-24.04
     # tools/check has no time limit of its own: this one is the runner's, the most it allows, for two builds and
-    # --checks (at most 2 x 20 minutes of seed runs on the unchanged code, and the 45-minute budget of the breakages).
+    # --checks (at most 30 minutes of runs for the checks of the binaries, 2 x 20 minutes of seed runs on the unchanged
+    # code, and the 45-minute budget of the breakages).
     timeout-minutes: 360
     permissions:
       contents: read
@@ -176,12 +206,19 @@ jobs:
           # It is taken out of its package, not installed: the package registers qemu with the kernel for riscv64
           # programs (binfmt_misc), and a build.sh could then run the riscv64 programs that it makes. (From #24.)
           # Without it, --checks says that it could not measure, and the build is checked as before.
+          # The check of system calls reads the runs of qemu 10.0.11 only (tools/check_binaries.py QEMU_VERSIONS), so this
+          # is Debian 13's qemu-user 1:10.0.11+ds-0+deb13u1, pinned by its SHA-256 at its snapshot.debian.org address:
+          # the build theorem-labs/oss-verify-proofs's toolchain/runner.Dockerfile runs counterexamples with. Its
+          # qemu-riscv64 is a static binary; the -static name is the one tools/check looks for.
           mkdir "$RUNNER_TEMP/qemu" && cd "$RUNNER_TEMP/qemu"
-          if { apt-get download -q qemu-user-static || { sudo apt-get update -qq && apt-get download -q qemu-user-static; }; } \
-              && dpkg-deb -x qemu-user-static_*.deb . && test -x usr/bin/qemu-riscv64-static; then
+          deb=qemu-user_10.0.11+ds-0+deb13u1_amd64.deb
+          if curl -fsSL --retry 3 -o "$deb" https://snapshot.debian.org/file/a0eaa62f815efb2361d43b1e3f8011c17ad9123a \
+              && echo "6b6fea55551fbcc1eb30e146ad5abdfbb49f8fa8c5998016242126de4d7f80df  $deb" | sha256sum -c --quiet \
+              && dpkg-deb -x "$deb" . && ln -s qemu-riscv64 usr/bin/qemu-riscv64-static \
+              && usr/bin/qemu-riscv64-static --version | grep -q 'version 10\.0\.11'; then
             echo "$RUNNER_TEMP/qemu/usr/bin" >> "$GITHUB_PATH"
           else
-            echo "::warning::No qemu-riscv64-static: tools/check --checks cannot run the fuzz targets."
+            echo "::warning::No qemu-riscv64-static 10.0.11: tools/check --checks cannot run the fuzz targets."
           fi
 
       - name: Pull the pinned toolchain image
@@ -268,12 +305,18 @@ jobs:
     if: ${{ !cancelled() && needs.project-builds.outputs.name != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # For the key that seals the review's conversation, which only a run on main gets (the top of this file). No
+    # deployment: the environment holds a secret, and the pull request shows no deployment.
+    environment:
+      name: ${{ startsWith(github.ref, 'refs/heads/ci-test/') && 'enroll-review-test' || 'enroll-review' }}
+      deployment: false
     permissions:
       contents: read
       pull-requests: read
       # For the pull request's checks, which the review reads.
       checks: read
       statuses: read
+      # Also for the artifacts of the review's earlier runs (the conversation).
       actions: read
       # Only for the GitHub identity tokens that federation trades for an Anthropic token and for a Google access
       # token of ossv-ci@theorem-agent-infra. This job runs no code of the pull request.
@@ -285,6 +328,10 @@ jobs:
       GCP_SERVICE_ACCOUNT: ossv-ci@theorem-agent-infra.iam.gserviceaccount.com
     outputs:
       comment: ${{ steps.review.outputs.comment }}
+      # What answered the review, as .github/scripts/review-served recorded it, for the comment job to check.
+      served: ${{ steps.review.outputs.served }}
+      # true when review-run refused the review (exit 4): another provider or model answered, or nothing shows which.
+      refused: ${{ steps.review.outputs.refused }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
@@ -302,6 +349,25 @@ jobs:
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
         run: GITHUB_STEP_SUMMARY=/dev/null .github/scripts/take-project build
 
+      # The conversation of the last review of this pull request and project, which the review resumes (sealed, at the
+      # top of this file). None on its first review, or once its artifact has expired: a fresh review. A failure of
+      # this step (an install, a time limit) gives a fresh review too, never no review: review-run resumes only a
+      # directory whose `session` file, written last, names a whole conversation.
+      - name: Restore the last review's conversation
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          NAME: ${{ needs.project-builds.outputs.name }}
+          REVIEW_CONVERSATION_KEY: ${{ secrets.REVIEW_CONVERSATION_KEY }}
+        run: |
+          dpkg -s python3-cryptography > /dev/null 2>&1 \
+            || sudo apt-get install -y -qq python3-cryptography \
+            || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-cryptography; }
+          .github/scripts/review-session restore "$RUNNER_TEMP/review-session"
+
       - name: Gather what the review reads
         timeout-minutes: 15
         env:
@@ -314,6 +380,9 @@ jobs:
           BINARIES: ${{ needs.project-builds.outputs.binaries }}
           CHECKS: ${{ needs.project-builds.outputs.checks }}
           BUILD_CONCLUSION: ${{ needs.project-builds.result }}
+          # For the changes since the last review's commit, when there is one.
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
+          REVIEW_SESSION: ${{ runner.temp }}/review-session
         run: |
           dpkg -s python3-yaml unzip > /dev/null 2>&1 \
             || sudo apt-get install -y -qq python3-yaml unzip \
@@ -361,8 +430,10 @@ jobs:
         env:
           PR: ${{ github.event.pull_request.number || inputs.pr }}
           NAME: ${{ needs.project-builds.outputs.name }}
-          # Claude Code trades the identity token for an Anthropic token on its first request. The token lives as
-          # long as the rule says (an hour), longer than this step.
+          # Claude Code trades the identity token for an Anthropic token, which lives at most twice the five minutes a
+          # GitHub identity token has, and reads this file again for each new one. review-run writes a new identity
+          # token into it every minute, through the request URL and token the runner gives this step, so that each
+          # exchange reads one that is not expired and not used before.
           ANTHROPIC_IDENTITY_TOKEN_FILE: ${{ runner.temp }}/oidc/jwt
           # The federation rule above, in Anthropic's organization "Theorem - HDO": the test rule for a ci-test/ branch.
           ANTHROPIC_FEDERATION_RULE_ID: ${{ startsWith(github.ref, 'refs/heads/ci-test/') && 'fdrl_019NVessgKqckm7owmasqfm7' || 'fdrl_019restxFx3PhpLhbziQoQKf' }}
@@ -373,6 +444,10 @@ jobs:
           # The collector's public URL: agent-infra spend/'s stack output publicCollectorUrl.
           OTEL_EXPORTER_OTLP_ENDPOINT: https://agent-otel-public-6acxmql5za-uw.a.run.app
           GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
+          # The conversation of the last review, which review-run resumes, and the commit this review is of. After a
+          # review, the directory holds this review's conversation, which the next step keeps for the next push.
+          HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
+          REVIEW_SESSION: ${{ runner.temp }}/review-session
         run: |
           # pipefail: the default shell of a step is `bash -e`, whose pipeline status is the last command's, so
           # without it a curl or jq failure would be hidden by a base64 that succeeded on what it got.
@@ -405,13 +480,58 @@ jobs:
           echo "::stop-commands::$resume"
           code=0
           .github/scripts/review-run .review || code=$?
-          rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE"
+          rm -f "$ANTHROPIC_IDENTITY_TOKEN_FILE" "$ANTHROPIC_IDENTITY_TOKEN_FILE".new.*
+          # The record of what answered, also when the review is not to be posted or did not finish: the comment job
+          # checks it, and names what answered. Its names are ones review-served cleaned, so it holds no command.
+          if [ -f .review/served ]; then
+            delimiter="served-$(openssl rand -hex 16)"
+            { echo "served<<$delimiter"; cat .review/served; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+          fi
           echo "::$resume::"
           # 3: the review is written, but the collector refused the token after it. The comment is still posted, and
           # the next step fails the job.
           if [ "$code" = 3 ]; then
             echo "collector=refused" >> "$GITHUB_OUTPUT"
+          elif [ "$code" = 4 ]; then
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+            # 4: another provider or model answered, or nothing shows which (review-served). The comment job posts
+            # none of the review, and says what answered. review-run's line names only what review-served cleaned.
+            failure=$(grep -m1 -xE "the review is not published: [][A-Za-z0-9 ,.:;@+?/*()'_-]{1,2100}" \
+              .review/failure.txt 2> /dev/null) \
+              || failure="the review is not published: review-run gave no reason"
+            echo "::error::${failure^}"
+            { echo "### The review is not published"; echo; echo "    $failure"; } >> "$GITHUB_STEP_SUMMARY"
+            exit "$code"
           elif [ "$code" != 0 ]; then
+            # Why, on the run's page and in the job's summary, not only in the log above: review-run's own line of
+            # plain words from failure.txt, and Claude Code's message from failure-detail.txt with no backtick, so
+            # that it stays inside its code block. The summary is public: a message that holds what looks like a
+            # credential (review-comment's scan, over the whole file; an error of the scan counts as one) or the
+            # collector's token is not shown.
+            failure=$(grep -m1 -xE '[A-Za-z0-9 ,._()-]{1,200}' .review/failure.txt 2> /dev/null) || failure=""
+            failure=${failure:-review-run ended with exit status $code before Claude Code wrote a result}
+            detail=$(head -c 1000 .review/failure-detail.txt 2> /dev/null | tr -d '`' | tr '[:cntrl:]' ' ') || true
+            scan=0
+            [ -z "$detail" ] || python3 .github/scripts/review-comment --holds-credential < .review/failure-detail.txt \
+              || scan=$?
+            if [ "$scan" != 3 ]; then detail=""; fi
+            if [ -n "$OTEL_COLLECTOR_TOKEN" ] && [[ $detail == *"$OTEL_COLLECTOR_TOKEN"* ]]; then detail=""; fi
+            echo "::error::The review did not finish: $failure"
+            {
+              echo "### The review did not finish"
+              echo
+              echo "$failure."
+              if [ -n "$detail" ]; then
+                echo
+                echo "Claude Code's message:"
+                echo
+                echo '```'
+                echo "$detail"
+                echo '```'
+              fi
+              echo
+              echo "The log of the Review step has each try's ending."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit "$code"
           fi
           # The collector's token never leaves this job (review-comment refuses the other credentials). Compared in
@@ -422,6 +542,32 @@ jobs:
           fi
           delimiter="review-$(openssl rand -hex 16)"
           { echo "comment<<$delimiter"; head -c 60000 .review/comment.md; echo; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+          if [ -s "$REVIEW_SESSION/session" ]; then echo "session=kept" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Seal this review's conversation for the next push's review
+        id: seal
+        if: ${{ steps.review.outputs.session == 'kept' }}
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          NAME: ${{ needs.project-builds.outputs.name }}
+          REVIEW_CONVERSATION_KEY: ${{ secrets.REVIEW_CONVERSATION_KEY }}
+        run: |
+          sealed="$RUNNER_TEMP/review-sealed/conversation.sealed"
+          .github/scripts/review-session seal "$RUNNER_TEMP/review-session" "$sealed"
+          if [ -s "$sealed" ]; then echo "sealed=$sealed" >> "$GITHUB_OUTPUT"; fi
+
+      # Public, as every artifact of this repository is: it opens only with the key (the top of this file).
+      - name: Keep the sealed conversation for the next push's review
+        if: ${{ steps.seal.outputs.sealed != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (sha-pinned)
+        with:
+          name: enroll-review-${{ github.event.pull_request.number || inputs.pr }}-${{ needs.project-builds.outputs.name }}
+          path: ${{ steps.seal.outputs.sealed }}
+          if-no-files-found: error
+          # Sealed bytes do not compress. A re-run of the job replaces the artifact of its run.
+          compression-level: 0
+          overwrite: true
 
       - name: Fail if the collector refused the token after the review
         if: ${{ steps.review.outputs.collector == 'refused' }}
@@ -452,6 +598,11 @@ jobs:
     # required reviewer and no wait timer, so it adds no wait and no approval. Removing this line does not weaken the
     # job; it stops it working.
     environment: comment
+    # One comment job at a time for a pull request, whatever event started its run (the run's own group is by event):
+    # two at once could each find no comment, each post one, and only the first would ever be updated after.
+    concurrency:
+      group: build-comment-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: false
     permissions:
       # contents: read only for the checkout of .github/scripts, which a job with no contents permission cannot make.
       # It writes with the oss-verify App's token, not this job's.
@@ -516,6 +667,10 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
           REVIEW: ${{ needs.review.outputs.comment }}
+          # The record of what answered the review: review-comment posts the review only if it shows the provider
+          # asked for, and otherwise says that it is not published, and why.
+          SERVED: ${{ needs.review.outputs.served }}
+          REFUSED: ${{ needs.review.outputs.refused }}
           CHECKS: ${{ needs.project-builds.outputs.checks }}
           HEAD_SHA: ${{ needs.project-builds.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -523,19 +678,31 @@ jobs:
           set -euo pipefail
           printf '%s' "$REVIEW" > "$RUNNER_TEMP/review.md"
           printf '%s' "$CHECKS" > "$RUNNER_TEMP/checks.md"
+          printf '%s' "$SERVED" > "$RUNNER_TEMP/served"
+          # Only a run of the pull request's current head posts: a run of an older head that finished later would
+          # replace the newer head's review, or mark it not current. The current head's own run posts.
+          current=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+          if [ "$current" != "$HEAD_SHA" ]; then
+            echo "The pull request's head is now $current, not $HEAD_SHA: the run of $current posts the comment."
+            exit 0
+          fi
           # Ours is the oss-verify App's comment that starts with the marker.
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '.[] | select(.user.login == "oss-verify[bot]" and (.body | startswith("<!-- oss-verify-review -->"))) | .id')
           existing=${existing%%$'\n'*}
-          # The comment already posted, whenever there is one: review-comment keeps it, marked not current, if this
-          # push's review is empty, blank or refused once it has screened it.
+          # The comment already posted, whenever there is one: review-comment keeps it, marked not current (or as it
+          # was, when it is the review of this same commit), if this push's review is empty, blank or refused once it
+          # has screened it.
           previous=()
           if [ -n "$existing" ]; then
             gh api "repos/$REPO/issues/comments/$existing" --jq .body > "$RUNNER_TEMP/previous.md"
             previous=(--previous "$RUNNER_TEMP/previous.md")
           fi
+          refused=()
+          [ "${REFUSED:-}" != true ] || refused=(--refused)
           python3 .github/scripts/review-comment --review "$RUNNER_TEMP/review.md" --checks "$RUNNER_TEMP/checks.md" \
-            --head "$HEAD_SHA" --run "$RUN_URL" "${previous[@]}" > "$RUNNER_TEMP/comment.md"
+            --head "$HEAD_SHA" --run "$RUN_URL" --served "$RUNNER_TEMP/served" "${refused[@]}" "${previous[@]}" \
+            > "$RUNNER_TEMP/comment.md"
           if [ -n "$existing" ]; then
             jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' \
               | gh api --method PATCH "repos/$REPO/issues/comments/$existing" --input - > /dev/null

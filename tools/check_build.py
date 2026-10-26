@@ -24,7 +24,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUILDER_DIR = ROOT / "infra" / "base-builder"
 CACHE = pathlib.Path(os.environ.get("XDG_CACHE_HOME") or "~/.cache").expanduser() / "oss-verify-check"
 FULL_COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
-TOOLCHAIN_ARG = re.compile(r"^ARG TOOLCHAIN=(\S+)$", re.M)
 TOOLCHAINS = ROOT / "infra" / "toolchains.tsv"
 # How a toolchain's UBSan builds choose their checks: the release's fixed flags, or the project's ubsan_checks.
 UBSAN_MODES = ("fixed", "checks")
@@ -172,21 +171,13 @@ def tree_hash(directory):
     return digest.hexdigest()
 
 
-def toolchain():
-    """The toolchain image infra/base-builder/Dockerfile builds FROM when given none (its ARG TOOLCHAIN default)."""
-    match = TOOLCHAIN_ARG.search((BUILDER_DIR / "Dockerfile").read_text(encoding="utf-8"))
-    if not match:
-        raise Failed("infra/base-builder/Dockerfile pins no toolchain (ARG TOOLCHAIN=...)")
-    return match.group(1)
-
-
 def toolchains():
     """The toolchain images a project can be built with, oldest first (infra/toolchains.tsv): [(name, image, ubsan,
     languages)]. ubsan is how the UBSan builds choose their checks: "fixed" (the release's flags) or "checks"
     (ubsan_checks). languages are the values of project.yaml's language that the image builds."""
     rows = [line.split("\t") for line in TOOLCHAINS.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")]
-    if not rows or any(len(row) < 4 or row[2] not in UBSAN_MODES or not row[3] for row in rows):
+    if not rows or any(len(row) < 4 or not row[1] or row[2] not in UBSAN_MODES or not row[3] for row in rows):
         raise Failed(f"{TOOLCHAINS} lists no toolchain, or a row has no image, no ubsan of {', '.join(UBSAN_MODES)} "
                      "or no languages")
     return [(row[0], row[1], row[2], tuple(row[3].split(","))) for row in rows]
@@ -321,10 +312,12 @@ def empty_directory(path, tag, *, labels):
 DOCKER_FAILED = 125
 
 
-def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels):
+def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels, record=False):
     """Run `compile` for one build in a fresh container with no network, its $OUT mounted at `out`. `ubsan`, if given,
     is (checks, left out[, left out of C compiles]): the UBSan checks of the build, those that trap mode leaves out,
-    and those that its C compiles leave out. `labels`: docker run arguments for the container, work_label()."""
+    and those that its C compiles leave out. `labels`: docker run arguments for the container, work_label(). With
+    `record`, compile records each fuzz target's link in $OUT/.records/ for the checks of the binaries
+    (tools/check_links.py); the binaries are the same."""
     step(f"compile: the {build} build (SANITIZER={sanitizer}), with no network")
     empty_directory(out, tag, labels=labels)
     owner = f"{os.getuid()}:{os.getgid()}"
@@ -335,6 +328,8 @@ def compile_build(tag, build, sanitizer, out, ubsan=None, *, labels):
         checks = ["-e", f"OV_UBSAN_CHECKS={','.join(ubsan[0])}", "-e", f"OV_UBSAN_EXCLUDE={','.join(ubsan[1])}"]
         if len(ubsan) > 2 and ubsan[2]:
             checks += ["-e", f"OV_UBSAN_C_EXCLUDE={','.join(ubsan[2])}"]
+    if record:
+        checks += ["-e", "OV_RECORD=1"]
     command = ["docker", "run", "--rm", "--init", "--network=none", *labels, "-e", f"SANITIZER={sanitizer}",
                "-e", f"OV_OWNER={owner}", *jobs, *checks, "-v", f"{out}:/out", tag, "compile"]
     code = run(*command)

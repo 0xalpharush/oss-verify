@@ -91,11 +91,26 @@ jobs:
           esac
 
       # strace: tools/tests checks that the review's helpers keep the GitHub token out of every process's arguments.
-      - name: Install PyYAML, pytest and strace
+      # cryptography: .github/scripts/review-session seals the review's conversation with it.
+      - name: Install PyYAML, pytest, cryptography and strace
         if: env.FORK != 'true'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml python3-pytest strace
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml python3-pytest python3-cryptography strace
 
-      # The Docker tests (tools/tests/test_builder.py) need the toolchain image and are skipped here.
+      # The binary checks' rules (tools/binary_isa.py, tools/syscall_shapes.py) are tested against the files of the
+      # public process model at the commit they were written against, fetched anonymously.
+      - name: The process model the binary checks were written against
+        if: env.FORK != 'true'
+        run: |
+          commit=$(python3 -c 'import sys; sys.path.insert(0, "tools"); import binary_isa, syscall_shapes
+          assert binary_isa.MODEL_COMMIT == syscall_shapes.MODEL_COMMIT, "the two checks name two model commits"
+          print(syscall_shapes.MODEL_COMMIT)')
+          git init -q "$RUNNER_TEMP/model"
+          git -C "$RUNNER_TEMP/model" fetch -q --depth 1 https://github.com/theorem-labs/rocq-linux-process-semantics "$commit"
+          git -C "$RUNNER_TEMP/model" checkout -q --detach FETCH_HEAD
+          echo "OSS_VERIFY_MODEL=$RUNNER_TEMP/model" >> "$GITHUB_ENV"
+
+      # The Docker tests (tools/tests/test_builder.py, test_binary_checks_docker.py) need the toolchain image and are
+      # skipped here.
       - name: The tests in tools/tests
         if: env.FORK != 'true'
         run: python3 -m pytest -q -p no:cacheprovider tools/tests
