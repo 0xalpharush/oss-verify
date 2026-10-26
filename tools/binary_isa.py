@@ -792,9 +792,16 @@ def outside_sites(buf, base, clean, outw, pairs_fn):
     return res
 
 
+# The two notes Go's linker writes in front of .text: the Go build id (name "Go", type 4) and the GNU build id (name
+# "GNU", type NT_GNU_BUILD_ID 3), each with a short descriptor.
+BUILD_ID_NOTES = {(b"Go\0\0", 4), (b"GNU\0", 3)}
+BUILD_ID_MAX = 128
+
+
 def whole_notes(data, off, size):
-    """True when the bytes [off, off + size) are exactly a sequence of ELF notes: each a 12-byte header (namesz,
-    descsz, type), then the name and the descriptor, each padded to 4 bytes, the last ending at the end."""
+    """True when the bytes [off, off + size) are exactly a sequence of build-id notes (BUILD_ID_NOTES): each a 12-byte
+    header (namesz, descsz, type), the name and a descriptor of at most BUILD_ID_MAX bytes, each padded to 4 bytes,
+    the last ending at the end. Any other bytes are not taken for notes."""
     end = off + size
     if off % 4 or size % 4 or end > len(data) or size == 0:
         return False
@@ -802,8 +809,11 @@ def whole_notes(data, off, size):
     while at < end:
         if at + 12 > end:
             return False
-        namesz, descsz, _ = struct.unpack_from("<III", data, at)
-        at += 12 + (namesz + 3) // 4 * 4 + (descsz + 3) // 4 * 4
+        namesz, descsz, kind = struct.unpack_from("<III", data, at)
+        name = data[at + 12:at + 12 + (namesz + 3) // 4 * 4]
+        if (name, kind) not in BUILD_ID_NOTES or descsz > BUILD_ID_MAX:
+            return False
+        at += 12 + len(name) + (descsz + 3) // 4 * 4
     return at == end
 
 

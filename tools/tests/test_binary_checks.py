@@ -598,7 +598,7 @@ class Runs(unittest.TestCase):
             self.write(f"l{n}.status", 0)
             (self.results / f"l{n}.trace").write_text(text)
         verdicts = {"calls": 12, "names": ["openat", "read", "exit_group"], "unmodeled": [], "exited": True,
-                    "verdict": "pass", "host_log": "present", "child_records": 0}
+                    "verdict": "pass", "host_log": "present"}
         seen = {}
 
         def check_trace(model, text, *, stance, require_exit, binary, lengths):

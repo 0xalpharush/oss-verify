@@ -310,6 +310,9 @@ class WhereTheCodeIs(Base):
         # The same bytes with a size that runs past the section are not notes: decoded, and they fail.
         bad = struct.pack("<III", 4, 4000, 4) + b"Go\0\0" + CNOP * 4
         res, out = self.one(as_note(mkelf(bad, text_flags=0x2, gap=NOP)), "RVC")
+        # A well-formed note that is not a build id can wrap any bytes: it is decoded too.
+        other = struct.pack("<III", 4, 8, 1) + b"XYZ\0" + CNOP * 4
+        self.one(as_note(mkelf(other, text_flags=0x2, gap=NOP)), "RVC")
 
     def test_a_section_must_be_where_its_segment_maps_it(self):
         # The code is at 2 mod 4, and its section header says 0 mod 4.

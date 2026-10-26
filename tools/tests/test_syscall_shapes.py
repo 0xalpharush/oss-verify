@@ -287,7 +287,6 @@ ACCEPT = [
      "1 prlimit64(0,RLIMIT_CORE,NULL,0x40007ff8b0) = 0 ({rlim_cur=0, rlim_max=0})\n"
      "1 prlimit64(0,RLIMIT_CORE,{rlim_cur=0, rlim_max=0},NULL) = 0\n" + EXIT),
     ("set_tid_address, then getpid with the same answer", TID + "1 getpid() = 1\n" + EXIT),
-    ("a plain fork with no file open", "1 clone(SIGCHLD,0,0,0,0) = 1234\n" + EXIT),
     ("sched_getaffinity with a length the kernel refuses", "1 sched_getaffinity(0,12,0x40007ff8b0) = -1 errno=22\n"
      + EXIT),
     ("sched_setscheduler to SCHED_IDLE", "1 sched_setscheduler(0,5,0x40007ff8b0,0,0,0) = 0\n" + EXIT),
@@ -330,11 +329,6 @@ ACCEPT = [
     ("lseek SEEK_SET to 10", OPEN3 + "1 lseek(3,10,SEEK_SET) = 10\n" + EXIT),
     ("lseek SEEK_END on a file", OPEN3 + "1 lseek(3,0,SEEK_END) = 4096\n" + EXIT),
     ("setuid answered -EPERM", "1 setuid(0) = -1 errno=1\n" + EXIT),
-    ("a fork, and the records of its child (Fork.v: the child is not executed by this model)",
-     "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n99 exit_group(0)\n" + EXIT),
-    # -- the parser --------------------------------------------------------------------------------------------------
-    ("a child's record on the line of a fork with no return yet",
-     "1 clone(SIGCHLD,0,0,0,0)99 exit_group(0)\n = 99\n" + EXIT),
     ("a quoted path that looks like a record", '1 openat(AT_FDCWD,"12 evil(x",O_RDONLY) = 3\n' + EXIT),
     ("qemu's errno text after a return",
      "1 ioctl(1,TIOCGWINSZ,0x40007ff8b0) = -1 errno=25 (Inappropriate ioctl for device)\n" + EXIT),
@@ -592,11 +586,9 @@ REJECT = [
     ("setresgid answered -EAGAIN", "1 setresgid(0,0,0) = -1 errno=11\n" + EXIT),
     ("close of an open file that returned 5", OPEN3 + "1 close(3) = 5\n" + EXIT),
     ("close of an open file answered -EBADF", OPEN3 + "1 close(3) = -1 errno=9\n" + EXIT),
-    ("a fork whose two returns are both 0", "1 clone(SIGCHLD,0,0,0,0) = 0\n = 0\n" + EXIT),
-    ("a fork that returned the task's own id", TID + "1 clone(SIGCHLD,0,0,0,0) = 1\n" + EXIT),
+    ("a fork that failed with an errno the model never gives", "1 clone(SIGCHLD,0,0,0,0) = -1 errno=5\n" + EXIT),
     ("a task id of 2^22", "1 set_tid_address(0x64dbf0) = 4194304\n" + EXIT),
     ("a second setsid that succeeded", "1 setsid() = 1\n1 setsid() = 1\n" + EXIT),
-    ("wait4 after a fork", "1 clone(SIGCHLD,0,0,0,0) = 1234\n1 wait4(-1,0x40007ff8b0,1,NULL) = -1 errno=10\n" + EXIT),
     ("a wait4 whose later return is not -ECHILD", "1 wait4(-1,0x40007ff8b0,1,NULL)\n = 0\n" + EXIT),
     ("a blocked read whose later return is more than its count",
      OPEN3 + "1 read(3,0x1000,4)\n = 8\n" + EXIT),
@@ -707,11 +699,12 @@ def test_shape_plants_are_modeled_by_name(model):
 
 
 def test_interleaved_plants_are_really_interleaved():
-    # Tidying an interleaved plant onto two lines would keep its verdict and stop testing the splitter.
+    # Tidying an interleaved plant onto two lines would keep its verdict and stop testing the splitter. No accepted
+    # plant is interleaved: one task's records never share a line, and after a fork the run is not decided.
     def multi(plants):
         return [label for label, text in plants
                 if any(len(list(S.split_records(line))) > 1 for line in text.splitlines())]
-    assert len(multi(ACCEPT)) >= 1 and len(multi(REJECT)) >= 3
+    assert multi(ACCEPT) == [] and len(multi(REJECT)) >= 3
 
 
 @needs_model
@@ -1051,46 +1044,34 @@ def test_matching_a_long_host_log_takes_linear_time():
 
 @needs_model
 def test_only_the_first_records_task_is_the_run(model, image):
-    # The model has one task. Before a fork it answers, a record of another task is unmodeled, changes no state, and
+    # The model has one task: a record of another task, with no fork before it, is unmodeled, changes no state, and
     # is not the run's exit.
     stray = "1 write(1,0x1000,2) = 2\n99 exit_group(0)\n"
     result = check(model, image, stray)
     assert result["verdict"] == "fail" and not result["exited"]
     assert any("not the run's task" in why for why in whys(result))
-    # After one, another task's records are the child's, which "is not executed by this model" (Sys/Kernel/Fork.v):
-    # they are counted, not checked, and the child's exit is not the run's.
-    child = "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n99 exit_group(0)\n"
-    result = check(model, image, child)
-    assert (result["verdict"], result["exited"], result["child_records"]) == ("fail", False, 2), result
-    assert result["unmodeled"] == [] and result["names"] == ["clone"]
-    result = check(model, image, child + EXIT)
-    assert (result["verdict"], result["child_records"]) == ("pass", 2), result
-    # A fork qemu logged with no return yet (the child's records landed on its line) is a fork too.
-    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0)99 getppid() = 1\n = 99\n" + EXIT)["verdict"] == "pass"
-    # A real fork logs two returns, the parent's pid and the child's 0, in either order.
-    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0) = 0\n = 99\n" + EXIT)["verdict"] == "pass"
-    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0) = 99\n = 0\n" + EXIT)["verdict"] == "pass"
-    assert check(model, image, "1 clone(SIGCHLD,0,0,0,0)\n = 0\n = 99\n" + EXIT)["verdict"] == "pass"
-    # After a fork, a return on a line of its own may be the child's: the run's call is not decided either way.
-    after = "1 clone(SIGCHLD,0,0,0,0) = 99\n = 0\n" + OPEN3
-    for tail in ("1 read(3,0x1000,4)99 getppid() = 8\n = 4\n", "1 lseek(3,100,SEEK_SET)99 getppid() = 100\n = 1\n"):
-        assert check(model, image, after + tail + EXIT)["verdict"] == "undecided"
+    # A fork the model answers ends what the trace decides: qemu interleaves the child's text with the run's inside
+    # lines, so the run is undecided, whatever comes after, in every shape qemu writes.
+    F = "1 clone(SIGCHLD,0,0,0,0)"
+    for after in (" = 99\n99 getppid() = 1\n99 exit_group(0)\n" + EXIT, "99 getppid() = 1\n = 99\n" + EXIT,
+                  " = 0\n = 99\n" + EXIT, " = 99\n = 0\n" + OPEN3 + "1 read(3,0x1000,4) = 0\n = 8\n" + EXIT,
+                  " = 99\n = 1 getppid()0\n = 1\n" + EXIT, " = 99\n1 wait4(-1,0x40007ff8b0,1,NULL) = -1 errno=10\n"):
+        result = check(model, image, F + after)
+        assert result["verdict"] == "undecided" and result["unmodeled"] == [], (after, result)
+        assert [u["call"] for u in result["undecided"]] == ["clone"] and "fork" in result["undecided"][0]["why"]
+    # Calls before the fork are judged as usual; a fork the model refuses fails; a fork that failed made no child,
+    # and the trace goes on.
+    assert check(model, image, "1 getppid() = 1\n" + F + " = 99\n" + EXIT)["verdict"] == "fail"
+    assert check(model, image, OPEN3 + F + " = 99\n" + EXIT)["verdict"] == "fail"
+    assert check(model, image, F + " = -1 errno=11\n1 write(1,0x1000,2) = 2\n" + EXIT)["verdict"] == "pass"
+    assert check(model, image, F + " = -1 errno=5\n" + EXIT)["verdict"] == "fail"
     # A record whose return never comes, or whose task's next record comes first, decides nothing.
     for text in (OPEN3 + "1 read(3,0x1000,4)\n" + EXIT, OPEN3 + "1 fsync(3)\n" + EXIT,
                  OPEN3 + "1 read(3,0x1000,4)--- SIGCHLD {si_signo=SIGCHLD} ---\n1 close(3) = 0\n" + EXIT):
         assert check(model, image, text)["verdict"] == "undecided", text
-    # A signal line on the record's line moves its return to the next line, which is still the run's.
+    # A signal line on the record's line moves its return to the next line, which is the run's.
     assert check(model, image, OPEN3 + "1 read(3,0x1000,4)--- SIGALRM {si_signo=SIGALRM} ---\n = 8\n" + EXIT)[
         "verdict"] == "fail"
-    # A fork the model refuses makes no child the run may have.
-    refused = check(model, image, OPEN3 + "1 clone(SIGCHLD,0,0,0,0) = 99\n99 getppid() = 1\n" + EXIT)
-    assert any("not the run's task" in why for why in whys(refused)), whys(refused)
-    # The child's calls change neither the ledger nor the descriptor table.
-    text = ("1 clone(SIGCHLD,0,0,0,0) = 99\n"
-            "99 mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0) = 0x100000\n"
-            "1 madvise(0x100000,4096,MADV_DONTNEED) = 0\n" + EXIT)
-    assert "lies in no tracked mapping" in [u["why"] for u in check(model, image, text)["unmodeled"]
-                                            if u["call"] == "madvise"][0]
     # The first record's task is the run, whatever its number.
     assert check(model, image, "77 write(1,0x1000,2) = 2\n77 exit_group(0)")["verdict"] == "pass"
 
@@ -1428,7 +1409,7 @@ def test_the_report_shape(model, image):
             "1 write(1,0x1000,2) = 2\n" + EXIT)
     result = check(model, image, text)
     assert set(result) == {"verdict", "calls", "names", "unmodeled", "undecided", "exited", "host_log", "image",
-                           "image_error", "child_records"}
+                           "image_error"}
     assert (result["image"], result["image_error"]) == ("present", None)
     assert result["calls"] == 6
     assert result["names"] == ["exit_group", "getppid", "kill", "write"]

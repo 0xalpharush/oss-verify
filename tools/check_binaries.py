@@ -236,7 +236,7 @@ def system_calls(model, stale, qemu, binary, inputs, results):
     if not QEMU_VERSIONS.match(qemu):
         return {"result": "error", "detail": f"{qemu or 'no qemu version'}: tools/syscall_shapes.py reads the -strace "
                                              "formats of qemu 8.2 and 10.0 only"}
-    statuses, unmodeled, undecided, calls, whole, children = {}, {}, [], 0, set(), 0
+    statuses, unmodeled, undecided, calls, whole = {}, {}, [], 0, set()
     for n, (name, _) in enumerate(inputs):
         status = read_number(results, f"l{n}.status")
         statuses[name] = status
@@ -252,7 +252,6 @@ def system_calls(model, stale, qemu, binary, inputs, results):
             return {"result": "error", "detail": f"{name}: the trace could not be read: "
                                                  f"{type(failure).__name__}: {failure}"}
         calls += verdict["calls"]
-        children += verdict["child_records"]
         for item in verdict["unmodeled"]:
             unmodeled.setdefault((item["call"], item["why"]), []).append(name)
         # A call whose answer depends on a value that neither qemu's log nor the host's call shows.
@@ -268,7 +267,6 @@ def system_calls(model, stale, qemu, binary, inputs, results):
         else:
             whole.add(name)
     result = {"stance": STANCE, "qemu": qemu, "statuses": statuses, "calls": calls, "whole": sorted(whole),
-              "child_records": children,
               "unmodeled": [{"call": call, "why": reason, "inputs": names}
                             for (call, reason), names in unmodeled.items()]}
     if stale:
@@ -282,9 +280,6 @@ def system_calls(model, stale, qemu, binary, inputs, results):
         result.update(result="pass", detail=f"{calls} calls on {len(inputs)} inputs, all covered")
     if undecided and result["result"] != "error":
         result["detail"] += "; not decided: " + "; ".join(undecided[:MAX_LISTED])
-    if children:
-        # Sys/Kernel/Fork.v: a forked child "is not executed by this model", so its records are not checked.
-        result["detail"] += f"; {children} records of forked children, which the model does not execute, not checked"
     return result
 
 

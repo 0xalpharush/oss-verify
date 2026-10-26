@@ -58,9 +58,9 @@ API:
   check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=None) -> {"verdict": "pass" | "fail" |
     "undecided", "calls": records read, "names": sorted distinct call names, "unmodeled": [{"call", "why"}] in trace
     order, one per distinct pair, "undecided": the same for the calls the trace does not decide, "exited": the trace
-    holds the run's end, "host_log": "present" | "missing", "image", "image_error", "child_records": a forked
-    child's records, not checked}. A host log that does not hold the tracer's `exec` line, and a `lengths` of None,
-    are "missing": the run did not start, or its host calls were not recorded.
+    holds the run's end, "host_log": "present" | "missing", "image", "image_error"}. A host log that does not hold
+    the tracer's `exec` line, and a `lengths` of None, are "missing": the run did not start, or its host calls were
+    not recorded.
   STANCES.
   MODEL_COMMIT, MODEL_FILES: the model commit the rules were checked against, and the code_sha256 of every model
     file the rules rest on (tools/model_release.py).
@@ -893,7 +893,7 @@ def sock_connected(kind):
 class Ledger:
     """A replay, from one run's trace, of the model's state that the trace shows: the address-space ledgers (State.v
     VmMaps: vm_reserved, vm_maps, vm_noaccess, vm_brk), the descriptor table (m_fds), the /tmp keys the run holds, the
-    pinned tid (m_tid), and the one-way flags m_rlimit_core, m_sigaltstack_installed and the children a clone made."""
+    pinned tid (m_tid), and the one-way flags m_rlimit_core and m_sigaltstack_installed."""
 
     def __init__(self, reserved):
         self.reserved = None if reserved is None else list(reserved)   # vm_reserved, or None when not known
@@ -918,9 +918,7 @@ class Ledger:
         self.rlimit_core_read = False       # m_rlimit_core is no longer None
         self.rlimit_core_hard = None        # rlim64_hard of the successful read print, or None when qemu omitted it
         self.sigaltstack_installed = False  # m_sigaltstack_installed
-        self.cloned = False                 # a clone or clone3 answered a child's pid
         self.setsid_done = False            # m_setsid_succeeded
-        self.fork_unseen = False            # a fork the model answers whose return the trace does not show
         self.ngroups = None                 # the run's number of groups (cr_groups), once an answer has shown it
         self.rlimit_core = None             # (rlim_cur, rlim_max) of m_rlimit_core, once the trace has shown it
         self.ids = {}                       # the first answer of each uid and gid read since the last set*id
@@ -1668,7 +1666,7 @@ def _openat(run, args, ret, errno, tid):
         elif fl in OPEN_EXCL or fl in OPEN_RDWR_EXCL:
             path_errnos = {EEXIST}
         else:
-            path_errnos = {EISDIR, ENOENT}
+            path_errnos = {EISDIR} if "O_CREAT" in fl else {EISDIR, ENOENT}
         why = any_open_answer(f"openat of {path!r}", "Sys/Fs/Open.v openat_resolved_spec", path_errnos)
         if why:
             return why
@@ -2684,7 +2682,14 @@ def _sched_yield(run, args, ret, errno, tid):
 def _uname(run, args, ret, errno, tid):
     """Sys/Kernel/Sys.v uname_spec: -EFAULT past access_okb, else 0 with the structure written (a buffer the model
     cannot write is unmodeled)."""
-    return answered(ret, errno, {0}, {EFAULT}, "uname", "Sys/Kernel/Sys.v uname_spec")
+    name = num(args[0]) if args else None
+    if name is None:
+        return und("unparseable argument list")
+    if name % TWO_POW_64 > TASK_SIZE - 390:
+        return errno_only(ret, errno, {EFAULT}, "uname with a buffer past TASK_SIZE",
+                          "Sys/Kernel/Sys.v uname_spec: access_okb name NEW_UTSNAME_SIZE")
+    # A buffer in range that cannot be written is unmodeled, not -EFAULT.
+    return answered(ret, errno, {0}, set(), "uname", "Sys/Kernel/Sys.v uname_spec")
 
 
 def _setid(run, args, ret, errno, tid, name):
@@ -3051,21 +3056,10 @@ def clone_shared(run):
     return None
 
 
-def clone_pid(run, ret, name):
-    """Sys/Kernel/Fork.v clone_pid_ok_b: the reason a successful fork's answer is not a child's pid, or None. The pid
-    is in (0, PID_MAX_ENVELOPE) and is not the task's own id (State.v m_tid), so 0, the child's own answer, is
-    outside the model."""
-    if not 0 < ret < PID_MAX_ENVELOPE:
-        return f"{name} returned {ret}: a child's pid is in (0, 2^22) (Sys/Kernel/Fork.v clone_pid_ok_b)"
-    if run.led.tid is not None and ret == run.led.tid:
-        return f"{name} returned the task's own id {ret} (Sys/Kernel/Fork.v clone_pid_ok_b)"
-    return None
-
-
 def _clone(run, args, ret, errno, tid):
     """Sys/Kernel/Fork.v clone_spec: exactly the flag word SIGCHLD (clone_fork_flags_b, the whole register), then
-    clone_resolve: unmodeled while a shared-file descriptor is open, else a child's pid or an errno of
-    clone_errnos."""
+    clone_resolve: unmodeled while a shared-file descriptor is open, else a child's pid or an errno of clone_errnos.
+    check_trace reads a successful fork's arguments only: after it the trace is not the run's alone."""
     if not args:
         return und("unparseable argument list")
     fl = flagword(args[0], CLONE_FLAGS)
@@ -3076,16 +3070,7 @@ def _clone(run, args, ret, errno, tid):
     why = clone_shared(run)
     if why:
         return why
-    if ret is not None and ret < 0:
-        return errno_only(ret, errno, CLONE_ERRNOS, "clone", "Sys/Kernel/Fork.v clone_errnos")
-    if ret is not None:
-        why = clone_pid(run, ret, "clone")
-        if why:
-            return why
-        run.led.cloned = True
-    else:
-        run.led.fork_unseen = True
-    return None
+    return errno_in(ret, errno, CLONE_ERRNOS, "clone", "Sys/Kernel/Fork.v clone_errnos")
 
 
 def _clone3(run, args, ret, errno, tid):
@@ -3098,21 +3083,12 @@ def _clone3(run, args, ret, errno, tid):
     why = clone_shared(run)
     if why:
         return why
-    if ret is not None and ret < 0:
-        return errno_only(ret, errno, CLONE_ERRNOS, "clone3", "Sys/Kernel/Fork.v clone_errnos")
-    if ret is not None:
-        why = clone_pid(run, ret, "clone3")
-        if why:
-            return why
-        run.led.cloned = True
-    else:
-        run.led.fork_unseen = True
-    return None
+    return errno_in(ret, errno, CLONE_ERRNOS, "clone3", "Sys/Kernel/Fork.v clone_errnos")
 
 
 def _wait4(run, args, ret, errno, tid):
-    """Sys/Kernel/Exit.v wait4_spec: wait4(-1, status, WNOHANG, NULL) is unmodeled once the run has a child
-    (m_has_children, which clone_resolve sets on every success), and with no child is -ECHILD, and nothing else."""
+    """Sys/Kernel/Exit.v wait4_spec: wait4(-1, status, WNOHANG, NULL) with no child is -ECHILD, and nothing else
+    (check_trace reads nothing after a fork, so the run has no child here)."""
     if len(args) < 4:
         return und("unparseable argument list")
     cite = "Sys/Kernel/Exit.v wait4_spec"
@@ -3122,11 +3098,6 @@ def _wait4(run, args, ret, errno, tid):
         return f"wait4 options {args[2]}: only WNOHANG (1) is answered ({cite})"
     if not is_null(args[3]):
         return f"wait4 with a non-NULL rusage is unmodeled ({cite})"
-    if run.led.cloned:
-        return f"wait4 after a fork: the run has a child, and the model answers unmodeled ({cite}: m_has_children)"
-    if run.led.fork_unseen:
-        return und(f"wait4 after a fork whose return the trace does not show: if it made a child, the model answers "
-                   f"unmodeled ({cite}: m_has_children)")
     if ret is None:
         return und(f"wait4 with no return in the trace: the model answers only -ECHILD ({cite})")
     return errno_only(ret, errno, {ECHILD}, "wait4(-1, ..., WNOHANG, NULL)", f"{cite}: the run has no child")
@@ -3145,10 +3116,7 @@ def _gettimeofday(run, args, ret, errno, tid):
     tv = num(args[0])
     if tv is not None and tv % TWO_POW_64 > TASK_SIZE - 8:
         return errno_only(ret, errno, {EFAULT}, "gettimeofday with a tv past TASK_SIZE", f"{cite}: access_okb")
-    # A tv in range that cannot be written is unmodeled, not -EFAULT. A pointer printed in 32 bits may be the low half
-    # of one past TASK_SIZE, so an -EFAULT there is not decided.
-    if ret is not None and ret < 0 and errno == EFAULT and tv is not None and tv < TWO_POW_32:
-        return undecided("the gettimeofday tv pointer")
+    # A tv in range that cannot be written is unmodeled, not -EFAULT. qemu prints the pointer in full.
     return answered(ret, errno, {0}, set(), "gettimeofday", cite)
 
 
@@ -3779,21 +3747,20 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
     Returns {"verdict": "pass", "fail" or "undecided", "calls": the run's records read, "names": the sorted distinct
     call names, "unmodeled": [{"call": name, "why": one line}] in trace order, one per distinct (call, why),
     "undecided": the same shape for the calls the trace does not decide, "exited": whether the trace holds the run's
-    end, "host_log": "present" or "missing", "image": "present" or "missing", "image_error": a one-line cause or null,
-    "child_records": the records of a forked child, which are not checked}.
+    end, "host_log": "present" or "missing", "image": "present" or "missing", "image_error": a one-line cause or
+    null}.
     A call is undecided when only a value the trace cannot show would change the model's answer: a register qemu
     printed in 32 bits that no host line recovers, a range an earlier failed MAP_FIXED may or may not have destroyed,
     a descriptor this run's pipe2 may have made, a path qemu cut short, a record whose arguments do not parse. A host
     log with no `exec` line is of a run that never started, and no log at all leaves every cut argument unrecoverable:
-    both are "missing". If the binary is not a readable 64-bit RISC-V ELF with a LOAD segment, its image is "missing";
-    the checker carries on as with binary=None, and image-dependent calls are undecided rather than raising.
+    both are "missing". If the binary is not a readable 64-bit RISC-V ELF with a LOAD segment, its image is "missing",
+    and the run is undecided: the initial break cannot be checked against the image.
 
-    The run is the task of the trace's first record. The model has one task (State.v m_tid). A fork it answers
-    (clone_spec, clone3_spec) makes a child that "is not executed by this model ([clone] describes the parent)"
-    (Sys/Kernel/Fork.v), so once the run's task has made one, another task's record is the child's: it is counted in
-    child_records and not checked. Before any such fork, another task's record is unmodeled. Neither changes the
-    replay or is the run's exit. The run's end is an exit or exit_group record of that task, or qemu's
-    SIGABRT death line after a self-kill this check decided: accepted under stance abort or either
+    The run is the task of the trace's first record. The model has one task (State.v m_tid), so another task's record
+    is unmodeled. A fork the model answers (clone_spec, clone3_spec) makes a child that "is not executed by this
+    model" (Sys/Kernel/Fork.v), and after it the child's text interleaves with the run's in the log, so the run is
+    undecided from the fork on, and nothing after it is read. The run's end is an exit or exit_group record of that
+    task, or qemu's SIGABRT death line after a self-kill this check decided: accepted under stance abort or either
     (Sys/Kernel/Signal.v send_sigabrt ends the run with State.v KillEv), or refused under stance off (the trace then
     covers the whole run, and the refusal is its one cause)."""
     if stance not in STANCES:
@@ -3811,8 +3778,6 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
     calls = 0
     saw_exit = saw_death = False
     owner = None
-    forked = False          # the run's task made a fork the model answers, so a child may write records too
-    child_records = 0
 
     def report(call, why):
         if (call, why) not in seen:
@@ -3824,8 +3789,8 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
         # address-space calls decide nothing, so the run is never a pass.
         report("the binary's image", und(f"{image_error}: the initial break and the ranges the image holds cannot be "
                                          "checked (Run.v valid_brk)"))
+
     def judge(tid, name, args, tail):
-        nonlocal forked
         ret = parse_ret(tail)
         e = ERRNO_TAIL.match(tail)
         errno = int(e.group(1)) if e else None
@@ -3835,8 +3800,6 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
         gate = GATES.get(name)
         if gate is not None:
             why = gate(run, args, ret, errno, tid)
-            if why is None and name in ("clone", "clone3") and (ret is None or ret > 0):
-                forked = True
         elif name in NAME_ONLY:
             why = None
         else:
@@ -3845,41 +3808,28 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
             report(name, why)
 
     # A record of the run's task whose return is not on its line. qemu flushes each print, and a single task cannot
-    # start a call before the last one returned, so the return of the run's task follows its record on the same line,
-    # unless a signal line or another task's record took the line meanwhile; then it comes on a line of its own
-    # (` = N`). At most one record of the run's task waits for its return (`pending`). Before any fork that return is
-    # the run's, and the record is judged with it. After a fork the child's returns land on such lines too, so a
-    # record of the run's task that waits for one is undecided, never judged on a guess. The fork itself logs two
-    # returns, the parent's pid and the child's 0, in either order: an answered fork owes one ` = 0`, which is the
-    # child's. A record whose return never comes, or whose task's next record comes first, is undecided.
+    # start a call before the last one returned, so its return follows its record on the same line, unless a signal
+    # line took the line meanwhile; then it comes on the next line of its own (` = N`). At most one record waits for
+    # its return (`pending`); one whose return never comes, or whose task's next record comes first, is undecided.
+    #
+    # A fork ends what the trace can decide. After it the child writes to the same log, and qemu writes each argument,
+    # the ` = ` and the value with writes of their own, so the two processes' text interleaves inside a line and no
+    # byte says whose it is. The fork's arguments are judged (a fork the model refuses fails); a fork they allow makes
+    # the run undecided, and nothing after it is read.
     pending = None
-    child_zero_owed = 0
     unjudged = und("its return is not where qemu writes it (not on its line, nor on the next line of its own), so "
                    "the answer cannot be read")
+    forked = und("a fork the model answers: after it qemu writes the child's text into the same log, interleaved "
+                 "inside lines, so the trace does not say which calls and returns are the run's (Sys/Kernel/Fork.v: "
+                 "the child is not executed by this model)")
     for line in text.splitlines():
         if kill_line(line):
             saw_death = True
         if not RECORD.match(line) and parse_ret(line) is not None:
-            value = parse_ret(line)
-            if pending is None:
-                if value == 0 and child_zero_owed:
-                    child_zero_owed -= 1
-                continue                    # a return of the child's, or of no record: it carries no call
-            ptid, pname, pargs, zero_seen = pending
-            if pname in ("clone", "clone3"):
-                if value == 0 and not zero_seen:
-                    pending = (ptid, pname, pargs, True)    # the child's 0; the parent's pid is still to come
-                    continue
-                judge(ptid, pname, pargs, line)
-                if forked and not zero_seen:
-                    child_zero_owed += 1
-            elif forked:
-                report(pname, und("its return came on a line of its own after a fork, where the child's returns land "
-                                  "too, so the trace does not say whose it is"))
-            else:
-                judge(ptid, pname, pargs, line)
-            pending = None
-            continue
+            if pending is not None:
+                judge(*pending, line)
+                pending = None
+            continue                        # a return with no record waiting carries no call
         for unknown in UNKNOWN_RECORD.finditer(line):
             calls += 1
             number = int(unknown.group(2))
@@ -3893,23 +3843,16 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
                 report(call, f"qemu has no name for syscall {number} and printed none of its arguments, so the "
                              f"{name} arm cannot be decided (the call reached the guest as -ENOSYS, which that arm "
                              "does not answer)")
+        stop = False
         for tid, name, args, tail, closed in split_records(line):
             if owner is None:
                 owner = tid
-            if tid != owner:
-                # A fork still waiting for its return has made the child whose record this is; if the model refuses
-                # that fork, the fork itself is reported when its return comes.
-                if forked or (pending is not None and pending[1] in ("clone", "clone3")):
-                    # Sys/Kernel/Fork.v: "the child is not executed by this model ([clone] describes the parent)".
-                    child_records += 1
-                    continue
-                calls += 1
-                names.add(name)
-                report(name, f"a record of task {tid}, which is not the run's task {owner}, and no fork the model "
-                             "answers came before it: the model has one task (State.v m_tid)")
-                continue
             calls += 1
             names.add(name)
+            if tid != owner:
+                report(name, f"a record of task {tid}, which is not the run's task {owner}, and no fork came before "
+                             "it: the model has one task (State.v m_tid)")
+                continue
             if pending is not None:
                 report(pending[1], unjudged)
                 pending = None
@@ -3924,16 +3867,18 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
                              "unmodeled (Specs.v syscall_spec)")
                 continue
             ret = parse_ret(tail)
-            if name in ("clone", "clone3") and ret == 0:
-                # The child returned first, on the parent's line: the parent's pid comes on a line of its own.
-                pending = (tid, name, args, True)
-                continue
+            if name in ("clone", "clone3") and (ret is None or ret >= 0):
+                # A fork that may have made a child: its arguments are judged, and then nothing after it is read.
+                why = GATES[name](run, args, None, None, tid)
+                report(name, why if why is not None else forked)
+                stop = True
+                break
             if ret is None and name not in EXIT_NAMES:
-                pending = (tid, name, args, False)
+                pending = (tid, name, args)
                 continue
             judge(tid, name, args, tail)
-            if name in ("clone", "clone3") and forked and ret is not None and ret > 0:
-                child_zero_owed += 1
+        if stop:
+            break
     if pending is not None:
         report(pending[1], unjudged)
     exited = saw_exit or (saw_death and run.self_kill)
@@ -3945,5 +3890,4 @@ def check_trace(model, text, *, stance, require_exit=True, binary=None, lengths=
     else:
         verdict = "fail" if (require_exit and not exited) else "pass"
     return {"verdict": verdict, "calls": calls, "names": sorted(names), "unmodeled": unmodeled, "undecided": unsure,
-            "exited": exited, "host_log": host_log, "image": image, "image_error": image_error,
-            "child_records": child_records}
+            "exited": exited, "host_log": host_log, "image": image, "image_error": image_error}
