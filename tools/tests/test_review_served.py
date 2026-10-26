@@ -27,7 +27,8 @@ ELSEWHERE = ("ANTHROPIC_BASE_URL", "ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BAS
              "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY",
              "ANTHROPIC_PROFILE", "ANTHROPIC_CONFIG_DIR", "XDG_CONFIG_HOME", "CLAUDE_CODE_EXTRA_BODY",
              "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH", "CLAUDE_CODE_REMOTE_SETTINGS_PATH",
-             "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION", "CLAUDE_CODE_MOCK_REMOTE_SETTINGS", "ANTHROPIC_CUSTOM_HEADERS")
+             "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION", "CLAUDE_CODE_MOCK_REMOTE_SETTINGS", "ANTHROPIC_CUSTOM_HEADERS",
+             "CLAUDE_CODE_CUSTOM_OAUTH_URL")
 # A stand-in agent: prints the events of the JSON list in $HOME/events.json, each on a line of its own as it comes; an
 # item {"sleep": seconds} waits, {"exit": status} ends there, {"raw": text} prints the text as it is, and {"child":
 # seconds} starts a process of its own that sleeps that long, as a tool the agent runs would. It writes its arguments
@@ -273,6 +274,8 @@ class Run(StandIn):
                                  ({"CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION": "1"}, "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION"),
                                  ({"CLAUDE_CODE_MOCK_REMOTE_SETTINGS": "1"}, "CLAUDE_CODE_MOCK_REMOTE_SETTINGS"),
                                  ({"ANTHROPIC_CUSTOM_HEADERS": "anthropic-beta: x"}, "ANTHROPIC_CUSTOM_HEADERS"),
+                                 ({"CLAUDE_CODE_CUSTOM_OAUTH_URL": "https://claude.ai"},
+                                  "CLAUDE_CODE_CUSTOM_OAUTH_URL"),
                                  ({"ANTHROPIC_UNIX_SOCKET": "/tmp/s"}, "ANTHROPIC_UNIX_SOCKET"),
                                  ({"CLAUDE_CODE_API_BASE_URL": "https://proxy.example"}, "CLAUDE_CODE_API_BASE_URL"),
                                  ({"_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL": "1"},
@@ -519,6 +522,29 @@ class Run(StandIn):
                 self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
         with open(os.path.join(self.dir, ".claude.json"), "w") as f:
             json.dump({"numStartups": 3, "env": {}}, f)
+        self.assertEqual(self.run_agent([init()] + turn(1) + [result()])[0], 0)
+
+    def test_the_env_of_every_file_the_global_config_can_come_from_is_read(self):
+        """The tool takes its global config from .config.json in its config home when that is not empty, and names
+        .claude.json after its OAuth setting (.claude-custom-oauth.json, for one): each is read."""
+        config = os.path.join(self.dir, "config")
+        for path, variables in ((os.path.join(self.dir, ".claude", ".config.json"), {}),
+                                (os.path.join(config, ".config.json"), {"CLAUDE_CONFIG_DIR": config}),
+                                (os.path.join(self.dir, ".claude-custom-oauth.json"), {}),
+                                (os.path.join(self.dir, ".claude-staging-oauth.json"), {}),
+                                (os.path.join(config, ".claude-local-oauth.json"), {"CLAUDE_CONFIG_DIR": config})):
+            with self.subTest(path=path):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    json.dump({"env": {"ANTHROPIC_BASE_URL": "https://proxy.example"}}, f)
+                code, err, _ = self.run_agent([init()] + turn(1) + [result()], **variables)
+                os.remove(path)
+                self.assertEqual(code, 4, err)
+                self.assertIn("settings set https:proxy.example, which", err)
+                self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
+        # An empty .config.json holds no env: the tool reads none from it, and it refuses nothing.
+        os.makedirs(os.path.join(self.dir, ".claude"), exist_ok=True)
+        open(os.path.join(self.dir, ".claude", ".config.json"), "w").close()
         self.assertEqual(self.run_agent([init()] + turn(1) + [result()])[0], 0)
 
     def test_a_fallback_block_or_content_that_hides_its_model_stops_the_agent(self):

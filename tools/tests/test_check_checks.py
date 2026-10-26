@@ -1645,6 +1645,26 @@ class ReviewSession(unittest.TestCase):
         files = sorted(p.name for p in target.iterdir()) if target.exists() else []
         return out.stdout, files, target
 
+    def test_a_conversation_sealed_before_the_record_existed_does_not_open(self):
+        # review-session v1 sealed conversations of reviews whose model nothing recorded: they do not open under v2.
+        old = self.directory / "old-scripts"
+        old.mkdir()
+        shutil.copy(REVIEW_COMMENT, old / "review-comment")
+        script = old / "review-session"
+        script.write_text(self.SCRIPT.read_text().replace('VERSION = "oss-verify enroll-review conversation v2"',
+                                                          'VERSION = "oss-verify enroll-review conversation v1"'))
+        script.chmod(0o755)
+        sealed = self.directory / "sealed-v1"
+        base = {"PATH": f"{self.directory / 'bin'}:{os.environ['PATH']}", "REPO": self.REPO, "PR": "8",
+                "NAME": "libreac", "REVIEW_CONVERSATION_KEY": self.KEY, "GH_TOKEN": self.TOKEN}
+        out = subprocess.run([str(script), "seal", str(self.session), str(sealed)], env=base, capture_output=True,
+                             text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.upload(sealed, 41)
+        stdout, files, _ = self.restored()
+        self.assertIn("skipped the artifact 100 of run 41: it does not open with the key", stdout)
+        self.assertEqual(files, [])
+
     def test_a_sealed_conversation_is_restored_whole_and_holds_no_plain_text(self):
         sealed = self.seal()
         self.assertNotIn(b"seed corpus", sealed.read_bytes())

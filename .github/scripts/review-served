@@ -57,10 +57,11 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
 - "firstParty" does not say where the requests went: the tool reports it also when ANTHROPIC_BASE_URL names a proxy
   (its own policy code calls that a custom endpoint), which could answer with any model and name it as it likes. So
   the record names the endpoint, and run does not start the agent at another. It reads the settings files a machine
-  or a user can write, and the global config (~/.claude.json, or .claude.json in CLAUDE_CONFIG_DIR), whose `env` the
-  tool also applies as it starts; a folder named by CLAUDE_CODE_MANAGED_SETTINGS_PATH or
-  CLAUDE_CODE_REMOTE_SETTINGS_PATH is refused rather than read. Remote managed settings that the organization's admin
-  signs (the tool applies routing names only from a verified copy) are not read.
+  or a user can write, and the global config in each of the files the tool can take it from (.config.json in the
+  config home, and .claude.json and its -staging-oauth, -local-oauth and -custom-oauth names), whose `env` the tool
+  also applies as it starts; a folder named by CLAUDE_CODE_MANAGED_SETTINGS_PATH or CLAUDE_CODE_REMOTE_SETTINGS_PATH is
+  refused rather than read. Remote managed settings that the organization's admin signs (the tool applies routing
+  names only from a verified copy) are not read.
 """
 import collections
 import glob
@@ -84,7 +85,9 @@ ELSEWHERE = ("ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BASE_URL", "_CLAUDE_CODE_
              "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
              "CLAUDE_CODE_EXTRA_BODY", "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
              "CLAUDE_CODE_REMOTE_SETTINGS_PATH", "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION",
-             "CLAUDE_CODE_MOCK_REMOTE_SETTINGS", "ANTHROPIC_CUSTOM_HEADERS")
+             "CLAUDE_CODE_MOCK_REMOTE_SETTINGS", "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_CUSTOM_OAUTH_URL")
+# The names the tool gives its global config, .claude<name>.json (its own list, 2.1.310).
+GLOBAL_CONFIG_NAMES = ("", "-staging-oauth", "-local-oauth", "-custom-oauth")
 PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
 # Settings, outside `env`, that let another model answer part of a review.
 OTHER_MODEL_SETTINGS = ("advisorModel",)
@@ -167,15 +170,20 @@ def endpoint(host):
     another variable or setting that could send them elsewhere or let another model answer. It reads the agent's
     environment, which is this process's, the `env` of each of the tool's settings files and of its global config,
     which the tool applies as it starts, and the Anthropic profile the tool reads; one it cannot read is
-    `unreadable-settings` or `unreadable-profile`."""
+    `unreadable-settings` or `unreadable-profile`. The global config is whichever of these the tool takes, so all are
+    read: .config.json in the config home (CLAUDE_CONFIG_DIR, else ~/.claude), and .claude<s>.json, for each <s> of
+    GLOBAL_CONFIG_NAMES, in CLAUDE_CONFIG_DIR, else the home directory. An empty file holds no `env`."""
     sources = [os.environ]
-    config = [os.path.join(os.environ.get("HOME", ""), ".claude"), os.environ.get("CLAUDE_CONFIG_DIR")]
-    globals_ = [os.path.join(os.environ.get("HOME", ""), ".claude.json")] + \
-        [os.path.join(d, ".claude.json") for d in config[1:] if d]
+    home = os.environ.get("HOME", "")
+    config = [os.path.join(home, ".claude"), os.environ.get("CLAUDE_CONFIG_DIR")]
+    globals_ = [os.path.join(d, ".config.json") for d in config if d] + \
+        [os.path.join(d, f".claude{name}.json") for d in (home, config[1]) if d for name in GLOBAL_CONFIG_NAMES]
     for path in [os.path.join(d, "settings.json") for d in config if d] + globals_ + [".claude/settings.json",
                  ".claude/settings.local.json", "/etc/claude-code/managed-settings.json"] \
             + sorted(glob.glob("/etc/claude-code/managed-settings.d/*.json")):
         try:
+            if path in globals_ and os.path.getsize(path) == 0:
+                continue
             with open(path) as f:
                 settings = json.load(f)
             env = settings.get("env", {})

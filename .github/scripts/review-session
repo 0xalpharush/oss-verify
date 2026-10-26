@@ -56,7 +56,9 @@ review_comment = importlib.util.module_from_spec(importlib.util.spec_from_loader
 _LOADER.exec_module(review_comment)
 BOT = "oss-verify[bot]"
 
-VERSION = "oss-verify enroll-review conversation v1"
+# v2: a conversation that a review sealed before .github/scripts/review-served (v1) does not open: nothing records
+# which model wrote it. The version is in the magic, the key's derivation and the associated data.
+VERSION = "oss-verify enroll-review conversation v2"
 MAGIC = (VERSION + "\n").encode()
 MEMBER = "conversation.sealed"
 # The runs whose artifacts are this job's own: build.yaml as the default branch has it, on pull_request_target (GitHub
