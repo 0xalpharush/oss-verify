@@ -28,7 +28,11 @@ and gives each build of each fuzz target two results:
    functions. So in the ubsan and asan-ubsan builds, each archive of the project's code must hold more of them than
    the same archive in the plain build, and so must the project's code as a whole.
 
-The plain build instruments nothing, by design; its result is "plain".
+The plain build instruments nothing, by design; its result is "plain" when its record is complete, and "error"
+when it has no record or an incomplete one. A Go program has no record (Go's linker writes no map): its result is
+"plain" when its own build information says Go's linker linked it with no cgo, and its function table gives every
+function of its code a line table, as Go's compiler and assembler do (a .syso file's C code has none), and "error"
+otherwise.
 
 What this catches: a build whose sanitizer flags did not reach some of its code, by mistake. The records are written
 inside the build's own container, so a build.sh that sets out to deceive the check can; the review of the pull request
@@ -44,6 +48,8 @@ import re
 import stat
 import struct
 import sys
+
+import binary_isa
 
 # The kinds of the toolchain's runtimes, by file name, as the toolchain's driver links them. Every other archive in a
 # sysroot's usr/lib is a library of the toolchain image: kind image-library.
@@ -162,6 +168,177 @@ class Record:
         if hashlib.sha256(data).hexdigest() != sha256:
             raise RecordError(f"the kept copy of {sha256[:16]} has other bytes")
         return data
+
+
+@dataclasses.dataclass
+class GoProgram:
+    """A program that Go's own linker linked from Go code only, as the program's build information and its function
+    table say. Go's linker writes no map, so such a link has no Record; this stands in for it."""
+
+    version: str  # the Go release, as the build information names it
+    settings: dict  # the build information's `build` lines: {key: value}
+
+
+# The build information that Go writes into each program it builds (.go.buildinfo, read by `go version -m`;
+# src/debug/buildinfo/buildinfo.go): a 32-byte header that starts with this magic, then, when bit 1 of its flags byte
+# is set, the Go version and the module information, each a uvarint length and the bytes. The module information is
+# framed by 16 bytes on each side.
+GO_BUILDINFO_MAGIC = b"\xff Go buildinf:"
+# The settings of a program that takes no file of the toolchain image that a sanitizer could instrument: no cgo (so no
+# C library and no C compiler's runtime), Go's own compiler, an executable, for linux/riscv64. The race detector and
+# Go's -msan and -asan modes link C runtimes, and an external link runs the C toolchain's linker.
+GO_ONLY_SETTINGS = {"CGO_ENABLED": "0", "-compiler": "gc", "-buildmode": "exe", "GOOS": "linux", "GOARCH": "riscv64"}
+GO_C_RUNTIMES = ("-race", "-msan", "-asan")
+
+
+def _uvarint(data, at):
+    """The uvarint at data[at:] and the offset after it. Raise ValueError if it runs past the end or past 64 bits."""
+    value = shift = 0
+    while shift < 64:
+        if at >= len(data):
+            raise ValueError("a length runs past the end of the section")
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return value, at
+        shift += 7
+    raise ValueError("a length is longer than 64 bits")
+
+
+# Go's function table (.gopclntab; src/runtime/symtab.go pcHeader, src/debug/gosym/pclntab.go) of Go 1.18 and later:
+# a header of the magic, two zero bytes, minLC, ptrSize, then nfunc, nfiles, textStart and the offsets of funcnametab,
+# cutab, filetab, pctab and pclntab, each ptrSize bytes; at pclntab, nfunc + 1 pairs of uint32 (entry offset from
+# textStart, offset of the _func), the last one's entry being the end of the code. Each _func (runtime/runtime2.go)
+# starts entryOff, nameOff, args, deferreturn, pcsp, pcfile, pcln, npcdata, cuOffset: GO_FUNC.
+GO_PCLNTAB_MAGICS = (0xFFFFFFF0, 0xFFFFFFF1)
+GO_FUNC = struct.Struct("<IiiIIIIII")
+NO_CU = 0xFFFFFFFF
+
+
+def go_functions(data, sections):
+    """[(start, end, name, has a line table)] of every function in the executable's Go function table, in address
+    order, as offsets from the start of .text, or the reason it cannot be read (str). Go's linker lists here each
+    function it lays out, a host object's (a .syso file's) under the object's own symbol name. (Go 1.27.1 writes
+    textStart as 0; its offsets are from .text's start.) A function has a line table when its pcfile and pcln are not
+    0 and its cuOffset names a compilation unit, as Go's compiler and assembler write for every function they make."""
+    found = [s for s in sections if s["name"] == ".gopclntab" and s["type"] != SHT_NOBITS]
+    if len(found) != 1:
+        return f"{len(found)} .gopclntab sections, not one"
+    tab = data[found[0]["off"]:found[0]["off"] + found[0]["size"]]
+    if len(tab) < 72 or struct.unpack_from("<I", tab, 0)[0] not in GO_PCLNTAB_MAGICS or tab[4:6] != b"\0\0" \
+            or tab[7] != 8:
+        return "its .gopclntab is not Go 1.18's function table for a 64-bit target"
+    nfunc, _, text_start, names_at, cu_at, _, _, pcln_at = struct.unpack_from("<8Q", tab, 8)
+    if text_start != 0:
+        return f"its .gopclntab's textStart is {text_start:#x}, not the 0 that Go 1.27.1 writes"
+    if pcln_at + (nfunc + 1) * 8 > len(tab) or not names_at <= cu_at <= len(tab):
+        return "its .gopclntab's function table runs past the end of the section"
+    functions = []
+    for i in range(nfunc):
+        entry, func = struct.unpack_from("<II", tab, pcln_at + i * 8)
+        end = struct.unpack_from("<I", tab, pcln_at + (i + 1) * 8)[0]
+        if pcln_at + func + GO_FUNC.size > len(tab) or end < entry:
+            return f"its .gopclntab's function {i} runs past the end of the section"
+        _, name_off, _, _, _, pcfile, pcln, _, cu = GO_FUNC.unpack_from(tab, pcln_at + func)
+        at = names_at + name_off
+        # Each name ends within funcnametab, so the search for it is bounded.
+        stop = tab.find(b"\0", at, cu_at) if 0 <= name_off else -1
+        if stop < 0:
+            return f"its .gopclntab's function {i} has no name"
+        functions.append((entry, end, tab[at:stop].decode("latin1"), bool(pcfile and pcln and cu != NO_CU)))
+    return functions
+
+
+# The functions Go's linker makes itself, which have no line table: a trampoline `<target>-tramp<N>` to a function
+# too far for a direct jump, which is `auipc x31, hi` and `jalr x0, lo(x31)` and zero padding; and the FIPS markers,
+# which are zero bytes.
+GO_TRAMPOLINE = re.compile(r".+-tramp[0-9]+")
+GO_FIPS_MARKERS = ("go:textfipsstart", "go:textfipsend")
+
+
+def linker_function(name, body):
+    """Whether a function with no line table, of these bytes, is one that Go's linker makes itself."""
+    if name in GO_FIPS_MARKERS:
+        return not any(body)
+    if GO_TRAMPOLINE.fullmatch(name) and len(body) >= 8:
+        auipc, jalr = struct.unpack_from("<II", body, 0)
+        return auipc & 0xFFF == 0xF97 and jalr & 0xFFFFF == 0xF8067 and not any(body[8:])
+    return False
+
+
+def foreign_code(data, sections):
+    """Why the Go program's code may hold code that Go did not compile, or None. Go's function table must start at
+    .text's start and end at its end, up to zero padding, and every function in it must have the line table that Go's
+    compiler and assembler write, or be one of the linker's own (linker_function). A .syso file's code (linked with
+    CGO_ENABLED=0, which the build information does not show) has no line table, whatever its symbols are named."""
+    text = [s for s in sections if s["name"] == ".text" and s["type"] != SHT_NOBITS]
+    if len(text) != 1:
+        return f"{len(text)} .text sections, not one"
+    functions = go_functions(data, sections)
+    if isinstance(functions, str):
+        return functions
+    if not functions or functions[0][0] != 0:
+        return "its function table does not start at .text's start"
+    base, size = text[0]["off"], text[0]["size"]
+    end = functions[-1][1]
+    if end > size or any(data[base + end:base + size]):
+        return f"its function table ends at {end:#x} of .text's {size:#x} bytes, and the rest is not zero padding"
+    foreign = [name for start, stop, name, lines in functions
+               if not lines and not linker_function(name, data[base + start:base + stop])]
+    if foreign:
+        return ("functions with no line table, so code that Go did not compile (a .syso file, for one): "
+                + ", ".join(listed(sorted(set(foreign)))))
+    return None
+
+
+def go_program(data):
+    """The GoProgram that the executable `data` is, from its .go.buildinfo section, or the reason it is not one
+    (str): no such section, build information this cannot read, or a setting that lets the link take C code."""
+    try:
+        _, sections, _ = binary_isa.parse_elf(data)
+    except binary_isa.Unexamined as error:
+        return f"not a RISC-V ELF file: {error}"
+    found = [s for s in sections if s["name"] == ".go.buildinfo" and s["type"] != SHT_NOBITS]
+    if len(found) != 1:
+        return f"{len(found)} .go.buildinfo sections, not one: not a program that Go built"
+    body = data[found[0]["off"]:found[0]["off"] + found[0]["size"]]
+    if len(body) < 32 or not body.startswith(GO_BUILDINFO_MAGIC) or not body[15] & 2:
+        return "its .go.buildinfo is not the build information of Go 1.18 or later"
+    try:
+        strings, at = [], 32
+        for _ in range(2):
+            size, at = _uvarint(body, at)
+            if at + size > len(body):
+                raise ValueError("a string runs past the end of the section")
+            strings.append(body[at:at + size])
+            at += size
+        version, module = strings
+        if len(module) >= 33 and module[-17:-16] == b"\n":
+            module = module[16:-16]
+        version, module = version.decode("ascii"), module.decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as error:
+        return f"its .go.buildinfo cannot be read: {error}"
+    if not version.startswith("go"):
+        return f"its .go.buildinfo names no Go release: {version[:40]!r}"
+    settings = {}
+    for line in module.split("\n"):
+        if line.startswith("build\t"):
+            key, _, value = line[len("build\t"):].partition("=")
+            settings[key] = value
+    wrong = [f"{key}={settings.get(key, '(none)')}, not {value}" for key, value in GO_ONLY_SETTINGS.items()
+             if settings.get(key) != value]
+    wrong += [f"{key}={settings[key]}" for key in GO_C_RUNTIMES if settings.get(key, "false") != "false"]
+    if "linkmode" in settings.get("-ldflags", "") or "extld" in settings.get("-ldflags", ""):
+        wrong.append(f"-ldflags={settings['-ldflags']} chooses the linker")
+    if wrong:
+        return f"a Go program ({version}) whose build information lets its link take C code: " + "; ".join(wrong)
+    # The build information does not show a .syso file, which Go's own linker takes with no cgo: the function table
+    # does.
+    foreign = foreign_code(data, sections)
+    if foreign:
+        return f"a Go program ({version}) whose code Go's function table does not account for: {foreign}"
+    return GoProgram(version, settings)
 
 
 def parse_map(text):
@@ -479,21 +656,31 @@ def source_entry(c, unit, checkouts, named=None):
 
 def analyse(records, image, dwarf_units=None, checkouts=(), assembly_sources=None):
     """The results for one fuzz target: {build: {"uninstrumented": [...] or None, "instrumented": {"result",
-    "detail"}}}. `records` maps a build to its Record, or to the reason it has none; `image` maps real paths under
-    /opt to the toolchain image's sha256. `dwarf_units(objects)` gives each object's DWARF compile unit (language,
-    name, compilation directory) or None; `checkouts` are the checkouts of the project image, which a source is named
-    relative to; `assembly_sources([(object name, [the functions it defines])])` gives, for an object with no DWARF,
-    the assembly source of the project that carries its name and names every one of them, or None."""
+    "detail"}}}. `records` maps a build to its Record, to a GoProgram, or to the reason it has neither; `image` maps
+    real paths under /opt to the toolchain image's sha256. `dwarf_units(objects)` gives each object's DWARF compile
+    unit (language, name, compilation directory) or None; `checkouts` are the checkouts of the project image, which a
+    source is named relative to; `assembly_sources([(object name, [the functions it defines])])` gives, for an object
+    with no DWARF, the assembly source of the project that carries its name and names every one of them, or None."""
     results, scanned, problems_of = {}, {}, {}
     for build, record in records.items():
+        if isinstance(record, GoProgram):
+            # Go's linker writes no map, and the program's own build information says what it linked: Go code only,
+            # with no C library and no file of a C toolchain. No list is written: what it takes from the toolchain
+            # image is Go's runtime and standard library, which no file list of the facts' schema names. Go has the
+            # plain build only (infra/base-builder/go/compile-go), and no sanitizer instruments Go code.
+            plain = build not in SANITIZER_BUILDS
+            results[build] = {"uninstrumented": None, "instrumented": {
+                "result": "plain" if plain else "error",
+                "detail": (f"a Go program ({record.version}), linked by Go's own linker from Go code only (its build "
+                           "information: " + ", ".join(f"{k}={record.settings[k]}" for k in GO_ONLY_SETTINGS)
+                           + "), which writes no map; no uninstrumented list, as it links no C library or other file "
+                           "of a C toolchain" + ("; the plain build instruments nothing, by design" if plain
+                                                 else "; no sanitizer instruments Go code"))}}
+            continue
         if not isinstance(record, Record):
-            if build in SANITIZER_BUILDS:
-                results[build] = {"uninstrumented": None,
-                                  "instrumented": {"result": "error", "detail": f"no link record: {record}"}}
-            else:
-                results[build] = {"uninstrumented": None, "instrumented": {
-                    "result": "plain", "detail": f"the plain build instruments nothing, by design; not recorded: "
-                                                 f"{record}"}}
+            # With no record, nothing says what the link took, in the plain build as in the others.
+            results[build] = {"uninstrumented": None,
+                              "instrumented": {"result": "error", "detail": f"no link record: {record}"}}
             continue
         code, provided, problems = project_code(record, image)
         scanned[build] = code

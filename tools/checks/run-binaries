@@ -19,7 +19,8 @@
 # no run starts after <total> seconds.
 #
 # Each run runs qemu-riscv64 -strace under tools/checks/host-calls.c, which logs the host calls whose arguments qemu's
-# log prints in 32 bits only. For each run it writes /results/<id>.status (the exit status; 137 when it was stopped),
+# log prints in 32 bits only, and the family of each connect's address, which qemu's log does not print. For each run
+# it writes /results/<id>.status (the exit status; 137 when it was stopped),
 # /results/<id>.out and /results/<id>.err (how many bytes it wrote to standard output and standard error),
 # /results/<id>.trace (qemu's -strace log) and /results/<id>.calls (host-calls' log). A run that did not start has no
 # status file.

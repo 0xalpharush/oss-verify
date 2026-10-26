@@ -313,6 +313,38 @@ class WhereTheCodeIs(Base):
         # A well-formed note that is not a build id can wrap any bytes: it is decoded too.
         other = struct.pack("<III", 4, 8, 1) + b"XYZ\0" + CNOP * 4
         self.one(as_note(mkelf(other, text_flags=0x2, gap=NOP)), "RVC")
+        # One Go and one GNU build id are notes; a second of either is not, so repeats cannot wrap any bytes.
+        gnu = struct.pack("<III", 4, 8, 3) + b"GNU\0" + b"\x01\x02\x03\x04\x05\x06\x07\x08"
+        res, out = self.one(as_note(mkelf(note + gnu, text_flags=0x2, gap=NOP + ADD)), "CLEAN")
+        self.assertEqual(res["pf_x"]["data_in_x"], [(".text", len(note + gnu))])
+        wrap = struct.pack("<III", 4, 8, 3) + b"GNU\0" + CNOP * 4
+        for twice in (gnu + wrap, struct.pack("<III", 4, 8, 4) + b"Go\0\0" + CNOP * 4 + note):
+            self.assertFalse(binary_isa.whole_notes(twice, 0, len(twice)))
+        self.one(as_note(mkelf(gnu + wrap, text_flags=0x2, gap=NOP)), "RVC")
+        self.one(as_note(mkelf(note + struct.pack("<III", 4, 8, 4) + b"Go\0\0" + CNOP * 4, text_flags=0x2,
+                               gap=NOP)), "RVC")
+
+    def test_a_build_id_note_is_taken_once_in_the_whole_binary(self):
+        # Two note sections, each one GNU build-id note whose descriptor is compressed code: each is whole notes on its
+        # own, but the binary has one GNU build id, so the second section is decoded, and fails.
+        def gnu(desc):
+            return struct.pack("<III", 4, len(desc), 3) + b"GNU\0" + desc
+        first, second = gnu(CNOP * 32), gnu(CNOP * 32)
+        b = bytearray(mkelf(first + second, text_flags=0x2, gap=NOP + ADD))
+        shoff = struct.unpack_from("<Q", b, 40)[0]
+        shnum = struct.unpack_from("<H", b, 60)[0]
+        self.assertEqual(shoff + shnum * 64, len(b), "the section header table ends the file")
+        header = bytearray(b[shoff + 64:shoff + 128])
+        struct.pack_into("<I", b, shoff + 64 + 4, binary_isa.SHT_NOTE)
+        struct.pack_into("<Q", b, shoff + 64 + 32, len(first))
+        struct.pack_into("<I", header, 4, binary_isa.SHT_NOTE)
+        struct.pack_into("<QQQ", header, 16, TEXT_VADDR + len(first), TEXT_OFF + len(first), len(second))
+        b += header
+        struct.pack_into("<H", b, 60, shnum + 1)
+        self.one(bytes(b), "RVC")
+        seen = set()
+        self.assertTrue(binary_isa.whole_notes(first, 0, len(first), seen))
+        self.assertFalse(binary_isa.whole_notes(second, 0, len(second), seen))
 
     def test_a_section_must_be_where_its_segment_maps_it(self):
         # The code is at 2 mod 4, and its section header says 0 mod 4.

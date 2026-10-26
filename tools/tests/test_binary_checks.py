@@ -65,6 +65,87 @@ def elf_object(text=b"", defined=(), undefined=(), files=(), local=(), comment=F
     return bytes(data)
 
 
+GO_SETTINGS = {"-buildmode": "exe", "-compiler": "gc", "-trimpath": "true", "CGO_ENABLED": "0", "GOARCH": "riscv64",
+               "GOOS": "linux", "GORISCV64": "rva20u64"}
+
+
+# The functions of a minimal Go program: Go's runtime's unqualified assembly, and package-qualified code.
+GO_FUNCTIONS = ("_rt0_riscv64_linux", "runtime.rt0_go", "compare", "main.main", "main")
+NOP16 = struct.pack("<I", 0x00000013) * 4
+# A trampoline Go's linker makes: auipc x31, 0; jalr x0, 0(x31); zero padding.
+TRAMPOLINE = struct.pack("<II", 0x00000F97, 0x000F8067) + bytes(8)
+
+
+def go_function(item):
+    """(name, bytes, has a line table) for an item of a function list: a name is 16 bytes of Go-compiled code."""
+    return (item, NOP16, True) if isinstance(item, str) else item
+
+
+def gopclntab(functions):
+    """Go 1.27.1's function table (src/runtime/symtab.go pcHeader, runtime/runtime2.go _func) for `functions`
+    ([go_function items]), laid out in order from .text's start. A function with a line table gets pcfile, pcln and a
+    compilation unit; one without gets 0, 0 and no unit, as a host object's code does."""
+    names = b"".join(name.encode() + b"\0" for name, _, _ in functions)
+    name_offsets, at = [], 0
+    for name, _, _ in functions:
+        name_offsets.append(at)
+        at += len(name) + 1
+    names_at = 72
+    pcln_at = names_at + len(names)
+    funcs_at = (len(functions) + 1) * 8         # the _func records, after the function table, from pcln_at
+    table, records, entry = b"", b"", 0
+    for (name, body, lines), name_off in zip(functions, name_offsets):
+        table += struct.pack("<II", entry, funcs_at + len(records))
+        records += struct.pack("<IiiIIIIII", entry, name_off, 0, 0, 1 if lines else 0, 1 if lines else 0,
+                               1 if lines else 0, 0, 0 if lines else 0xFFFFFFFF)
+        entry += len(body)
+    table += struct.pack("<II", entry, 0)
+    header = struct.pack("<IHBB", 0xFFFFFFF1, 0, 1, 8)
+    header += struct.pack("<8Q", len(functions), 0, 0, names_at, pcln_at, pcln_at, pcln_at, pcln_at)
+    return header + names + table + records
+
+
+def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=GO_FUNCTIONS, text_size=None,
+                  **settings):
+    """A minimal riscv64 executable with a .text section of `functions` (go_function items; then zero padding up to
+    `text_size`), their .gopclntab, and the section `section` that holds Go's build information as Go 1.27.1 writes it
+    (src/debug/buildinfo/buildinfo.go), with the `build` settings GO_SETTINGS and `settings` (None drops one)."""
+    functions = [go_function(f) for f in functions]
+    lines = ["path\tcommand-line-arguments"] + [f"build\t{key}={value}" for key, value in
+                                                {**GO_SETTINGS, **settings}.items() if value is not None]
+    # The 16-byte frames Go puts around the module information (cmd/go/internal/modload: infoStart, infoEnd), which
+    # are not UTF-8.
+    module = (b"0w\xaf\x0c\x92t\x08\x02A\xe1\xc1\x07\xe6\xd6\x18\xe6" + "".join(f"{line}\n" for line in lines).encode()
+              + b"\xf92C1\x86\x18 r\x00\x82B\x10A\x16\xd8\xf2")
+    version = b"go1.27.1"
+    body = b"\xff Go buildinf:" + bytes([8, flags]) + bytes(16)
+    body += bytes([len(version)]) + version
+    size = len(module) + (1000 if truncate else 0)
+    body += bytes([0x80 | (size & 0x7F), size >> 7]) + module
+    text = b"".join(code for _, code, _ in functions)
+    text += bytes((text_size or len(text)) - len(text))
+    pcln = gopclntab(functions)
+    blobs = [(b".text", 1, 0x6, 0x11000, text), (section, 1, 0x3, 0x100000, body),
+             (b".gopclntab", 1, 0x2, 0x200000, pcln)]
+    shstrtab = b"\0" + b"".join(name + b"\0" for name, *_ in blobs) + b".shstrtab\0"
+    data = bytearray(64)
+    headers = [struct.pack("<IIQQQQIIQQ", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)]
+    name_at = 1
+    for name, kind, sflags, addr, blob in blobs:
+        headers.append(struct.pack("<IIQQQQIIQQ", name_at, kind, sflags, addr, len(data), len(blob), 0, 0, 16, 0))
+        name_at += len(name) + 1
+        data += blob
+    headers.append(struct.pack("<IIQQQQIIQQ", name_at, 3, 0, 0, len(data), len(shstrtab), 0, 0, 1, 0))
+    data += shstrtab
+    shoff = len(data)
+    data += b"".join(headers)
+    header = b"\x7fELF" + bytes([2, 1, 1, 0]) + bytes(8)
+    header += struct.pack("<HHIQQQIHHHHHH", 2, 0xF3, 1, 0x11000, 0, shoff, 0, 64, 56, 0, 64, len(headers),
+                          len(headers) - 1)
+    data[:64] = header
+    return bytes(data)
+
+
 def archive(members):
     """A System V ar archive of {name: bytes}, with a long-name table for names longer than 15 bytes."""
     longnames, out = b"", [b"!<arch>\n"]
@@ -442,9 +523,106 @@ class Analyse(unittest.TestCase):
         result = self.analyse({"asan": "compile recorded no link of it"})["asan"]
         self.assertIsNone(result["uninstrumented"])
         self.assertEqual(result["instrumented"]["result"], "error")
-        # A Go program's plain build has no map, by design.
-        result = self.analyse({"plain": "its link has no map (a program linked by Go's linker)"})["plain"]
+        # The plain build with no record is not decided either, whatever the cause, and the report says why.
+        for why in ("compile recorded no link of it", "its link has no map, and it is not a Go program linked from "
+                                                      "Go code only (0 .go.buildinfo sections, not one)"):
+            result = self.analyse({"plain": why})["plain"]
+            self.assertIsNone(result["uninstrumented"])
+            self.assertEqual(result["instrumented"], {"result": "error", "detail": f"no link record: {why}"})
+            block = {"model": {"name": "m", "commit": "f" * 40, "release": "x"}, "inputs": {"t": ["a"]},
+                     "targets": {"t": {"plain": {"elf": {"result": "pass"}, "system_calls": {"result": "pass"},
+                                                 "quiet_loud": {"result": "pass"},
+                                                 "instrumented": result["instrumented"]}}}}
+            text = check_binaries.report(block, {"t": {"plain": None}}, ["plain"])
+            self.assertIn("| `t.plain` | pass | pass | pass | **not decided** | not recorded |", text)
+            self.assertIn(f"What each failure is:\n\n- `t.plain`, instrumented: `no link record: {why}`", text)
+
+    def test_a_go_program_is_plain_from_its_build_information(self):
+        """Go's linker writes no map; the program's own build information stands in for the record."""
+        program = check_links.go_program(go_executable())
+        self.assertIsInstance(program, check_links.GoProgram, program)
+        self.assertEqual(program.version, "go1.27.1")
+        result = self.analyse({"plain": program})["plain"]
+        self.assertIsNone(result["uninstrumented"])
         self.assertEqual(result["instrumented"]["result"], "plain")
+        self.assertIn("a Go program (go1.27.1)", result["instrumented"]["detail"])
+        self.assertIn("CGO_ENABLED=0", result["instrumented"]["detail"])
+        block = {"model": {"name": "m", "commit": "f" * 40, "release": "x"}, "inputs": {"t": ["a"]},
+                 "targets": {"t": {"plain": {"elf": {"result": "pass"}, "system_calls": {"result": "pass"},
+                                             "quiet_loud": {"result": "pass"},
+                                             "instrumented": result["instrumented"]}}}}
+        text = check_binaries.report(block, {"t": {"plain": None}}, ["plain"])
+        self.assertIn("| `t.plain` | pass | pass | pass | not instrumented (plain) | no list (Go code only) |", text)
+        # No sanitizer instruments Go code, so a sanitizer build of a Go program decides nothing.
+        self.assertEqual(self.analyse({"asan": program})["asan"]["instrumented"]["result"], "error")
+
+    def test_a_go_program_that_may_link_c_is_not_plain(self):
+        cases = {
+            "CGO_ENABLED=1, not 0": go_executable(CGO_ENABLED="1"),
+            "-compiler=gccgo, not gc": go_executable(**{"-compiler": "gccgo"}),
+            "-buildmode=pie, not exe": go_executable(**{"-buildmode": "pie"}),
+            "GOARCH=amd64, not riscv64": go_executable(GOARCH="amd64"),
+            "CGO_ENABLED=(none), not 0": go_executable(CGO_ENABLED=None),
+            "-race=true": go_executable(**{"-race": "true"}),
+            "-asan=true": go_executable(**{"-asan": "true"}),
+            "chooses the linker": go_executable(**{"-ldflags": '"-linkmode=external -s"'}),
+            "0 .go.buildinfo sections": go_executable(section=b".data"),
+            "cannot be read": go_executable(truncate=True),
+            "not the build information of Go 1.18": go_executable(flags=0),
+            "not a RISC-V ELF file": b"\x7fELF" + b"\0" * 60,
+            # A .syso file's C code, which CGO_ENABLED=0 still links: it has no line table, whatever its name, also a
+            # Go-like one from an asm label.
+            "no line table, so code that Go did not compile (a .syso file, for one): $x, cfunc_c":
+                go_executable(functions=GO_FUNCTIONS + (("cfunc_c", NOP16, False), ("$x", NOP16, False))),
+            "no line table, so code that Go did not compile (a .syso file, for one): main.cfunc":
+                go_executable(functions=GO_FUNCTIONS + (("main.cfunc", NOP16, False),)),
+            # A trampoline is the linker's only with the linker's bytes; FIPS markers only when they are zero.
+            "no line table, so code that Go did not compile (a .syso file, for one): main.f-tramp0":
+                go_executable(functions=GO_FUNCTIONS + (("main.f-tramp0", NOP16, False),)),
+            "no line table, so code that Go did not compile (a .syso file, for one): go:textfipsstart":
+                go_executable(functions=GO_FUNCTIONS + (("go:textfipsstart", NOP16, False),)),
+            "0 .gopclntab sections": go_executable(section=b".go.buildinfo").replace(b".gopclntab", b".gopclnta_"),
+        }
+        for expected, data in cases.items():
+            why = check_links.go_program(data)
+            self.assertIsInstance(why, str, expected)
+            self.assertIn(expected, why)
+        # Zero bytes after the last function are padding; any other byte there is code the table does not name.
+        end = len(GO_FUNCTIONS) * 16
+        padded = go_executable(text_size=end + 16)
+        self.assertIsInstance(check_links.go_program(padded), check_links.GoProgram)
+        code = bytearray(padded)
+        code[64 + end] = 0x13
+        self.assertIn("not zero padding", check_links.go_program(bytes(code)))
+        # Go's own unqualified assembly (crypto/internal/fips140/bigmod's addMulVVWx) has a line table like any Go
+        # code; the linker's trampolines and FIPS markers have none, and are recognised by their bytes.
+        stdlib = go_executable(functions=GO_FUNCTIONS + (
+            "addMulVVWx", ("addMulVVWx-tramp0", TRAMPOLINE, False),
+            ("crypto/rsa.f-tramp1", TRAMPOLINE + bytes(8), False),
+            ("go:textfipsstart", bytes(0), False), ("go:textfipsend", bytes(8), False)))
+        self.assertIsInstance(check_links.go_program(stdlib), check_links.GoProgram)
+
+    def test_record_of_reads_a_go_program_and_refuses_any_other_binary_without_a_map(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = pathlib.Path(tmp)
+            go, other = go_executable(), go_executable(CGO_ENABLED="1")
+            (raw / "go").write_bytes(go)
+            (raw / "c").write_bytes(other)
+            record, quiet = check_binaries.record_of(raw, "go")
+            self.assertIsInstance(record, check_links.GoProgram)
+            self.assertIsNone(quiet)
+            # compile-go keeps the quiet program in a record with no map.
+            kept = raw / ".records" / hashlib.sha256(go).hexdigest()
+            kept.mkdir(parents=True)
+            (kept / "quiet").write_bytes(b"quiet")
+            record, quiet = check_binaries.record_of(raw, "go")
+            self.assertIsInstance(record, check_links.GoProgram)
+            self.assertEqual(quiet, b"quiet")
+            record, quiet = check_binaries.record_of(raw, "c")
+            self.assertIsInstance(record, str)
+            self.assertIn("compile recorded no link of it", record)
+            self.assertIn("CGO_ENABLED=1", record)
+            self.assertEqual(check_links.analyse({"plain": record}, {})["plain"]["instrumented"]["result"], "error")
 
     def test_dwarfdump_output(self):
         text = "\n".join([
@@ -499,7 +677,7 @@ class ModelRelease(unittest.TestCase):
 class Runs(unittest.TestCase):
     """check_binaries' reading of the runs: quiet and loud, the system calls' floors, and the report."""
 
-    QEMU = "qemu-riscv64 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)"
+    QEMU = "qemu-riscv64 version 10.0.11 (Debian 1:10.0.11+ds-0+deb13u1)"
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -601,8 +779,8 @@ class Runs(unittest.TestCase):
                     "verdict": "pass", "host_log": "present"}
         seen = {}
 
-        def check_trace(model, text, *, stance, require_exit, binary, lengths):
-            seen.update(stance=stance, lengths=lengths)
+        def check_trace(model, text, *, stance, require_exit, binary, lengths, inputs):
+            seen.update(stance=stance, lengths=lengths, inputs=inputs)
             return dict(verdicts)
 
         saved = check_binaries.syscall_shapes.check_trace
@@ -611,8 +789,18 @@ class Runs(unittest.TestCase):
                                                                            self.results)
         try:
             self.assertEqual(run()["result"], "pass")
-            self.assertEqual(seen, {"stance": "off", "lengths": "exec\n"})
+            # Each run's input.bin holds that run's input, header and all.
+            self.assertEqual(seen, {"stance": "off", "lengths": "exec\n",
+                                    "inputs": {"input.bin": check_binaries.HEADER + b"x"}})
             self.assertEqual(run(qemu="qemu-riscv64 version 9.1.0")["result"], "error")
+            # 10.0.0 prints read's and write's buffer in 32 bits, which the checker does not read so.
+            self.assertEqual(run(qemu="qemu-riscv64 version 10.0.0 (Debian 1:10.0.0+ds-1)")["result"], "error")
+            self.assertEqual(run(qemu="qemu-riscv64 version 10.0.110")["result"], "error")
+            # qemu 8.2 hands the host 0 for every anonymous mmap's offset: its runs decide nothing.
+            result = run(qemu="qemu-riscv64 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)")
+            self.assertEqual(result["result"], "error")
+            self.assertIn("qemu 10.0.11 only", result["detail"])
+            self.assertIn("docs/build-contract.md", result["detail"])
             verdicts["calls"] = 3
             self.assertEqual(run()["result"], "error")
             verdicts["calls"] = 12
