@@ -100,7 +100,10 @@ def test_leftovers_finds_a_root_in_any_pem_file_or_wheel_member(tmp_path, bundle
     (tmp_path / "bad.crt").write_text(root("emSign ECC Root CA - C3"))
     (tmp_path / "notes.txt").write_text(root("emSign Root CA - C1"))
     (tmp_path / "broken.pem").write_text("-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----\n"
+                                         "-----BEGIN CERTIFICATE-----\nnon-ASCII é\n-----END CERTIFICATE-----\n"
                                          + root("Good Root CA"))
+    x509 = root("emSign Root CA - G1").replace(" CERTIFICATE-----", " X509 CERTIFICATE-----")
+    (tmp_path / "x509.pem").write_text(x509)
     (tmp_path / "link.pem").symlink_to(tmp_path / "bad.crt")
     make_wheel(tmp_path / "pip-1.0-py3-none-any.whl", bundle)
     found = distrust.leftovers(distrust.walk(str(tmp_path)))
@@ -110,19 +113,21 @@ def test_leftovers_finds_a_root_in_any_pem_file_or_wheel_member(tmp_path, bundle
         (f"{tmp_path / 'pip-1.0-py3-none-any.whl'}:pip/_vendor/certifi/cacert.pem", "commonName=emSign Root CA - G1"),
         (f"{tmp_path / 'pip-1.0-py3-none-any.whl'}:pip/_vendor/certifi/cacert.pem",
          "commonName=AAA Certificate Services"),
+        (str(tmp_path / "x509.pem"), "commonName=emSign Root CA - G1"),
     ]
     distrust.strip_wheel(tmp_path / "pip-1.0-py3-none-any.whl")
     (tmp_path / "bad.crt").unlink()
     (tmp_path / "link.pem").unlink()
+    (tmp_path / "x509.pem").unlink()
     assert distrust.leftovers(distrust.walk(str(tmp_path))) == []
 
 
 def test_disable_marks_only_active_lines_that_name_a_bad_root():
     conf = ("# emSign roots are listed below\n!mozilla/emSign_Root_CA_-_C1.crt\nmozilla/emSign_Root_CA_-_G1.crt\n"
-            "mozilla/ISRG_Root_X1.crt\nmozilla/Comodo_AAA_Certificate_Services.crt\n")
+            "mozilla/ISRG_Root_X1.crt\nmozilla/Comodo_AAA_Services_root.crt\n")
     assert distrust.disable(conf) == ("# emSign roots are listed below\n!mozilla/emSign_Root_CA_-_C1.crt\n"
                                       "!mozilla/emSign_Root_CA_-_G1.crt\nmozilla/ISRG_Root_X1.crt\n"
-                                      "!mozilla/Comodo_AAA_Certificate_Services.crt\n")
+                                      "!mozilla/Comodo_AAA_Services_root.crt\n")
     assert distrust.disable(distrust.disable(conf)) == distrust.disable(conf)
 
 

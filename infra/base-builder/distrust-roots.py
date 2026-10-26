@@ -28,14 +28,16 @@ import sys
 import tempfile
 import zipfile
 
-BAD = re.compile(r"emSign|eMudhra|AAA[ _]Certificate[ _]Services", re.I)
+# Subjects and certifi comments name AAA "AAA Certificate Services"; the conf line names its file
+# mozilla/Comodo_AAA_Services_root.crt.
+BAD = re.compile(r"emSign|eMudhra|AAA[ _]Certificate[ _]Services|Comodo_AAA_Services", re.I)
 SYSTEM = pathlib.Path("/etc/ssl/certs/ca-certificates.crt")
 JAVA = pathlib.Path("/etc/ssl/certs/java/cacerts")
 CONF = pathlib.Path("/etc/ca-certificates.conf")
 NOT_WALKED = ("/proc", "/sys", "/dev", "/usr/share/ca-certificates")
 PEM_SUFFIXES = (".pem", ".crt", ".cer")
 CERTIFI = re.compile(r"(^|/)certifi/cacert\.pem$")
-PEM_BLOCK = re.compile(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", re.S)
+PEM_BLOCK = re.compile(r"-----BEGIN (?:X509 )?CERTIFICATE-----.*?-----END (?:X509 )?CERTIFICATE-----", re.S)
 
 
 def subjects(text):
@@ -54,9 +56,11 @@ def block_subjects(text):
     such as CPython's): no TLS library can trust a certificate it cannot read."""
     found = []
     for block in PEM_BLOCK.findall(text):
+        if not block.isascii():
+            continue
         try:
             found += subjects(block)
-        except (ssl.SSLError, TypeError, ValueError):
+        except ssl.SSLError:
             pass
     return found
 
