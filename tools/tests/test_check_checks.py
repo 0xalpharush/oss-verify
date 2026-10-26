@@ -1136,7 +1136,7 @@ class ReviewRun(unittest.TestCase):
     def run_review(self, **environment):
         base = {"PATH": f"{self.directory / 'bin'}:{os.environ['PATH']}", "HOME": str(self.directory / "home"),
                 "PR": "8", "NAME": "libreac", "GH_TOKEN": "ghs_notasecretnotasecret",
-                "ANTHROPIC_API_KEY": "sk-ant-oat01-notasecret", "CLAUDE_CODE_EFFORT": "x",
+                "ANTHROPIC_API_KEY": "sk-ant-oat01-notasecret", "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "1000",
                 "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://elsewhere", "A.B": "dotted-not-a-secret",
                 "BASH_FUNC_f%%": "() { echo dotted-not-a-secret; }"}
         return subprocess.run([str(ROOT / ".github" / "scripts" / "review-run"), "review"], cwd=self.directory,
@@ -1174,7 +1174,7 @@ class ReviewRun(unittest.TestCase):
             self.assertNotIn(secret, argv)
             self.assertNotIn(secret, out.stdout + out.stderr)
         child = self.child()
-        self.assertEqual(set(child), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_EFFORT",
+        self.assertEqual(set(child), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
                                       "ANTHROPIC_IDENTITY_TOKEN_FILE", "CLAUDE_CODE_ENABLE_TELEMETRY",
                                       "OTEL_LOGS_EXPORTER", "OTEL_METRICS_EXPORTER", "OTEL_EXPORTER_OTLP_PROTOCOL",
                                       "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS",
@@ -1232,7 +1232,8 @@ class ReviewRun(unittest.TestCase):
     def test_without_the_collector_nothing_is_exported(self):
         out = self.run_review()
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(set(self.child()), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CODE_EFFORT"})
+        self.assertEqual(set(self.child()), {"PATH", "HOME", "LANG", "ANTHROPIC_API_KEY",
+                                             "CLAUDE_CODE_MAX_OUTPUT_TOKENS"})
         self.assertEqual(self.headers, [])
 
     def test_a_first_review_is_fresh_and_keeps_its_conversation(self):

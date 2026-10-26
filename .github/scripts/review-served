@@ -44,10 +44,10 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
   checked, not only the first of a message id.
 - the API can hand a response to another model part way (a server fallback). It marks that with a content block
   `{"type": "fallback", "from": {"model": ...}, "to": {"model": ...}}`; the tool renames the response's model to the
-  new one only when it asked for the fallback itself, so the block's `to.model` is checked too. CLAUDE_CODE_EXTRA_BODY
-  and ANTHROPIC_BETAS, which could ask the API for one outside the tool, are refused, as is the advisorModel setting
-  (a server-side tool that another model answers), and a managed policy helper (policyHelper, policyHelpers), which
-  gives the tool settings, an `env` among them, another way than a settings file's `env`.
+  new one only when it asked for the fallback itself, so the block's `to.model` is checked too. Variables that could
+  ask the API for one outside the tool (CLAUDE_CODE_EXTRA_BODY, ANTHROPIC_BETAS) are refused, as is the advisorModel
+  setting (a server-side tool that another model answers), and a managed policy helper (policyHelper, policyHelpers),
+  which gives the tool settings, an `env` among them, another way than a settings file's `env`.
 - no event before the last names the provider: `system`/`init` names the model asked for (`.model`) and the key's
   source, and an `assistant` event names no provider. So a turn's model is checked as it comes, and the provider at
   the end.
@@ -57,12 +57,14 @@ What Claude Code reports, measured on its version 2.1.310, the one build.yaml in
   {} when no request got a response (a refused key, a provider with no credentials): that names no provider.
 - "firstParty" does not say where the requests went: the tool reports it also when ANTHROPIC_BASE_URL names a proxy
   (its own policy code calls that a custom endpoint), which could answer with any model and name it as it likes. So
-  the record names the endpoint, and run does not start the agent at another. It reads the settings files a machine
-  or a user can write, and the global config in each of the files the tool can take it from (.config.json in the
-  config home, and .claude.json and its -staging-oauth, -local-oauth and -custom-oauth names), whose `env` the tool
-  also applies as it starts; a folder named by CLAUDE_CODE_MANAGED_SETTINGS_PATH or CLAUDE_CODE_REMOTE_SETTINGS_PATH is
-  refused rather than read. Remote managed settings that the organization's admin signs (the tool applies routing
-  names only from a verified copy) are not read.
+  the record names the endpoint, and run does not start the agent at another. Of the tool's own variables
+  (ANTHROPIC_*, CLAUDE_CODE_*), in its environment or in any `env` it reads, it allows only the credentials and the
+  knobs of TOOL_VARIABLES: any other is refused, since several send its requests elsewhere (a base URL, a socket, a
+  gateway, a host's credentials file, a settings source this script does not read). It reads the settings files a
+  machine or a user can write, and the global config in each of the files the tool can take it from (.config.json in
+  the config home, and .claude.json and its -staging-oauth, -local-oauth and -custom-oauth names), whose `env` the
+  tool also applies as it starts. Remote managed settings that the organization's admin signs (the tool applies
+  routing names only from a verified copy) are not read.
 """
 import collections
 import glob
@@ -78,15 +80,18 @@ import urllib.parse
 # of its own API. An allow list: a provider the tool names otherwise, a new one included, is never taken for the one
 # asked for.
 TOOL_PROVIDER = {"anthropic": ("firstParty", "api.anthropic.com")}
-# Variables that send the tool's requests elsewhere than the provider's own API, or let another party answer for it,
-# besides an ANTHROPIC_BASE_URL of another URL and any CLAUDE_CODE_USE_* (a provider of another name, or a gateway):
-# a socket or another base URL, the TLS settings that would let a proxy answer as the API, request fields and betas
-# that could arm a server fallback, and settings sources this script does not read.
-ELSEWHERE = ("ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_API_BASE_URL", "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
-             "NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
-             "CLAUDE_CODE_EXTRA_BODY", "ANTHROPIC_BETAS", "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-             "CLAUDE_CODE_REMOTE_SETTINGS_PATH", "CLAUDE_CODE_DISABLE_ADMIN_ENV_UNION",
-             "CLAUDE_CODE_MOCK_REMOTE_SETTINGS", "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_CUSTOM_OAUTH_URL")
+# The tool's own variables (ANTHROPIC_*, CLAUDE_CODE_*, _CLAUDE_CODE_*), in its environment or a settings file's `env`:
+# only these may be set, besides an ANTHROPIC_BASE_URL of the provider's own API. Each names a credential, or a knob
+# that moves no request and picks no model. An allow list: the tool reads well over a hundred such names, and several
+# (a base URL, a socket, a gateway, a host's credentials file, request fields, headers, settings sources) send its
+# requests elsewhere or let another model answer; a name not on this list, a new one included, is refused.
+TOOL_VARIABLES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_IDENTITY_TOKEN",
+                  "ANTHROPIC_IDENTITY_TOKEN_FILE", "ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID",
+                  "ANTHROPIC_SERVICE_ACCOUNT_ID", "ANTHROPIC_WORKSPACE_ID", "ANTHROPIC_SCOPE",
+                  "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_ENABLE_TELEMETRY", "CLAUDE_CODE_MAX_OUTPUT_TOKENS")
+TOOL_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_", "_CLAUDE_CODE_")
+# Other variables that let another party answer as the provider's API: the TLS settings that would let a proxy do it.
+ELSEWHERE = ("NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR")
 # The names the tool gives its global config, .claude<name>.json (its own list, 2.1.310).
 GLOBAL_CONFIG_NAMES = ("", "-staging-oauth", "-local-oauth", "-custom-oauth")
 PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")   # in any case
@@ -204,8 +209,8 @@ def endpoint(host):
         for name, value in env.items():
             if name == "ANTHROPIC_BASE_URL":
                 found.add(base_url(value, host) or host)
-            elif name in ELSEWHERE or name.upper() in PROXIES or name.startswith("CLAUDE_CODE_USE_") \
-                    or name in OTHER_MODEL_SETTINGS or name == "unreadable-settings":
+            elif name.startswith(TOOL_PREFIXES) and name not in TOOL_VARIABLES or name in ELSEWHERE \
+                    or name.upper() in PROXIES or name in OTHER_MODEL_SETTINGS or name == "unreadable-settings":
                 found.add(clean(name))
     found.discard(host)
     return "+".join(sorted(found)) or host

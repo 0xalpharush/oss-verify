@@ -92,7 +92,8 @@ def check(record):
 def environment(**variables):
     """The environment a test runs a script in: this one's, without the variables that send the tool's requests
     elsewhere, and with `variables`."""
-    env = {k: v for k, v in os.environ.items() if k.upper() not in ELSEWHERE and not k.startswith("CLAUDE_CODE_USE_")}
+    env = {k: v for k, v in os.environ.items()
+           if k.upper() not in ELSEWHERE and not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_", "_CLAUDE_CODE_"))}
     env.update(variables)
     return env
 
@@ -573,6 +574,34 @@ class Run(StandIn):
         self.run_agent([init()] + turn(1) + [result()], ANTHROPIC_BASE_URL="https://proxy.example")
         self.assertEqual(self.read("served"), f"asked {ASKED}\nendpoint https:proxy.example\n")
         self.assertEqual(self.read("claude.json"), "")
+
+    def test_a_variable_of_the_tool_s_own_that_is_not_allowed_starts_no_agent(self):
+        """Of the tool's own variables only credentials and knobs that move no request are allowed: any other, a new
+        one included, is refused (a host's credentials file, for one, sets the base URL another way)."""
+        for variables in ({"CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST": "1", "CLAUDE_CODE_HOST_CREDS_FILE": "/tmp/c.json"},
+                          {"CLAUDE_CODE_SOMETHING_NEW": "1"}, {"ANTHROPIC_MODEL": "other-b-1"},
+                          {"ANTHROPIC_PROFILE": "work"}):
+            with self.subTest(variables=variables):
+                code, err, _ = self.run_agent([init()] + turn(1) + [result()], **variables)
+                self.assertEqual(code, 4, err)
+                self.assertIn(f"settings set {'+'.join(sorted(variables))}, which", err)
+                self.assertFalse(os.path.exists(os.path.join(self.dir, "argv.json")), "the agent ran")
+        # The same in a settings file's env.
+        os.makedirs(os.path.join(self.dir, ".claude"), exist_ok=True)
+        with open(os.path.join(self.dir, ".claude", "settings.json"), "w") as f:
+            json.dump({"env": {"CLAUDE_CODE_HOST_CREDS_FILE": "/tmp/c.json"}}, f)
+        code, err, _ = self.run_agent([init()] + turn(1) + [result()])
+        self.assertIn("settings set CLAUDE_CODE_HOST_CREDS_FILE, which", err)
+        os.remove(os.path.join(self.dir, ".claude", "settings.json"))
+        # The credentials and knobs that are allowed.
+        allowed = {"ANTHROPIC_API_KEY": "k", "ANTHROPIC_AUTH_TOKEN": "t", "CLAUDE_CODE_OAUTH_TOKEN": "o",
+                   "ANTHROPIC_IDENTITY_TOKEN_FILE": "/tmp/jwt", "ANTHROPIC_FEDERATION_RULE_ID": "fdrl_x",
+                   "ANTHROPIC_ORGANIZATION_ID": "o", "ANTHROPIC_SERVICE_ACCOUNT_ID": "svac_x",
+                   "ANTHROPIC_WORKSPACE_ID": "wrkspc_x", "ANTHROPIC_SCOPE": "workspace:inference",
+                   "CLAUDE_CODE_ENABLE_TELEMETRY": "1", "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "1000",
+                   "ANTHROPIC_BASE_URL": f"https://{HOST}"}
+        code, err, _ = self.run_agent([init()] + turn(1) + [result()], **allowed)
+        self.assertEqual(code, 0, err)
 
     def gone(self, pid):
         """Whether the process `pid` has ended (and been reaped), waiting up to 10 seconds."""
