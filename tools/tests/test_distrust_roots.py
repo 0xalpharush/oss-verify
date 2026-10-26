@@ -4,7 +4,8 @@
 python3 -m pytest tools/tests
 
 The tests make their own self-signed roots, so they need no image: a certifi-style bundle, a wheel that carries one,
-and a tree of files for the check that nothing still holds a root."""
+and a tree of files for the check that nothing still holds a root. They need the cryptography package (the tests
+workflow installs it), and fail without it rather than skip."""
 import base64
 import datetime
 import hashlib
@@ -13,11 +14,10 @@ import pathlib
 import zipfile
 
 import pytest
-
-x509 = pytest.importorskip("cryptography.x509")
-from cryptography.hazmat.primitives import hashes, serialization  # noqa: E402
-from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
-from cryptography.x509.oid import NameOID  # noqa: E402
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[2] / "infra/base-builder/distrust-roots.py"
 SPEC = importlib.util.spec_from_file_location("distrust_roots", SCRIPT)
@@ -115,3 +115,31 @@ def test_leftovers_finds_a_root_in_any_pem_file_or_wheel_member(tmp_path, bundle
     (tmp_path / "bad.crt").unlink()
     (tmp_path / "link.pem").unlink()
     assert distrust.leftovers(distrust.walk(str(tmp_path))) == []
+
+
+def test_disable_marks_only_active_lines_that_name_a_bad_root():
+    conf = ("# emSign roots are listed below\n!mozilla/emSign_Root_CA_-_C1.crt\nmozilla/emSign_Root_CA_-_G1.crt\n"
+            "mozilla/ISRG_Root_X1.crt\nmozilla/Comodo_AAA_Certificate_Services.crt\n")
+    assert distrust.disable(conf) == ("# emSign roots are listed below\n!mozilla/emSign_Root_CA_-_C1.crt\n"
+                                      "!mozilla/emSign_Root_CA_-_G1.crt\nmozilla/ISRG_Root_X1.crt\n"
+                                      "!mozilla/Comodo_AAA_Certificate_Services.crt\n")
+    assert distrust.disable(distrust.disable(conf)) == distrust.disable(conf)
+
+
+@pytest.mark.parametrize("after, ok", [
+    (["CN=Good", "CN=Other"], True),
+    (["CN=Other", "CN=Good"], True),  # order does not matter
+    (["CN=Good"], False),  # lost a good root
+    (["CN=Good", "CN=Other", "CN=emSign Root CA - G1"], False),  # kept a bad root
+])
+def test_failures(after, ok):
+    before = {"store": ["CN=Good", "CN=emSign Root CA - G1", "CN=Other"]}
+    assert (distrust.failures(before, {"store": after}) == []) == ok
+
+
+def test_failures_refuses_a_store_with_no_good_root():
+    assert distrust.failures({"store": ["CN=AAA Certificate Services"]}, {"store": []}) != []
+
+
+def test_subjects_ignores_non_ascii_comments():
+    assert distrust.subjects("# Issuer: CN=Česká Root\n" + root("Good Root CA")) == ["commonName=Good Root CA"]

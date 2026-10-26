@@ -35,14 +35,17 @@ CONF = pathlib.Path("/etc/ca-certificates.conf")
 NOT_WALKED = ("/proc", "/sys", "/dev", "/usr/share/ca-certificates")
 PEM_SUFFIXES = (".pem", ".crt", ".cer")
 CERTIFI = re.compile(r"(^|/)certifi/cacert\.pem$")
+PEM_BLOCK = re.compile(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", re.S)
 
 
 def subjects(text):
-    """The subject of each CA certificate in PEM text, as 'key=value, ...'."""
-    if "-----BEGIN CERTIFICATE-----" not in text:
+    """The subject of each CA certificate in PEM text, as 'key=value, ...'. Only the PEM blocks are read, so a
+    comment in any language does not matter."""
+    blocks = PEM_BLOCK.findall(text)
+    if not blocks:
         return []
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.load_verify_locations(cadata=text)
+    context.load_verify_locations(cadata="\n".join(blocks))
     return [", ".join("%s=%s" % kv for rdn in cert["subject"] for kv in rdn) for cert in context.get_ca_certs()]
 
 
@@ -50,11 +53,30 @@ def block_subjects(text):
     """subjects() of each PEM certificate block in text on its own, skipping a block OpenSSL cannot read (test data
     such as CPython's): no TLS library can trust a certificate it cannot read."""
     found = []
-    for block in re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", text, re.S):
+    for block in PEM_BLOCK.findall(text):
         try:
             found += subjects(block)
-        except ssl.SSLError:
+        except (ssl.SSLError, TypeError, ValueError):
             pass
+    return found
+
+
+def disable(conf):
+    """/etc/ca-certificates.conf's text with each active line that names a bad root prefixed with '!'."""
+    return "".join(("!" + l if not l.startswith(("!", "#")) and BAD.search(l) else l) + "\n"
+                   for l in conf.splitlines())
+
+
+def failures(before, after):
+    """For each store, a message unless it holds exactly the roots it held before less the bad ones (in any order),
+    and at least one."""
+    found = []
+    for where in before:
+        want = sorted(s for s in before[where] if not BAD.search(s))
+        got = sorted(after[where])
+        if not want or got != want:
+            found.append(f"{where}: it should hold the {len(want)} roots it held less these, and holds {len(got)}: "
+                         f"{sorted(set(got) ^ set(want))}")
     return found
 
 
@@ -137,15 +159,14 @@ def main():
     before = {str(SYSTEM): subjects(SYSTEM.read_text()), str(JAVA): java_owners()}
     after = {}
 
-    lines = CONF.read_text().splitlines()
-    CONF.write_text("".join(("!" + l if not l.startswith(("!", "#")) and BAD.search(l) else l) + "\n" for l in lines))
+    CONF.write_text(disable(CONF.read_text()))
     subprocess.run(["update-ca-certificates"], check=True, stdout=subprocess.DEVNULL)
     after[str(SYSTEM)] = subjects(SYSTEM.read_text())
     after[str(JAVA)] = java_owners()
 
     files = list(walk())
     for p in (p for p in files if not p.is_symlink()):  # a link's target is stripped as itself
-        if p.name == "cacert.pem" and p.parent.name == "certifi":
+        if CERTIFI.search(p.as_posix()):
             text = p.read_text()
             before[str(p)] = subjects(text)
             p.write_text(strip_bundle(text))
@@ -154,18 +175,12 @@ def main():
             for name, (b, a) in strip_wheel(p).items():
                 before[f"{p}:{name}"], after[f"{p}:{name}"] = b, a
 
-    failed = False
     for where in before:
-        want = [s for s in before[where] if not BAD.search(s)]
         print(f"{where}: {len(before[where])} -> {len(after[where])} roots")
-        if not want or after[where] != want:
-            print(f"FAIL: {where}: it should hold the {len(want)} roots it held less these, and holds "
-                  f"{len(after[where])}: {sorted(set(after[where]) ^ set(want))}")
-            failed = True
-    for where, subject in leftovers(files):
-        print(f"FAIL: {where} still holds {subject}")
-        failed = True
-    return 1 if failed else 0
+    messages = failures(before, after) + [f"{where} still holds {subject}" for where, subject in leftovers(files)]
+    for message in messages:
+        print(f"FAIL: {message}")
+    return 1 if messages else 0
 
 
 if __name__ == "__main__":

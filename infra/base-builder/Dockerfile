@@ -20,7 +20,7 @@ FROM ${TOOLCHAIN}
 # were also cross-signed under AAA Certificate Services). The toolchain images carry them: Alpine's store has the four
 # emSign roots, and the certifi of pip, on disk and in ensurepip's wheels, has those and AAA. A project's Dockerfile
 # runs on this image with the network, so distrust-roots.py removes them from every store and fails the build if one
-# remains. It changes no file that a link takes, and it runs before the COPYs, so a change to them does not run it
+# remains. It changes no file that the linker reads, and it runs before the COPYs, so a change to them does not run it
 # again. It is bind-mounted, so it leaves no file in the image.
 RUN --mount=type=bind,source=distrust-roots.py,target=/tmp/distrust-roots.py python3 /tmp/distrust-roots.py
 
