@@ -1411,6 +1411,9 @@ class ReviewRun(unittest.TestCase):
         return dict(entry.decode().split("=", 1) for entry in entries if entry)
 
     def test_no_value_is_an_argument_and_the_environment_is_the_allow_list(self):
+        # A record left by an earlier run in the same directory is not this run's: review-run clears it.
+        (self.directory / "review").mkdir(exist_ok=True)
+        (self.directory / "review" / "export-lost.txt").write_text("the cost collector answered 401 earlier\n")
         out = self.run_review(**self.collector(**self.identity()))
         self.assertEqual(out.returncode, 0, out.stderr)
         # The collector took the token before and after the review, so there is no lost export to warn about.
@@ -2188,6 +2191,8 @@ class ReviewStep(unittest.TestCase):
                 self.assertEqual(summary, "")
                 if case == {"signed_in": False}:
                     self.assertFalse(self.curl_called, "Secret Manager is called with no access token")
+                # A line of spaces alone is never sent to ::add-mask::, which the runner answers with a warning.
+                self.assertNotRegex(out, r"(?m)^::add-mask::\s*$")
         # The review's own failure still fails the step.
         code, _, _ = self.run_step(1, "plain words\n", secret_manager=False)
         self.assertEqual(code, 1)
