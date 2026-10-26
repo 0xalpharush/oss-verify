@@ -25,7 +25,7 @@ The same run's host-call log (`lengths`, written by tools/checks/host-calls.c) g
 because qemu hands them to the host unchanged, or rounded up to a page (see HostLog). Where it does not, the checker
 takes the printed value as the low 32 bits of an unknown register and does not decide an answer that a larger value
 would change: the call goes into the result's `undecided` list, not its `unmodeled` one. The formats and host calls
-read are qemu 10.0's (tools/check_binaries.py QEMU_VERSIONS: one release records the runs).
+read are qemu 10.0.11's (tools/check_binaries.py QEMU_VERSIONS: one release records the runs).
 
 One assumption the trace cannot check (Arg.sext): an argument that the guest passes as a 32-bit int arrives in its
 register sign-extended, by the RISC-V calling convention (riscv-elf-psabi-doc, the RVG calling convention: a scalar

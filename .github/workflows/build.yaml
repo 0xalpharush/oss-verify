@@ -189,7 +189,7 @@ jobs:
           # It is taken out of its package, not installed: the package registers qemu with the kernel for riscv64
           # programs (binfmt_misc), and a build.sh could then run the riscv64 programs that it makes. (From #24.)
           # Without it, --checks says that it could not measure, and the build is checked as before.
-          # The check of system calls reads the runs of qemu 10.0 only (tools/check_binaries.py QEMU_VERSIONS), so this
+          # The check of system calls reads the runs of qemu 10.0.11 only (tools/check_binaries.py QEMU_VERSIONS), so this
           # is Debian 13's qemu-user 1:10.0.11+ds-0+deb13u1, pinned by its SHA-256 at its snapshot.debian.org address:
           # the build theorem-labs/oss-verify-proofs's toolchain/runner.Dockerfile runs counterexamples with. Its
           # qemu-riscv64 is a static binary; the -static name is the one tools/check looks for.

@@ -71,37 +71,46 @@ GO_SETTINGS = {"-buildmode": "exe", "-compiler": "gc", "-trimpath": "true", "CGO
 
 # The functions of a minimal Go program: Go's runtime's unqualified assembly, and package-qualified code.
 GO_FUNCTIONS = ("_rt0_riscv64_linux", "runtime.rt0_go", "compare", "main.main", "main")
+NOP16 = struct.pack("<I", 0x00000013) * 4
+# A trampoline Go's linker makes: auipc x31, 0; jalr x0, 0(x31); zero padding.
+TRAMPOLINE = struct.pack("<II", 0x00000F97, 0x000F8067) + bytes(8)
 
 
-def gopclntab(functions, size=16):
-    """Go 1.27.1's function table (src/runtime/symtab.go pcHeader) for `functions`, each `size` bytes of .text in
-    order from its start: [(name, size)] or names."""
-    functions = [(f, size) if isinstance(f, str) else f for f in functions]
-    names = b"".join(name.encode() + b"\0" for name, _ in functions)
+def go_function(item):
+    """(name, bytes, has a line table) for an item of a function list: a name is 16 bytes of Go-compiled code."""
+    return (item, NOP16, True) if isinstance(item, str) else item
+
+
+def gopclntab(functions):
+    """Go 1.27.1's function table (src/runtime/symtab.go pcHeader, runtime/runtime2.go _func) for `functions`
+    ([go_function items]), laid out in order from .text's start. A function with a line table gets pcfile, pcln and a
+    compilation unit; one without gets 0, 0 and no unit, as a host object's code does."""
+    names = b"".join(name.encode() + b"\0" for name, _, _ in functions)
     name_offsets, at = [], 0
-    for name, _ in functions:
+    for name, _, _ in functions:
         name_offsets.append(at)
         at += len(name) + 1
     names_at = 72
     pcln_at = names_at + len(names)
     funcs_at = (len(functions) + 1) * 8         # the _func records, after the function table, from pcln_at
     table, records, entry = b"", b"", 0
-    for (name, length), name_off in zip(functions, name_offsets):
+    for (name, body, lines), name_off in zip(functions, name_offsets):
         table += struct.pack("<II", entry, funcs_at + len(records))
-        records += struct.pack("<Ii", entry, name_off)
-        entry += length
+        records += struct.pack("<IiiIIIIII", entry, name_off, 0, 0, 1 if lines else 0, 1 if lines else 0,
+                               1 if lines else 0, 0, 0 if lines else 0xFFFFFFFF)
+        entry += len(body)
     table += struct.pack("<II", entry, 0)
     header = struct.pack("<IHBB", 0xFFFFFFF1, 0, 1, 8)
-    header += struct.pack("<8Q", len(functions), 0, 0, names_at, 0, 0, 0, pcln_at)
+    header += struct.pack("<8Q", len(functions), 0, 0, names_at, pcln_at, pcln_at, pcln_at, pcln_at)
     return header + names + table + records
 
 
 def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=GO_FUNCTIONS, text_size=None,
                   **settings):
-    """A minimal riscv64 executable with a .text section, a .gopclntab of `functions` (16 bytes each, unless
-    `text_size` makes .text longer, with zero padding), and the section `section` that holds Go's build information
-    as Go 1.27.1 writes it (src/debug/buildinfo/buildinfo.go), with the `build` settings GO_SETTINGS and `settings`
-    (None drops one)."""
+    """A minimal riscv64 executable with a .text section of `functions` (go_function items; then zero padding up to
+    `text_size`), their .gopclntab, and the section `section` that holds Go's build information as Go 1.27.1 writes it
+    (src/debug/buildinfo/buildinfo.go), with the `build` settings GO_SETTINGS and `settings` (None drops one)."""
+    functions = [go_function(f) for f in functions]
     lines = ["path\tcommand-line-arguments"] + [f"build\t{key}={value}" for key, value in
                                                 {**GO_SETTINGS, **settings}.items() if value is not None]
     # The 16-byte frames Go puts around the module information (cmd/go/internal/modload: infoStart, infoEnd), which
@@ -113,7 +122,7 @@ def go_executable(section=b".go.buildinfo", flags=2, truncate=False, functions=G
     body += bytes([len(version)]) + version
     size = len(module) + (1000 if truncate else 0)
     body += bytes([0x80 | (size & 0x7F), size >> 7]) + module
-    text = struct.pack("<I", 0x00000013) * (len(functions) * 4)
+    text = b"".join(code for _, code, _ in functions)
     text += bytes((text_size or len(text)) - len(text))
     pcln = gopclntab(functions)
     blobs = [(b".text", 1, 0x6, 0x11000, text), (section, 1, 0x3, 0x100000, body),
@@ -561,10 +570,17 @@ class Analyse(unittest.TestCase):
             "cannot be read": go_executable(truncate=True),
             "not the build information of Go 1.18": go_executable(flags=0),
             "not a RISC-V ELF file": b"\x7fELF" + b"\0" * 60,
-            # A .syso file's C code, which CGO_ENABLED=0 still links: named by its own symbols, with no package path.
-            "no Go package names, so code that Go did not compile (a .syso file, for one): $x, cfunc_c":
-                go_executable(functions=GO_FUNCTIONS + ("cfunc_c", "$x")),
-            "no Go package names": go_executable(functions=GO_FUNCTIONS + ("compare",)),
+            # A .syso file's C code, which CGO_ENABLED=0 still links: it has no line table, whatever its name, also a
+            # Go-like one from an asm label.
+            "no line table, so code that Go did not compile (a .syso file, for one): $x, cfunc_c":
+                go_executable(functions=GO_FUNCTIONS + (("cfunc_c", NOP16, False), ("$x", NOP16, False))),
+            "no line table, so code that Go did not compile (a .syso file, for one): main.cfunc":
+                go_executable(functions=GO_FUNCTIONS + (("main.cfunc", NOP16, False),)),
+            # A trampoline is the linker's only with the linker's bytes; FIPS markers only when they are zero.
+            "no line table, so code that Go did not compile (a .syso file, for one): main.f-tramp0":
+                go_executable(functions=GO_FUNCTIONS + (("main.f-tramp0", NOP16, False),)),
+            "no line table, so code that Go did not compile (a .syso file, for one): go:textfipsstart":
+                go_executable(functions=GO_FUNCTIONS + (("go:textfipsstart", NOP16, False),)),
             "0 .gopclntab sections": go_executable(section=b".go.buildinfo").replace(b".gopclntab", b".gopclnta_"),
         }
         for expected, data in cases.items():
@@ -578,12 +594,13 @@ class Analyse(unittest.TestCase):
         code = bytearray(padded)
         code[64 + end] = 0x13
         self.assertIn("not zero padding", check_links.go_program(bytes(code)))
-        # Go's own unqualified assembly (crypto/internal/fips140/bigmod's addMulVVWx) and the linker's trampoline to
-        # it are Go's; a trampoline to a C function is not.
-        stdlib = go_executable(functions=GO_FUNCTIONS + ("addMulVVWx", "addMulVVWx-tramp0", "crypto/rsa.f-tramp1"))
+        # Go's own unqualified assembly (crypto/internal/fips140/bigmod's addMulVVWx) has a line table like any Go
+        # code; the linker's trampolines and FIPS markers have none, and are recognised by their bytes.
+        stdlib = go_executable(functions=GO_FUNCTIONS + (
+            "addMulVVWx", ("addMulVVWx-tramp0", TRAMPOLINE, False),
+            ("crypto/rsa.f-tramp1", TRAMPOLINE + bytes(8), False),
+            ("go:textfipsstart", bytes(0), False), ("go:textfipsend", bytes(8), False)))
         self.assertIsInstance(check_links.go_program(stdlib), check_links.GoProgram)
-        self.assertIn("cfunc_c-tramp0",
-                      check_links.go_program(go_executable(functions=GO_FUNCTIONS + ("cfunc_c-tramp0",))))
 
     def test_record_of_reads_a_go_program_and_refuses_any_other_binary_without_a_map(self):
         with tempfile.TemporaryDirectory() as tmp:

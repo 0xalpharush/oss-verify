@@ -30,15 +30,15 @@ and gives each build of each fuzz target two results:
 
 The plain build instruments nothing, by design; its result is "plain" when its record is complete, and "error"
 when it has no record or an incomplete one. A Go program has no record (Go's linker writes no map): its result is
-"plain" when its own build information says Go's linker linked it with no cgo, and its function table names every
-function of its code with a Go package path (a .syso file's C code has none), and "error" otherwise.
+"plain" when its own build information says Go's linker linked it with no cgo, and its function table gives every
+function of its code a line table, as Go's compiler and assembler do (a .syso file's C code has none), and "error"
+otherwise.
 
 What this catches: a build whose sanitizer flags did not reach some of its code, by mistake. The records are written
 inside the build's own container, so a build.sh that sets out to deceive the check can; the review of the pull request
 is what stands against that.
 """
 import array
-import collections
 import dataclasses
 import hashlib
 import os
@@ -209,16 +209,19 @@ def _uvarint(data, at):
 # Go's function table (.gopclntab; src/runtime/symtab.go pcHeader, src/debug/gosym/pclntab.go) of Go 1.18 and later:
 # a header of the magic, two zero bytes, minLC, ptrSize, then nfunc, nfiles, textStart and the offsets of funcnametab,
 # cutab, filetab, pctab and pclntab, each ptrSize bytes; at pclntab, nfunc + 1 pairs of uint32 (entry offset from
-# textStart, offset of the _func), the last one's entry being the end of the code; each _func starts with its entry
-# offset (uint32) and the offset of its name in funcnametab (int32).
+# textStart, offset of the _func), the last one's entry being the end of the code. Each _func (runtime/runtime2.go)
+# starts entryOff, nameOff, args, deferreturn, pcsp, pcfile, pcln, npcdata, cuOffset: GO_FUNC.
 GO_PCLNTAB_MAGICS = (0xFFFFFFF0, 0xFFFFFFF1)
+GO_FUNC = struct.Struct("<IiiIIIIII")
+NO_CU = 0xFFFFFFFF
 
 
 def go_functions(data, sections):
-    """[(start, end, name)] of every function in the executable's Go function table, in address order, as offsets
-    from the start of .text, or the reason it cannot be read (str). Go's linker lists here each function it lays out,
-    a host object's (a .syso file's) under the object's own symbol name. (Go 1.27.1 writes textStart as 0; its
-    offsets are from .text's start.)"""
+    """[(start, end, name, has a line table)] of every function in the executable's Go function table, in address
+    order, as offsets from the start of .text, or the reason it cannot be read (str). Go's linker lists here each
+    function it lays out, a host object's (a .syso file's) under the object's own symbol name. (Go 1.27.1 writes
+    textStart as 0; its offsets are from .text's start.) A function has a line table when its pcfile and pcln are not
+    0 and its cuOffset names a compilation unit, as Go's compiler and assembler write for every function they make."""
     found = [s for s in sections if s["name"] == ".gopclntab" and s["type"] != SHT_NOBITS]
     if len(found) != 1:
         return f"{len(found)} .gopclntab sections, not one"
@@ -226,44 +229,49 @@ def go_functions(data, sections):
     if len(tab) < 72 or struct.unpack_from("<I", tab, 0)[0] not in GO_PCLNTAB_MAGICS or tab[4:6] != b"\0\0" \
             or tab[7] != 8:
         return "its .gopclntab is not Go 1.18's function table for a 64-bit target"
-    nfunc, _, text_start, names_at, _, _, _, pcln_at = struct.unpack_from("<8Q", tab, 8)
+    nfunc, _, text_start, names_at, cu_at, _, _, pcln_at = struct.unpack_from("<8Q", tab, 8)
     if text_start != 0:
         return f"its .gopclntab's textStart is {text_start:#x}, not the 0 that Go 1.27.1 writes"
-    if pcln_at + (nfunc + 1) * 8 > len(tab) or names_at > len(tab):
+    if pcln_at + (nfunc + 1) * 8 > len(tab) or not names_at <= cu_at <= len(tab):
         return "its .gopclntab's function table runs past the end of the section"
     functions = []
     for i in range(nfunc):
         entry, func = struct.unpack_from("<II", tab, pcln_at + i * 8)
         end = struct.unpack_from("<I", tab, pcln_at + (i + 1) * 8)[0]
-        if pcln_at + func + 8 > len(tab) or end < entry:
+        if pcln_at + func + GO_FUNC.size > len(tab) or end < entry:
             return f"its .gopclntab's function {i} runs past the end of the section"
-        name_off = struct.unpack_from("<i", tab, pcln_at + func + 4)[0]
+        _, name_off, _, _, _, pcfile, pcln, _, cu = GO_FUNC.unpack_from(tab, pcln_at + func)
         at = names_at + name_off
-        stop = tab.find(b"\0", at)
-        if name_off < 0 or stop < 0:
+        # Each name ends within funcnametab, so the search for it is bounded.
+        stop = tab.find(b"\0", at, cu_at) if 0 <= name_off else -1
+        if stop < 0:
             return f"its .gopclntab's function {i} has no name"
-        functions.append((entry, end, tab[at:stop].decode("latin1")))
+        functions.append((entry, end, tab[at:stop].decode("latin1"), bool(pcfile and pcln and cu != NO_CU)))
     return functions
 
 
-# The functions of Go 1.27.1 whose names carry no package path, for linux/riscv64: every `TEXT name(SB)` with no
-# package in the assembly of GOROOT/src that builds for linux/riscv64 (outside cmd/ and testdata/), with the Go
-# toolchain image's overlay in place (runtime, internal/bytealg, crypto/internal/fips140/bigmod and the rest), and the
-# linker's FIPS markers. Every other function that Go's compiler or assembler makes is named <package path>.<name>; a
-# C function, which a .syso file brings in with no cgo, is not. The linker names a trampoline <target>-tramp<N>.
-GO_UNQUALIFIED = frozenset({
-    "_cgo_topofstack", "_rt0_riscv64_lib", "_rt0_riscv64_linux", "_rt0_riscv64_linux_lib", "addMulVVWx", "asancall",
-    "callRet", "compare", "crosscall2", "crosscall2_trampoline", "gcWriteBarrier", "gogo", "gosave_systemstack_switch",
-    "indexByteBig", "main", "racecall", "racecalladdr", "racecallatomic", "racefuncenter", "setg_gcc",
-    "go:textfipsstart", "go:textfipsend"})
-GO_TRAMPOLINE = re.compile(r"-tramp[0-9]+$")
+# The functions Go's linker makes itself, which have no line table: a trampoline `<target>-tramp<N>` to a function
+# too far for a direct jump, which is `auipc x31, hi` and `jalr x0, lo(x31)` and zero padding; and the FIPS markers,
+# which are zero bytes.
+GO_TRAMPOLINE = re.compile(r".+-tramp[0-9]+")
+GO_FIPS_MARKERS = ("go:textfipsstart", "go:textfipsend")
+
+
+def linker_function(name, body):
+    """Whether a function with no line table, of these bytes, is one that Go's linker makes itself."""
+    if name in GO_FIPS_MARKERS:
+        return not any(body)
+    if GO_TRAMPOLINE.fullmatch(name) and len(body) >= 8:
+        auipc, jalr = struct.unpack_from("<II", body, 0)
+        return auipc & 0xFFF == 0xF97 and jalr & 0xFFFFF == 0xF8067 and not any(body[8:])
+    return False
 
 
 def foreign_code(data, sections):
-    """Why the Go program's code may hold code that Go did not compile, or None. Go's function table must cover .text
-    from its start with no gap, up to zero padding, and name every function with a package path, or as one of
-    GO_UNQUALIFIED at most once. A .syso file's code (linked with CGO_ENABLED=0, which the build information does not
-    show) is named by its own symbols, which no C compiler qualifies."""
+    """Why the Go program's code may hold code that Go did not compile, or None. Go's function table must start at
+    .text's start and end at its end, up to zero padding, and every function in it must have the line table that Go's
+    compiler and assembler write, or be one of the linker's own (linker_function). A .syso file's code (linked with
+    CGO_ENABLED=0, which the build information does not show) has no line table, whatever its symbols are named."""
     text = [s for s in sections if s["name"] == ".text" and s["type"] != SHT_NOBITS]
     if len(text) != 1:
         return f"{len(text)} .text sections, not one"
@@ -272,18 +280,14 @@ def foreign_code(data, sections):
         return functions
     if not functions or functions[0][0] != 0:
         return "its function table does not start at .text's start"
-    gaps = [f"{a[2]}..{b[2]}" for a, b in zip(functions, functions[1:]) if a[1] != b[0]]
-    if gaps:
-        return "its function table leaves gaps in .text: " + ", ".join(listed(gaps))
-    end, size = functions[-1][1], text[0]["size"]
-    if end > size or any(data[text[0]["off"] + end:text[0]["off"] + size]):
+    base, size = text[0]["off"], text[0]["size"]
+    end = functions[-1][1]
+    if end > size or any(data[base + end:base + size]):
         return f"its function table ends at {end:#x} of .text's {size:#x} bytes, and the rest is not zero padding"
-    names = [name for _, _, name in functions]
-    seen = collections.Counter(n for n in names if n in GO_UNQUALIFIED)
-    foreign = [n for n in names if "." not in n and GO_TRAMPOLINE.sub("", n) not in GO_UNQUALIFIED]
-    foreign += [n for n, k in seen.items() if k > 1]
+    foreign = [name for start, stop, name, lines in functions
+               if not lines and not linker_function(name, data[base + start:base + stop])]
     if foreign:
-        return ("functions that no Go package names, so code that Go did not compile (a .syso file, for one): "
+        return ("functions with no line table, so code that Go did not compile (a .syso file, for one): "
                 + ", ".join(listed(sorted(set(foreign)))))
     return None
 
