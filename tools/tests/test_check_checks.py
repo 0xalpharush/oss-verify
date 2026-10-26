@@ -1278,15 +1278,18 @@ class ReviewRun(unittest.TestCase):
         self.assertIn("This review looks only at the diff since the head you last reviewed: "
                       f"review/since-last-review.diff holds the changes to projects/libreac/ from {self.LAST} to "
                       f"{self.HEAD}.", prompt)
-        self.assertIn("Do not review again what the diff does not change.", prompt)
-        self.assertIn("review.md", prompt)
+        self.assertIn("Do not review again what the diff does not change: a new request comes only from the diff.",
+                      prompt)
+        self.assertIn("drop the request when that input shows its fix, and keep it otherwise", prompt)
+        self.assertIn("review.md (read it again: main can have changed it)", prompt)
         # The same session, its conversation now one push longer, with the commit of this review.
         self.assertEqual(self.kept(), ({"id": self.OLD, "head": self.HEAD, "dir": self.FOLDER},
                                        f'I asked for a seed corpus.\n{{"resumed": "{self.OLD}"}}\n'))
         self.assertIn(f"kept the session {self.OLD}, the review of {self.HEAD}", out.stdout)
 
     def test_without_the_diff_since_the_last_review_the_review_is_fresh(self):
-        for diff in (None, "gh: Not Found (HTTP 404)\n(exit status 1)\n"):
+        # None, a failed compare, and an empty one (only keep's line): each gives a fresh review.
+        for diff in (None, "gh: Not Found (HTTP 404)\n(exit status 1)\n", "(exit status 0)\n"):
             with self.subTest(diff=diff):
                 self.last_review()
                 path = self.directory / "review" / "since-last-review.diff"
@@ -1607,6 +1610,47 @@ def review_step():
     matches = [step for step in steps if step.get("id") == "review"]
     assert len(matches) == 1, matches
     return matches[0]
+
+
+class SinceLastReview(unittest.TestCase):
+    """review-gather writes the diff since the last review's commit only when the head descends from it."""
+
+    def gathered(self, status):
+        gather = (ROOT / ".github" / "scripts" / "review-gather").read_text()
+        keep = re.search(r"^keep\(\) \{.*\}$", gather, re.M).group(0)
+        block = gather[gather.index("since=$(sed"):gather.index('ls -la "$out"')]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for sub in ("bin", "out", "session"):
+                (root / sub).mkdir()
+            (root / "session" / "session").write_text(f"id=x\nhead={'2' * 40}\ndir=-x\n")
+            # gh: the compare's status for --jq .status, else a diff of the project and of another file.
+            gh = root / "bin" / "gh"
+            gh.write_text("#!/bin/bash\n"
+                          f'case "$*" in *"--jq .status"*) echo "{status}" ;;\n'
+                          '  *) printf "diff --git a/projects/p/f b/projects/p/f\\n+x\\ndiff --git a/o b/o\\n+y\\n" ;;\n'
+                          "esac\n")
+            gh.chmod(0o755)
+            run = subprocess.run(["bash", "-c", f"set -euo pipefail\nout={root / 'out'}\ndir=projects/p\n{keep}\n{block}"],
+                                 env={**os.environ, "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "REPO": "o/r",
+                                      "HEAD_SHA": "1" * 40, "REVIEW_SESSION": str(root / "session")},
+                                 capture_output=True, text=True)
+            diff = root / "out" / "since-last-review.diff"
+            return run, diff.read_text() if diff.exists() else None
+
+    def test_a_head_that_descends_gets_the_projects_diff(self):
+        run, diff = self.gathered("ahead")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(diff, "diff --git a/projects/p/f b/projects/p/f\n+x\n(exit status 0)\n")
+
+    def test_a_force_push_or_the_same_head_gets_no_diff(self):
+        # A three-dot compare after a force-push diffs from the merge base: it can show nothing that changed.
+        for status in ("diverged", "behind", "identical", ""):
+            with self.subTest(status=status):
+                run, diff = self.gathered(status)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertIsNone(diff)
+                self.assertIn(f"does not descend from {'2' * 40}", run.stdout)
 
 
 class ReviewSessionStore(unittest.TestCase):

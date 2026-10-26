@@ -320,7 +320,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
         with:
           persist-credentials: false
-          # The history of .github/PULL_REQUEST_TEMPLATE.md, for check B of the skill.
+          # The history of .github/PULL_REQUEST_TEMPLATE.md, for check B of review.md.
           fetch-depth: 0
 
       - name: Take projects/<name>/ from the pull request, as the build did
