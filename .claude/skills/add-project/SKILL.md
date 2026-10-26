@@ -125,7 +125,7 @@ The statements use [Linux Process Semantics (LPS)](https://github.com/theorem-la
 
 ### 3.7 Return 0 or -1
 
-> **WARNING:** Do not call `exit()` or `_exit()`. Do not catch all exceptions. Do not install a signal handler. Such code hides the failures that the statements must show.
+> **WARNING:** Do not call `exit()` or `_exit()`. Do not catch all exceptions. Do not install a signal handler. Do not register an exit handler that does not return (`atexit` of a function that calls `_exit`, `_Exit`, `quick_exit` or `abort`, makes the `exit_group` system call, or jumps out of the handler). Do not call `std::set_terminate`. In Rust, do not replace the panic hook (`std::panic::set_hook`, `take_hook` or `update_hook`). Such code hides the failures that the statements must show ([build-contract.md](../../../docs/build-contract.md#what-the-driver-does-not-intercept)).
 
 A fuzz target can have two kinds of check. Each kind has its own result:
 

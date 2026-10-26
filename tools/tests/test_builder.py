@@ -38,6 +38,12 @@ EXPECTED = {
     "m": (0, 0, 0, 0),
     "r": (78, 78, 78, 78),
     "x": (77, 77, 77, 77),
+    # The guard is one atexit() handler the driver registers before LLVMFuzzerInitialize, and handlers run
+    # last-registered-first: a handler the target registers later runs first. One that ends the process itself
+    # ('L': _Exit(0)) gives its own status, and the exit() never reaches the guard; one that returns ('G') leaves
+    # the guard to give 77 (docs/build-contract.md, "What the driver does not intercept").
+    "L": (0, 0, 0, 0),
+    "G": (77, 77, 77, 77),
     # Only exit() is turned into 77: _exit, _Exit and quick_exit end the process with the target's own status.
     "u": (5, 5, 5, 5),
     "U": (6, 6, 6, 6),
