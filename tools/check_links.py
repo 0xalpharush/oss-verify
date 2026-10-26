@@ -246,12 +246,17 @@ def go_functions(data, sections):
     return functions
 
 
-# The functions of Go 1.27.1's runtime for linux/riscv64 whose names carry no package path: assembly with no
-# package-qualified name (TEXT compare<>, TEXT main, the rt0 entry) and the linker's FIPS markers. Every other
-# function that Go's compiler or assembler makes is named <package path>.<name>; a C function, which a .syso file
-# brings in with no cgo, is not. (Measured on the Go toolchain image's programs.)
-GO_UNQUALIFIED = frozenset({"compare", "indexByteBig", "setg_gcc", "gogo", "gosave_systemstack_switch", "callRet",
-                            "gcWriteBarrier", "_rt0_riscv64_linux", "main", "go:textfipsstart", "go:textfipsend"})
+# The functions of Go 1.27.1 whose names carry no package path, for linux/riscv64: every `TEXT name(SB)` with no
+# package in the assembly of GOROOT/src that builds for linux/riscv64 (outside cmd/ and testdata/), with the Go
+# toolchain image's overlay in place (runtime, internal/bytealg, crypto/internal/fips140/bigmod and the rest), and the
+# linker's FIPS markers. Every other function that Go's compiler or assembler makes is named <package path>.<name>; a
+# C function, which a .syso file brings in with no cgo, is not. The linker names a trampoline <target>-tramp<N>.
+GO_UNQUALIFIED = frozenset({
+    "_cgo_topofstack", "_rt0_riscv64_lib", "_rt0_riscv64_linux", "_rt0_riscv64_linux_lib", "addMulVVWx", "asancall",
+    "callRet", "compare", "crosscall2", "crosscall2_trampoline", "gcWriteBarrier", "gogo", "gosave_systemstack_switch",
+    "indexByteBig", "main", "racecall", "racecalladdr", "racecallatomic", "racefuncenter", "setg_gcc",
+    "go:textfipsstart", "go:textfipsend"})
+GO_TRAMPOLINE = re.compile(r"-tramp[0-9]+$")
 
 
 def foreign_code(data, sections):
@@ -275,7 +280,8 @@ def foreign_code(data, sections):
         return f"its function table ends at {end:#x} of .text's {size:#x} bytes, and the rest is not zero padding"
     names = [name for _, _, name in functions]
     seen = collections.Counter(n for n in names if n in GO_UNQUALIFIED)
-    foreign = [n for n in names if "." not in n and n not in GO_UNQUALIFIED] + [n for n, k in seen.items() if k > 1]
+    foreign = [n for n in names if "." not in n and GO_TRAMPOLINE.sub("", n) not in GO_UNQUALIFIED]
+    foreign += [n for n, k in seen.items() if k > 1]
     if foreign:
         return ("functions that no Go package names, so code that Go did not compile (a .syso file, for one): "
                 + ", ".join(listed(sorted(set(foreign)))))

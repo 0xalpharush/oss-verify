@@ -578,6 +578,12 @@ class Analyse(unittest.TestCase):
         code = bytearray(padded)
         code[64 + end] = 0x13
         self.assertIn("not zero padding", check_links.go_program(bytes(code)))
+        # Go's own unqualified assembly (crypto/internal/fips140/bigmod's addMulVVWx) and the linker's trampoline to
+        # it are Go's; a trampoline to a C function is not.
+        stdlib = go_executable(functions=GO_FUNCTIONS + ("addMulVVWx", "addMulVVWx-tramp0", "crypto/rsa.f-tramp1"))
+        self.assertIsInstance(check_links.go_program(stdlib), check_links.GoProgram)
+        self.assertIn("cfunc_c-tramp0",
+                      check_links.go_program(go_executable(functions=GO_FUNCTIONS + ("cfunc_c-tramp0",))))
 
     def test_record_of_reads_a_go_program_and_refuses_any_other_binary_without_a_map(self):
         with tempfile.TemporaryDirectory() as tmp:
