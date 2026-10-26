@@ -1482,6 +1482,21 @@ class ReviewRun(unittest.TestCase):
         self.assertEqual(out.returncode, 4, out.stderr)
         self.assertIn("but none/?synthetic? (1 turn) answered", self.failure()[0])
 
+    def test_a_try_that_ends_well_without_running_review_served_is_not_published(self):
+        # A launcher that ends at once (Python's os.execve on Windows starts a new process and returns) leaves the
+        # records of an earlier run in place: each try removes them first, and a try that ended well with no record
+        # that passes is refused.
+        review = self.directory / "review"
+        (review / "served").write_text(SERVED_OK)
+        (review / "claude.json").write_text(json.dumps(REVIEW_OK))
+        # It reads the environment the launcher is given, as the real one does, then ends without starting anything.
+        (self.directory / "bin" / "timeout").write_text("#!/bin/sh\ncat > /dev/null\nexit 0\n")
+        (self.directory / "bin" / "timeout").chmod(0o755)
+        out = self.run_review()
+        self.assertEqual(out.returncode, 4, out.stderr)
+        self.assertFalse((review / "comment.md").exists())
+        self.assertIn("nothing recorded which provider answered the review", self.failure()[0])
+
     def test_a_resumed_review_another_model_answered_is_not_published_or_tried_fresh(self):
         # The first try resumes the last conversation; review-served refuses it, so there is no fresh second try, and
         # the last review's conversation is not replaced.

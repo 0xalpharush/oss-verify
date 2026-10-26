@@ -155,12 +155,13 @@ def registry_settings():
     return texts
 
 
-def add_settings(sources, settings):
-    """Adds a settings object's `env`, and its OTHER_MODEL_SETTINGS keys, to `sources`: False when it is no object."""
+def add_settings(sources, settings, unreadable="unreadable-settings"):
+    """Adds a settings object's `env`, and its OTHER_MODEL_SETTINGS keys, to `sources`: False when it is no object. An
+    `env` that is no object is named `unreadable`."""
     if not isinstance(settings, dict):
         return False
     env = settings.get("env", {})
-    sources.append(env if isinstance(env, dict) else {"unreadable-settings": ""})
+    sources.append(env if isinstance(env, dict) else {unreadable: ""})
     sources.append({name: "" for name in OTHER_MODEL_SETTINGS if name in settings})
     return True
 
@@ -233,7 +234,9 @@ def endpoint(host):
     `unreadable-settings` or `unreadable-profile`. The global config is whichever of these the tool takes, so all are
     read: .config.json in the config home (CLAUDE_CONFIG_DIR, else ~/.claude), and .claude<s>.json, for each <s> of
     GLOBAL_CONFIG_NAMES, in CLAUDE_CONFIG_DIR, else the home directory. An empty file holds no `env`. Managed settings
-    are read from the platform's folder (MANAGED), and under WSL from Windows' folder and registry keys too."""
+    are read from the platform's folder (MANAGED), and under WSL from Windows' folder and registry keys too: one it
+    cannot read is `unreadable-settings` or `unreadable-registry`. On a platform other than Linux or macOS it is
+    `unsupported-platform`."""
     sources = [os.environ]
     home = os.environ.get("HOME", "")
     config = [os.path.join(home, ".claude"), os.environ.get("CLAUDE_CONFIG_DIR")]
@@ -261,7 +264,7 @@ def endpoint(host):
             return "unreadable-settings"
     try:
         for text in registry_settings() if wsl else ():
-            if not add_settings(sources, json.loads(text)):
+            if not add_settings(sources, json.loads(text), "unreadable-registry"):
                 return "unreadable-registry"
     except (ValueError, RecursionError):
         return "unreadable-registry"
@@ -276,7 +279,8 @@ def endpoint(host):
             if name == "ANTHROPIC_BASE_URL":
                 found.add(base_url(value, host) or host)
             elif name.startswith(TOOL_PREFIXES) and name not in TOOL_VARIABLES or name in ELSEWHERE \
-                    or name.upper() in PROXIES or name in OTHER_MODEL_SETTINGS or name == "unreadable-settings" \
+                    or name.upper() in PROXIES or name in OTHER_MODEL_SETTINGS \
+                    or name in ("unreadable-settings", "unreadable-registry") \
                     or number > 0 and name in PROFILE_PLACES:
                 found.add(clean(name))
     found.discard(host)
@@ -310,6 +314,9 @@ def check(record):
         return UNATTRIBUTED, str(e)
     counts = ", ".join(f"{provider}/{name} ({turns(n)})" for (provider, name), n in answered)
     usage = ", ".join(f"{provider}/{name}" for provider, name in used) or "nothing"
+    if "unsupported-platform" in where:
+        return 1, f"it asked for {asked}, but the review ran on a platform where nothing shows where the tool " \
+                  "reads its settings"
     if any(w != host for w in where):
         return 1, f"it asked for {asked}, whose API is {host}, but the tool's environment or settings set " \
                   f"{', '.join(clean(w) for w in where)}, which can send its requests elsewhere or let another model " \
@@ -383,7 +390,10 @@ def run(directory, asked, command):
     where = endpoint(host)
     try:
         with open(f"{directory}/claude.jsonl", "wb") as stream:
-            if where != host:
+            if where == "unsupported-platform":
+                stopped = f"did not start Claude Code: on {clean(PLATFORM)}, this script does not know where the " \
+                          "tool reads its settings (it knows Linux, WSL and macOS)"
+            elif where != host:
                 stopped = f"did not start Claude Code: the tool's environment or settings set {where}, " \
                           f"which can send its requests elsewhere than {host} or let another model answer"
             else:

@@ -16,7 +16,8 @@
 # CLAUDE_CODE_* variable other than a credential (an API key, an OAuth token, the federation variables) or one of its
 # harmless knobs, a proxy or TLS trust variable, HOME or XDG_CONFIG_HOME in a file's `env`, advisorModel or a policy
 # helper, or a base_url. Unset those for the run (`env -u <name> .github/scripts/review-run …`), or take them out of
-# the file that sets them. It runs on Linux and macOS.
+# the file that sets them. It runs on Linux and macOS (with GNU coreutils first on PATH, for `timeout` and
+# `realpath -m`).
 # The model gets three tools only, Read, Glob and Grep, in Claude Code's restricted mode, which also keeps them inside
 # this checkout: no shell, no network tool, no file writes, no MCP server. It reads what the pull request and the
 # project say as data (the skill's rule 1). Its environment holds only what it needs: PATH, HOME, the locale, the
@@ -219,6 +220,9 @@ deadline=$((SECONDS + 40 * 60))
 first_why=""
 for try in 1 2; do
   status=0
+  # This try's record and result only: review-served writes both, and a try whose launcher ended without running it
+  # must not find an earlier one's.
+  rm -f "$in/served" "$in/claude.json"
   id=$(uuid)
   text=$prompt conversation=(--session-id "$id") resumed=""
   if [ -n "$last_id" ] && [ "$try" = 1 ]; then
@@ -254,9 +258,9 @@ os.execve(sys.executable, [sys.executable, *sys.argv[1:]], environment)' \
   # What answered, as review-served checks its record: the counts, or why the review is not to be posted.
   served_status=0
   answered=$({ cat "$in/served" 2> /dev/null || true; } | "$served" check) || served_status=$?
-  # Not published, and not tried again: review-served stopped it or refused its record, or another endpoint, provider
-  # or model answered a run that also failed by itself.
-  if [ "$served_status" = 1 ] || { [ "$status" = 4 ] && [ "$served_status" != 0 ]; }; then
+  # Not published, and not tried again: review-served stopped it or refused its record, another endpoint, provider or
+  # model answered a run that also failed by itself, or a try that ended well has no record that passes.
+  if [ "$served_status" = 1 ] || { [ "$served_status" != 0 ] && { [ "$status" = 4 ] || [ "$status" = 0 ]; }; }; then
     echo "review-run: the review is not published: $answered" >&2
     if [ -s "$in/claude.err" ] && holds_credential "$in/claude.err"; then
       echo "review-run: Claude Code's standard error is not shown: it holds what looks like a credential" >&2

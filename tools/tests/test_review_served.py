@@ -766,6 +766,14 @@ class Managed(unittest.TestCase):
             with self.subTest(platform=platform):
                 self.served.PLATFORM = platform
                 self.assertEqual(self.endpoint(), "unsupported-platform")
+        code, line = self.served.check(f"asked {ASKED}\nendpoint unsupported-platform\n")
+        self.assertEqual(code, 1)
+        self.assertIn("a platform where nothing shows where the tool reads its settings", line)
+
+    def test_a_registry_env_that_is_no_object_names_the_registry(self):
+        self.served.under_wsl = lambda: True
+        self.reg(0, "    Settings    REG_SZ    " + json.dumps({"env": ["x"]}))
+        self.assertEqual(self.endpoint(), "unreadable-registry")
 
 
 class Check(unittest.TestCase):
