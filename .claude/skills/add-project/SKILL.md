@@ -158,7 +158,7 @@ Do not add a licence file, and do not change `LICENSE`, `LICENSES/` or `NOTICE`.
 
 Today the builder builds `c`, `c++`, `rust`, `python` and `go` projects (`docs/project-yaml.md`, "language"). A `go` project has the plain build only, and our tools do not write theorem statements for Go yet: tell the maintainer that the Go fuzz targets build today, but get no theorem statements yet. For another language, tell the maintainer that its builder is pending, and stop.
 
-For a `rust` project, the fuzz targets are cargo-fuzz `[[bin]]`s in the project's repository. Write the build files in the form of a ported Rust build, for example `tools/seeds/bincode/`. Put the `Cargo.lock` of each fuzz target in the project directory, and get its crates with a `crates` line in `sources`. Do not set `ubsan_checks`.
+For a `rust` project, the fuzz targets are cargo-fuzz `[[bin]]`s in the project's repository, and they are built with Rust nightly-2025-07-16 (rustc 1.90.0, LLVM 20.1.8) (`infra/toolchains.tsv`). Write the build files in the form of a ported Rust build, for example `tools/seeds/bincode/`. The build makes a static-library package, `oft-rust-shim`, from each `[[bin]]`. Put the `Cargo.lock` of that generated package in the project directory, not the lock of the fuzz package, and get its crates with a `crates` line in `sources`. `docs/build-contract.md`, "Rust fuzz targets", gives the steps that make this lock. Do not set `ubsan_checks`.
 
 For a `python` project, the fuzz targets are atheris harnesses. Write the build files in the form of a ported Python build, for example `tools/seeds/mdurl/`. Pin each file that `pip install` uses with a `file` line in `sources`. The seed corpus of each fuzz target is an input of its build.
 
