@@ -1,0 +1,244 @@
+# enroll-dispatch.yml: when every required check of an enrollment pull request has passed, start the theorem statements.
+#
+# The decision on dispatch://OSSV-141: once the enrollment check passes, "it would be okay for us to start working on
+# the theorem statements, maybe with some kind of rate limit of a few per day". So, each time a run of Build,
+# Validate, Terms or Tests completes:
+#
+#   decide    .github/scripts/enroll-dispatch reads GitHub's API: the checks main's ruleset requires, each from the
+#             workflow and event that must make it, at the commit; the record that build.yaml's record job wrote for
+#             it (each binary's .text and executable bytes); the pull request the record names and its files. Its
+#             decision is dispatch, label or none (the script's header says when).
+#   dispatch  on dispatch: sends the repository_dispatch event enrollment-checked, with the pull request's number,
+#             its head commit and the project, to Theorem's private statements repository (repository id INTERNAL_ID
+#             below; its name is not published), whose enrollment workflow builds the project, writes its facts and
+#             statements, and opens their pull request there, or updates the one open for the project; that workflow
+#             keeps the daily limit and labels a pull request statements-queued when it is over it, or when the
+#             project's archives wait for the next release. On label: puts
+#             the label on the pull request and sends nothing, so that a person decides: size-review (a plain binary
+#             above 1,000,000 bytes, the line "Up to 1 MB", dispatch://OSSV-141/ask/7c73eb21), language-paused (a
+#             language whose projects are paused for now) or name-review (a name the statements repository cannot
+#             take). The daily limit and the statements-queued label are the receiving workflow's, not this file's.
+#
+# Each required check's run starts this workflow, so the run of the last one to pass is the one that dispatches; a run
+# that sees a check not passed yet does nothing. A later run for the same commit (an edited title, a re-run) sends
+# it again; the enrollment workflow runs one project at a time and skips a commit whose facts it already made. A new
+# commit on the pull request is checked again, and dispatched again. To have a pull request looked at again (one
+# whose checks passed before build.yaml wrote records), a maintainer runs `gh workflow run build.yaml -f pr=<n>`: that
+# Build run's record names the pull request and its head, and its completion runs this. That run also reviews the pull
+# request again and updates its review comment, as each Build run of it does.
+#
+# It runs on workflow_run, so this file and the script are main's, whatever the pull request holds, and it runs no
+# code of the pull request: decide reads the API as data with a read-only token. dispatch alone holds a credential:
+# the OSS Verify App's installation token, made from the App's key, which it reads at run time from Secret Manager by
+# Google workload identity federation, as build.yaml's and triage.yaml's comment jobs do. It declares the GitHub
+# Environment `comment`, whose claim is the only way to act as the account that reads the key; decide must never
+# be given id-token: write or that environment. Each token it makes holds one permission on one repository: pull
+# requests of this repository for the label (actions/create-github-app-token), contents of the private repository for
+# the event (.github/scripts/app-token, which names it by id, so that the public log does not name it; GitHub's
+# repository_dispatch endpoint takes contents: write). It checks out .github/scripts alone and runs app-token alone.
+name: Enroll dispatch
+on:
+  workflow_run:
+    workflows: [Build, Validate, Terms, Tests]
+    types: [completed]
+permissions: {}
+concurrency:
+  # The runs for one pull request's head wait for each other, so that they read the checks one after another. The
+  # group names the head's repository and branch too, so that another pull request at the same commit from another head
+  # cancels no run of this one (one from the same head shares the group, and the run that replaces a pending one
+  # decides on the same commit and branch); `:`, which neither a repository's name nor a branch's can hold (git
+  # check-ref-format refuses it in a ref, and a GitHub repository name is letters, digits, `.`, `_` and `-`), keeps the
+  # parts apart. A Build run started by hand is about the pull request its record names, not the main commit it ran
+  # on: each has a group of its own.
+  group: >-
+    enroll-dispatch:${{ github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.id
+    || format('{0}:{1}:{2}', github.event.workflow_run.head_sha,
+    github.event.workflow_run.head_repository.full_name, github.event.workflow_run.head_branch) }}
+  cancel-in-progress: false
+
+jobs:
+  decide:
+    if: >-
+      contains(fromJSON('["pull_request_target", "pull_request", "workflow_dispatch"]'), github.event.workflow_run.event)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read        # the runs behind the check runs, and the Build run's artifact enrollment-record
+      checks: read         # the check runs at the commit
+      contents: read       # the checkout of .github/scripts, main's rules (rules/branches/main), the project.yaml
+      pull-requests: read  # the pull request and its files
+    outputs:
+      decision: ${{ steps.decide.outputs.decision }}
+      label: ${{ steps.decide.outputs.label }}
+      pr: ${{ steps.decide.outputs.pr }}
+      project: ${{ steps.decide.outputs.project }}
+      sha: ${{ steps.decide.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Install PyYAML
+        run: dpkg -s python3-yaml > /dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+
+      - name: Decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Until the token is printed again, the runner reads none of the script's output (which quotes file names
+          # of the pull request) as a workflow command.
+          resume="$(openssl rand -hex 16)"
+          echo "::stop-commands::$resume"
+          python3 .github/scripts/enroll-dispatch | tee "$RUNNER_TEMP/decision.txt"
+          echo "::$resume::"
+          { echo '```'; cat "$RUNNER_TEMP/decision.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  dispatch:
+    needs: decide
+    if: needs.decide.outputs.decision == 'dispatch' || needs.decide.outputs.decision == 'label'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Gets this job, and no other, the App's key: only a token with this environment's claim may act as the account
+    # that reads it, as for build.yaml's and triage.yaml's comment jobs. Removing this line does not weaken the job; it
+    # stops it working. deployment: false, as there, so that a run posts no deployment; the claim is in the token
+    # either way.
+    environment:
+      name: comment
+      deployment: false
+    permissions:
+      contents: read   # the checkout of .github/scripts, for app-token
+      # Only for the GitHub identity token that Google's federation trades for an access token of the account that
+      # reads the App's key.
+      id-token: write
+    env:
+      # Public identifiers, not credentials: the provider and the account that reads the App's key, as in build.yaml's
+      # and triage.yaml's comment jobs.
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/805240912354/locations/global/workloadIdentityPools/github/providers/github-ossv
+      GCP_SERVICE_ACCOUNT: ossv-app-comment@theorem-agent-infra.iam.gserviceaccount.com
+      # The private statements repository, by its id.
+      INTERNAL_ID: "1425069221"
+      DECISION: ${{ needs.decide.outputs.decision }}
+      LABEL: ${{ needs.decide.outputs.label }}
+      PR: ${{ needs.decide.outputs.pr }}
+      PROJECT: ${{ needs.decide.outputs.project }}
+      SHA: ${{ needs.decide.outputs.sha }}
+    steps:
+      - name: Check the decision's values
+        run: |
+          set -euo pipefail
+          [[ $PR =~ ^[1-9][0-9]*$ ]] || { echo "::error::not a pull request number: '$PR'"; exit 1; }
+          [[ $PROJECT =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]] || { echo "::error::not a project name: '$PROJECT'"; exit 1; }
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit id: '$SHA'"; exit 1; }
+          case $DECISION/$LABEL in
+            dispatch/) ;;
+            label/size-review|label/language-paused|label/name-review) ;;
+            *) echo "::error::not a decision: '$DECISION' '$LABEL'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (sha-pinned)
+        if: env.DECISION == 'dispatch'
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Sign in to Google Cloud
+        id: gcp
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (sha-pinned)
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 300s
+          # Nothing is written to the workspace and nothing is exported: the token is this step's output alone.
+          create_credentials_file: false
+          export_environment_variables: false
+
+      # The App's private key, from Secret Manager, as build.yaml's and triage.yaml's comment jobs read it. Each
+      # non-blank line of the key is masked, and so is its base64 form.
+      - name: Read the oss-verify App's key
+        id: key
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          payload=$(curl -q -sSf -H @<(builtin printf 'Authorization: Bearer %s\n' "$GCP_ACCESS_TOKEN") \
+            'https://secretmanager.googleapis.com/v1/projects/theorem-agent-infra/secrets/oss-verify-github-app-key/versions/latest:access' \
+            | jq -er '.payload.data | select(type == "string" and length > 0)')
+          builtin printf '::add-mask::%s\n' "$payload"
+          key=$(builtin printf '%s' "$payload" | base64 -d)
+          while IFS= read -r line; do
+            if [[ $line == *[![:space:]]* ]]; then builtin printf '::add-mask::%s\n' "$line"; fi
+          done <<< "$key"
+          delimiter="key-$(openssl rand -hex 16)"
+          { echo "key<<$delimiter"; builtin printf '%s\n' "$key"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+
+      - name: Get the App's token for this repository's pull requests
+        id: label-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0 (sha-pinned)
+        with:
+          client-id: Iv23liAWPMahJZYsw3un
+          private-key: ${{ steps.key.outputs.key }}
+          permission-pull-requests: write
+
+      - name: Label the pull request
+        if: env.DECISION == 'label'
+        env:
+          GH_TOKEN: ${{ steps.label-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          jq -n --arg label "$LABEL" '{labels: [$label]}' \
+            | gh api --method POST "repos/$REPO/issues/$PR/labels" --input - > /dev/null
+          echo "pull request $PR: labelled $LABEL; no statements are started for $PROJECT at $SHA" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Get the App's token for the private repository's contents
+        if: env.DECISION == 'dispatch'
+        id: dispatch-token
+        env:
+          APP_KEY: ${{ steps.key.outputs.key }}
+          CLIENT_ID: Iv23liAWPMahJZYsw3un
+          REPOSITORY_ID: ${{ env.INTERNAL_ID }}
+          PERMISSION: contents
+          ACCESS: write
+        run: .github/scripts/app-token
+
+      - name: Send enrollment-checked to the private repository
+        if: env.DECISION == 'dispatch'
+        env:
+          GH_TOKEN: ${{ steps.dispatch-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          jq -n --arg project "$PROJECT" --arg sha "$SHA" --argjson pr "$PR" \
+            '{event_type: "enrollment-checked", client_payload: {pr: $pr, sha: $sha, project: $project}}' \
+            | gh api --method POST "repositories/$INTERNAL_ID/dispatches" --input -
+          echo "pull request $PR: sent enrollment-checked for $PROJECT at $SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Only after the send: a send that fails leaves the labels, so that the pull request still says where it stands.
+      - name: Take off the labels an earlier commit got
+        if: env.DECISION == 'dispatch'
+        env:
+          GH_TOKEN: ${{ steps.label-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for old in $(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name'); do
+            case $old in
+              size-review|language-paused|name-review)
+                gh api --method DELETE "repos/$REPO/issues/$PR/labels/$old" > /dev/null
+                echo "pull request $PR: $old taken off, since $SHA is sent" | tee -a "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          done
+
+      - name: Revoke the private repository's token
+        if: always() && steps.dispatch-token.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.dispatch-token.outputs.token }}
+        run: gh api --method DELETE installation/token

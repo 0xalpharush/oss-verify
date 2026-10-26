@@ -13,7 +13,7 @@ An OSS-Fuzz `Dockerfile` and `build.sh` do not run here without changes. They ex
 1. Make the builder image from [infra/base-builder/](../infra/base-builder/), from a toolchain image ([below](#toolchains)).
 2. Build the project image from the project's `Dockerfile`, on the builder. `tools/check` gives the build arguments `COMMIT` (the full commit that `repo#ref` names), `REPO` and `BASE_BUILDER`. Only this step has network access.
 3. Run `compile` in a new container of the project image, with no network (`docker run --network=none`). Do this once for each build that `project.yaml` asks for: `plain`, `ubsan`, `asan` and `asan-ubsan`. `compile` sets the compilers and flags of the build and runs `$SRC/build.sh`.
-4. Find the fuzz targets in the `$OUT` of each build. Copy each binary to `out/<target>/<target>.<build>`. Write the manifest, with the SHA-256 of each binary. `tools/check` lists each binary with its size, the size of its `.text` section, `static` or `dynamic`, and its SHA-256. With `--summary <file>`, it also writes this list as a Markdown table; the Build check of a pull request shows that table. A binary with a `PT_INTERP` or `PT_DYNAMIC` program header is dynamically linked. `tools/check` refuses a dynamically linked binary, and one whose program headers it cannot read, with exit status 2, the status for a project that breaks the enrollment rules. Size is not a rule: a binary of any size passes. Because of our capacity, we are most likely to respond quickly to a project in C whose plain binaries have less than 1 MB of `.text` ([README](../README.md#who-can-enroll)).
+4. Find the fuzz targets in the `$OUT` of each build. Copy each binary to `out/<target>/<target>.<build>`. Write the manifest, with the SHA-256 of each binary. `tools/check` lists each binary with its size, the size of its `.text` section, `static` or `dynamic`, and its SHA-256. With `--summary <file>`, it also writes this list as a Markdown table; the Build check of a pull request shows that table. A binary with a `PT_INTERP` or `PT_DYNAMIC` program header is dynamically linked. `tools/check` refuses a dynamically linked binary, and one whose program headers it cannot read, with exit status 2, the status for a project that breaks the enrollment rules. Size is not a rule: a binary of any size passes. Because of our capacity, we are most likely to respond quickly to a project in C whose plain binaries have less than 1 MB of code: the larger of their `.text` section and their executable segments, which can hold read-only data too ([README](../README.md#who-can-enroll)).
 
 ## The builder
 
@@ -197,10 +197,10 @@ Thus an OSS-Fuzz testcase needs six zero bytes in front of it: `00 00 00 00 00 0
 |---:|---|
 | 0 | each call of the fuzz target returned 0 or -1 |
 | 2 | the driver refused the input and did not call the fuzz target, or the system refused memory to the Go runtime ([below](#go-fuzz-targets)) |
-| 77 | the fuzz target called `exit()` |
+| 77 | the fuzz target called `exit()` during a call, and no exit handler registered after the driver's guard ended the process first ([below](#what-the-driver-does-not-intercept)); in a Python fuzz target, an uncaught `SystemExit` in `TestOneInput`; in a Go fuzz target, `os.Exit` during a call ([below](#go-fuzz-targets)) |
 | 78 | a call of the fuzz target returned a value that is not 0 or -1 |
-| 79 | a Go fuzz target panicked: a `panic`, a runtime error, or `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test ([below](#go-fuzz-targets)) |
-| 80 | the Go runtime stopped with a fatal error that is not out of memory, for example a deadlock or a stack overflow ([below](#go-fuzz-targets)) |
+| 79 | a Rust fuzz target panicked; a Python fuzz target raised an exception that nothing caught (not `MemoryError`, which gives 2, or `SystemExit`); a Go fuzz target panicked: a `panic`, a runtime error, or `t.Fatal`, `t.Error` or `t.Fail` in a fuzz test ([below](#go-fuzz-targets)) |
+| 80 | the Go runtime stopped with a fatal error that is not out of memory, for example a deadlock or a stack overflow ([below](#go-fuzz-targets)); in a Python fuzz target, the interpreter or the frozen harness failed before the first input, a defect of the build |
 | 132 | `SIGILL`: an UndefinedBehaviorSanitizer check failed (the check traps in these builds) |
 | 134 | `abort()`: a failed `assert()`, an AddressSanitizer detection, or an uncaught C++ exception |
 | 139 | `SIGSEGV`: a crash |
@@ -235,7 +235,15 @@ A sanitizer detection writes nothing. AddressSanitizer aborts silently. Undefine
 
 The driver changes a call of `exit()`, during a call of the fuzz target, into status 77. An `atexit` handler does this. The driver does not intercept `_exit`, `_Exit` or `quick_exit`, which do not run `atexit` handlers. A fuzz target that calls one of them ends the process with the status that it gave. `test_builder.py` shows this.
 
+Today's driver registers that handler once, before it calls `LLVMFuzzerInitialize`, and the handler gives 77 only while a call of the fuzz target runs. So an `exit()` in `LLVMFuzzerInitialize` is not 77: unless a handler ends the process first, it ends with the low 8 bits of its argument. Exit handlers run last-registered-first. Thus a handler that the fuzz target or the library registers later, in `LLVMFuzzerInitialize` or during a call, runs first. This includes the destructor of a C++ object that was first made then: a function-local `static`, or a `thread_local` object where the build registers its destructor with `__cxa_atexit`. If that handler does not return (it calls `_exit`, `_Exit`, `quick_exit` or `abort`, makes the `exit_group` system call, or jumps out of the handler), the `exit()` never reaches the guard. The status is then the one that the handler, or the code that it jumps to, gives, and it can be 0. `test_builder.py` shows both cases: a later handler that calls `_Exit(0)` gives status 0, and one that returns leaves the guard to give 77.
+
+The C, C++, Rust and Python adapters all register this guard. Two exits do not reach it: in a Python fuzz target, the interpreter host ends an uncaught `SystemExit` with `_exit(77)` itself; and a Go fuzz target has no C driver, and the patched Go runtime gives 77 for `os.Exit` itself. Native code that a Python fuzz target calls (an extension module, `ctypes` or `cffi`) obeys the rules above.
+
+> **WARNING:** Do not register an exit handler that does not return. It can hide a failed check: the process can then end with a status that a statement allows, for example 0.
+
 > **WARNING:** Do not install a handler for `SIGABRT`, `SIGSEGV` or another signal in a fuzz target. A handler hides a sanitizer detection.
+
+> **WARNING:** Do not call `std::set_terminate` in a C++ fuzz target. An uncaught exception then ends with the status that the terminate handler gives, not 134. Do not replace the panic hook in a Rust fuzz target (`std::panic::set_hook`, `take_hook` or `update_hook`). The driver installs a panic hook before `main` that gives 79, and these calls replace it.
 
 The driver itself never intercepts a signal or `abort()`.
 
@@ -245,7 +253,7 @@ An allocation-failure fuzz target shows that the library survives refused alloca
 
 The fuzz target must change an out-of-memory stop into a normal exit, and only that stop. To do this, catch `std::bad_alloc`, or use the library's own hooks for allocation failure.
 
-> **WARNING:** Do not catch all exceptions. Do not install a `SIGABRT` handler. Such code hides failures that the statements must show.
+> **WARNING:** Do not catch all exceptions. Do not call `std::set_terminate`. Do not install a `SIGABRT` handler. Such code hides failures that the statements must show.
 
 To make an allocation-failure fuzz target, link the object files of a fuzz target again, into a different binary, with `$LIB_ALLOCATION_FAILURE_ENGINE`:
 
@@ -294,7 +302,7 @@ A proof is only as strong as its fuzz target. Thus each fuzz target must obey th
 * For each property, a one-line change to the code makes the fuzz target abort on an input of the seed corpus. The change is a `mutant:` record in the check's comment, or a patch in the directory that `mutants` names ([below](#the-checks-of-a-fuzz-target), [project-yaml.md](project-yaml.md#mutants)).
 * Each count, size and loop that comes from the input has a bound.
 * A run depends only on its input: no threads, clock, random numbers, network, environment or other files.
-* `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()` ([above](#what-the-driver-does-not-intercept)).
+* `LLVMFuzzerTestOneInput` returns -1 only for a failed expectation that the input chooses, or for an input outside the domain of a property. In all other cases, it returns 0. It never returns -1 for a failed property, and it never calls `exit()` or `_exit()`. It registers no exit handler that does not return, installs no signal handler, calls no `std::set_terminate` and replaces no Rust panic hook ([above](#what-the-driver-does-not-intercept)).
 
 ## The checks of a fuzz target
 
@@ -331,6 +339,43 @@ The checks hold each binary against LPS as the published proofs use it: the proo
 The records and the quiet twins change no byte of a binary. With `--twice`, the second build makes neither, and its binaries must be the same as the first build's. A record that cannot be written leaves the link as it is, with a warning, and that fuzz target's checks say that it has no record.
 
 These checks find a build that did not do what it meant to, for example a library whose own build dropped the sanitizer flags. The records are written in the build's own container, so they do not stand against a `build.sh` written to deceive them; the review of the pull request does. The same holds for the runs: qemu writes the trace as the program's own user, so a binary written to deceive the checks can rewrite its trace. `tools/check` reads the records and the runs' results without following a symbolic link, and checks each kept file against its SHA-256.
+
+## Rust fuzz targets
+
+A Rust fuzz target is a cargo-fuzz `[[bin]]` of the project's repository. The Rust toolchain image adds Rust nightly-2025-07-16 (rustc 1.90.0, LLVM 20.1.8) and its sealed standard library to the C and C++ toolchain. Its row in infra/toolchains.tsv names it. The oss-fuzz-theorems 2026.10 release built its Rust binaries in this image. Code that needs a newer Rust than this one takes a build patch: [projects/sqlpage/rust-duration-compat.patch](../projects/sqlpage/rust-duration-compat.patch) replaces `Duration::from_mins` and `Duration::from_hours`, which this rustc does not have ([below](#build-patches)).
+
+rustc makes no static library from a `[[bin]]`. Thus the build makes one package for each fuzz target: [rust/gen-shim.py](../infra/base-builder/rust/gen-shim.py) writes a package named `oft-rust-shim`, whose library root is a copy of the bin's source without its `#![no_main]` lines, with the line `extern crate oft_rust_rt as _;` added at its end. The package depends on the adapter `oft-rust-rt`, on the dependencies of the fuzz package, and on the fuzz package itself when it has a `[lib]`. `build.sh` then builds this package and links it with the driver ([rust/recipes.sh](../infra/base-builder/rust/recipes.sh)).
+
+A Rust project has all four builds. Each one compiles the standard library with its own flags (`-Zbuild-std`). The table gives the flags that make the four builds different. In each build, `recipes.sh` also adds two `--remap-path-prefix` flags, `-Cdebug-assertions=on` when the target sets `CARGO_DEBUG_ASSERTIONS=1`, and the `--cfg` of the stdio seal when the target sets `OFT_RUST_QUIET_STDIO=1`:
+
+| build | what the compiler gets |
+|---|---|
+| `plain` | `--cfg fuzzing -Zub-checks=no` |
+| `ubsan` | `--cfg fuzzing -Zub-checks=yes` |
+| `asan` | `--cfg fuzzing -Zub-checks=no -Zsanitizer=address` |
+| `asan-ubsan` | `--cfg fuzzing -Zub-checks=yes -Zsanitizer=address` |
+
+The `ubsan` build is rustc's UB checks, which panic; it is not clang's UndefinedBehaviorSanitizer. Thus a Rust project may not set `ubsan_checks` ([project-yaml.md](project-yaml.md#ubsan_checks)).
+
+### The lock of a Rust fuzz target
+
+The lock in the project directory is the lock of the generated `oft-rust-shim` package, not of the fuzz package. The `crates` line of `sources` makes the shim package, copies this lock to `shim/Cargo.lock`, and vendors the crates with `cargo vendor --locked` ([lay-out-sources](../infra/base-builder/lay-out-sources)). The line gives the vendor directory, the lock, the source tree, the fuzz directory and the name of the bin. A `tree` line lays out the source tree before it, and the `patch` lines of that tree, if any, come between them ([projects/sqlpage/sources](../projects/sqlpage/sources)):
+
+    tree	ext/<target>/src	upstream/<repository>
+    copy	targets/<target>/Cargo.lock	Cargo.lock
+    crates	ext/<target>/vendor	targets/<target>/Cargo.lock	ext/<target>/src	fuzz	<bin>
+
+A lock of the fuzz package names neither `oft-rust-shim` nor `oft-rust-rt`. `cargo vendor --locked` refuses to update a lock and exits with status 101, so `lay-out-sources` stops the build, and the build log shows cargo's reason after the `lay-out-sources` line: `the lock file .../shim/Cargo.lock needs to be updated but --locked was passed to prevent this` (a newer cargo than the toolchain's words it `cannot update the lock file ... because --locked was passed to prevent this`). `lay-out-sources` also stops when `cargo vendor` changed the lock, so the lock must stay as it is.
+
+Make the lock in a checkout of this repository, from a checkout of the project with its build patches applied, with the steps that the `crates` line uses. Run the toolchain's cargo, nightly-2025-07-16, so that the cargo that makes the lock is the cargo that vendors it (with rustup, `cargo +nightly-2025-07-16`):
+
+    tmp=$(mktemp -d) && cp -a <project checkout> "$tmp/src" && touch "$tmp/src/.oft-scratch-copy"
+    python3 infra/base-builder/rust/gen-shim.py --src "$tmp/src" --fuzz-dir fuzz --bin <bin> \
+      --out "$tmp/pkg" --rt "$PWD/infra/base-builder/rust/oft-rust-rt"
+    cargo +nightly-2025-07-16 generate-lockfile --manifest-path "$tmp/pkg/Cargo.toml"
+    cp "$tmp/pkg/Cargo.lock" projects/<name>/Cargo.lock
+
+Two fuzz targets with the same dependencies can share one lock and one vendor directory: `tools/seeds/bincode/sources` lays out the second target's vendor directory as a `link` to the first.
 
 ## Go fuzz targets
 

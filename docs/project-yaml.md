@@ -63,7 +63,7 @@ This table is the only list of languages in these documents. It gives the status
 | `c` | C | statements today | |
 | `c++` | C++, or C and C++ together | statements today | |
 | `rust` | Rust | statements today | `*.rs` |
-| `python` | Python | statements today | `*.py` |
+| `python` | Python | statements today; we start no statements for a new enrollment for now ([README](../README.md#when-the-checks-pass)) | `*.py` |
 | `go` | Go | builds today (plain build only, no cgo); our tools do not write theorem statements for Go yet | `*.go` |
 | `jvm` | Java, Kotlin and the other JVM languages | halts statements only; JVM binaries are not byte-reproducible yet | `*.java` `*.kt` |
 | `javascript` | JavaScript | held | `*.js` `*.mjs` `*.cjs` `*.ts` |
@@ -73,7 +73,7 @@ This table is the only list of languages in these documents. It gives the status
 
 Our builder builds `c`, `c++`, `rust`, `python` and `go` projects today. `tools/validate.py` warns about the other languages, and `tools/check` refuses them. The builders of the other languages are pending. We add each one to [infra/toolchains.tsv](../infra/toolchains.tsv) after its image is published.
 
-A `rust` project has all four builds. Its `ubsan` build uses rustc's UB checks, not UndefinedBehaviorSanitizer. A `python` project has all four builds: each build compiles CPython with its own flags.
+A `rust` project has all four builds. Its `ubsan` build uses rustc's UB checks, not UndefinedBehaviorSanitizer ([build-contract.md](build-contract.md#rust-fuzz-targets)). A `python` project has all four builds: each build compiles CPython with its own flags.
 
 A `go` or `jvm` project has only the plain build. Go has no UndefinedBehaviorSanitizer or AddressSanitizer build, and the Go builder does not support cgo. Our tools do not write theorem statements for Go yet. A `jvm` project has halts statements only. Leave out `sanitizers`, or give `sanitizers: []`. A `go` project's fuzz targets are its OSS-Fuzz Go fuzz targets, which OSS-Fuzz's Go helpers build ([build-contract.md](build-contract.md#go-fuzz-targets)).
 

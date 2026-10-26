@@ -11,7 +11,7 @@ The result is one directory, `projects/<name>/`, and a pull request that the mai
 
 Before you start, read these documents: `README.md`, `docs/project-yaml.md`, `docs/build-contract.md`, `docs/what-gets-proven.md` and, for API-level fuzz targets, `docs/dsl.md`. Work only in `projects/<name>/`.
 
-A project of any size can enroll. Tell the maintainer what the README says in "Who can enroll": because of our capacity, we are most likely to respond quickly to a project in C whose plain binaries (`<target>.plain`) are statically linked and have less than 1 MB of `.text`, and an organisation that wants to help us take on more projects can write to oss-verify@theorem.dev.
+A project of any size can enroll. Tell the maintainer what the README says in "Who can enroll": because of our capacity, we are most likely to respond quickly to a project in C whose plain binaries (`<target>.plain`) are statically linked and have less than 1 MB of code (the larger of the `.text` section and the executable segments, which can hold read-only data too), and an organisation that wants to help us take on more projects can write to oss-verify@theorem.dev.
 
 You need what the README's "Enroll a project" lists for `tools/check`. Steps 3.3 and 3.4 also need a native clang with libFuzzer, `llvm-profdata`, `llvm-cov` and `unzip`: on Ubuntu, `apt install clang llvm unzip`. To run the riscv64 binaries yourself (`docs/build-contract.md`, "Run a binary"), you need `qemu-riscv64`: on Ubuntu, `apt install qemu-user`.
 
@@ -125,7 +125,7 @@ The statements use [Linux Process Semantics (LPS)](https://github.com/theorem-la
 
 ### 3.7 Return 0 or -1
 
-> **WARNING:** Do not call `exit()` or `_exit()`. Do not catch all exceptions. Do not install a signal handler. Such code hides the failures that the statements must show.
+> **WARNING:** Do not call `exit()` or `_exit()`. Do not catch all exceptions. Do not install a signal handler. Do not register an exit handler that does not return (`atexit` of a function that calls `_exit`, `_Exit`, `quick_exit` or `abort`, makes the `exit_group` system call, or jumps out of the handler). Do not call `std::set_terminate`. In Rust, do not replace the panic hook (`std::panic::set_hook`, `take_hook` or `update_hook`). Such code hides the failures that the statements must show ([build-contract.md](../../../docs/build-contract.md#what-the-driver-does-not-intercept)).
 
 A fuzz target can have two kinds of check. Each kind has its own result:
 
@@ -158,7 +158,7 @@ Do not add a licence file, and do not change `LICENSE`, `LICENSES/` or `NOTICE`.
 
 Today the builder builds `c`, `c++`, `rust`, `python` and `go` projects (`docs/project-yaml.md`, "language"). A `go` project has the plain build only, and our tools do not write theorem statements for Go yet: tell the maintainer that the Go fuzz targets build today, but get no theorem statements yet. For another language, tell the maintainer that its builder is pending, and stop.
 
-For a `rust` project, the fuzz targets are cargo-fuzz `[[bin]]`s in the project's repository. Write the build files in the form of a ported Rust build, for example `tools/seeds/bincode/`. Put the `Cargo.lock` of each fuzz target in the project directory, and get its crates with a `crates` line in `sources`. Do not set `ubsan_checks`.
+For a `rust` project, the fuzz targets are cargo-fuzz `[[bin]]`s in the project's repository, and they are built with Rust nightly-2025-07-16 (rustc 1.90.0, LLVM 20.1.8) (`infra/toolchains.tsv`). Write the build files in the form of a ported Rust build, for example `tools/seeds/bincode/`. The build makes a static-library package, `oft-rust-shim`, from each `[[bin]]`. Put the `Cargo.lock` of that generated package in the project directory, not the lock of the fuzz package, and get its crates with a `crates` line in `sources`. `docs/build-contract.md`, "Rust fuzz targets", gives the steps that make this lock. Do not set `ubsan_checks`.
 
 For a `python` project, the fuzz targets are atheris harnesses. Write the build files in the form of a ported Python build, for example `tools/seeds/mdurl/`. Pin each file that `pip install` uses with a `file` line in `sources`. The seed corpus of each fuzz target is an input of its build.
 
