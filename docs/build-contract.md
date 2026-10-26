@@ -401,13 +401,15 @@ These steps rebuild a binary and compare it with its lock in the proofs reposito
 
 1. Get the project's lock from the proofs repository.
 2. Check out this repository: at the commit that the lock gives in `oss_verifier.commit`, if it has that field; else at `main`. A `manifest.yaml` that `tools/check` wrote has the field. A `harness.yaml` of the oss-fuzz-theorems 2026.10 release, which each published lock is today, does not have it ([below](#check-a-binary-against-a-harnessyaml-lock)).
-3. Run `tools/check --no-shell --lock <lock> <name>`.
+3. Run `tools/check --no-shell --lock <lock> <name>`. `<name>` is a project in `projects/`. For a project in `tools/seeds/`, give its directory: `tools/check --no-shell --lock <lock> tools/seeds/<name>`.
 4. Read the last line of the output.
 
-`tools/check` builds the commit that the lock names, with the toolchain that the lock names. It then compares the SHA-256 of each binary with the lock:
+`tools/check` builds the commit that the lock names, with the toolchain that the lock names. It then compares the SHA-256 of each binary with the lock. It compares only the builds that `project.yaml` asks for ([sanitizers](project-yaml.md#sanitizers)), and a lock can pin more builds. For example, the lock of `avahi/fuzz-ini-file-parser` pins `plain`, `ubsan`, `asan` and `asan-ubsan`, and `tools/seeds/avahi` makes only `plain` and `ubsan`. `tools/check` does not compare a binary of a build that the project does not make.
 
-* `matches the lock` tells you that each binary that the lock pins has the same bytes.
-* `DIFFERENT FROM THE LOCK` lists each binary that has different bytes.
+* `matches the lock` tells you that each binary that the lock pins for these builds has the same bytes. The line gives their number.
+* `DIFFERENT FROM THE LOCK` lists each binary of these builds that has different bytes, or that the build did not make.
+* `THE LOCK PINS NONE OF THESE BUILDS` tells you that `tools/check` compared no binary.
+* `BUILD FAILED` tells you that the build stopped before `tools/check` compared a binary.
 
 ### Check a binary against a harness.yaml lock
 
@@ -415,7 +417,9 @@ These steps rebuild a binary and compare it with its lock in the proofs reposito
 
     tools/check --no-shell --lock <proofs>/projects/cjson/cjson_read_fuzzer/harness.yaml cjson
 
-If the bytes differ, open an issue in this repository. Include the output of `tools/check`.
+`tools/check` can check the lock of a project that has a directory in this repository, in `projects/` or `tools/seeds/`. The release also has locks of projects that have no directory here. This repository has no build files for them.
+
+If `tools/check` at `main` does not print `matches the lock` for a binary of the release, open an issue in this repository. Include the output of `tools/check`.
 
 ## Builds ported from oss-fuzz-theorems
 
