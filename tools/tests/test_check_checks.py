@@ -506,7 +506,7 @@ class PostingStep(unittest.TestCase):
     """build.yaml's own "Post the comment" step, run with a fake gh: what it sends GitHub."""
     OLD = "Thanks.\n\n1. Fix X.\n"
 
-    def post(self, review, existing=True, previous=None, pr_head="b" * 40):
+    def post(self, review, existing=True, previous=None, head="b" * 40, pr_head=None):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
         name = "Post the comment, or update the one already there"
         matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
@@ -525,7 +525,7 @@ class PostingStep(unittest.TestCase):
             (bin / "gh").write_text(
                 "#!/bin/bash\n"
                 f'case "$*" in\n'
-                f'  *"pulls/8 "*) echo {pr_head} ;;\n'
+                f'  *"pulls/8 "*) echo {pr_head or head} ;;\n'
                 f'  *"--method PATCH"*) cat > {directory}/patch.json ;;\n'
                 f'  *"--method POST"*) cat > {directory}/post.json ;;\n'
                 f'  *"--paginate"*) {"echo 4242" if existing else "true"} ;;\n'
@@ -535,7 +535,7 @@ class PostingStep(unittest.TestCase):
             (bin / "gh").chmod(0o755)
             (directory / "temp").mkdir()
             environment = {**os.environ, "PATH": f"{bin}:{os.environ['PATH']}", "GH_TOKEN": "x", "REPO": "o/r",
-                           "PR": "8", "REVIEW": review, "CHECKS": "### new report\n", "HEAD_SHA": "b" * 40,
+                           "PR": "8", "REVIEW": review, "CHECKS": "### new report\n", "HEAD_SHA": head,
                            "RUN_URL": "https://github.com/o/r/actions/runs/7", "RUNNER_TEMP": str(directory / "temp"),
                            "GITHUB_OUTPUT": str(directory / "output")}
             run = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, env=environment, capture_output=True,
@@ -598,6 +598,20 @@ class PostingStep(unittest.TestCase):
         self.assertEqual(thrice.count("**Not current:**"), 1)
         self.assertEqual(thrice.count("Claude wrote this review"), 1)
         self.assertLessEqual(len(thrice), 65_536)
+
+    def test_a_review_that_goes_stale_and_current_again_is_not_cut_again(self):
+        # The pull request goes back to the reviewed commit between pushes whose reviews do not finish: the review is
+        # stale, current, stale again. Where the first keep cut it is carried each time, so it is never cut again.
+        big = (f"{review_comment.MARKER}\n{review_comment.meta_line('a' * 40, 'review')}\n\n"
+               f"{review_comment.HEADING}\n\n" + "R" * 64_800 + "TAIL_END\n")
+        body, kept = big, []
+        for head in "baacadab":
+            body = self.post("", previous=body, head=head * 40)
+            self.assertEqual(self.status(body), "review" if head == "a" else "stale", head)
+            self.assertEqual(body.count("The review is cut at"), 1, head)
+            self.assertEqual(body.count("Claude wrote this review"), 1, head)
+            kept.append(body.count("R"))
+        self.assertEqual(len(set(kept)), 1, kept)
 
 
 class Screening(unittest.TestCase):

@@ -24,7 +24,8 @@ text is inert. So with --previous and no usable review (the review of this push 
 wrote what is refused), it keeps the comment already posted, unchanged, below a metadata line, a notice that says it
 is not current, naming the commit it is of and the commit that had no review, and the footer. Keeping a kept comment
 again gives the same comment: what this script wrote above the old one is written afresh, not kept as part of it. A
-comment that is the review of this same commit is kept as it was posted.
+comment that is the review of this same commit stays the review: as it was posted, or, if it was kept as not current,
+written again as the review.
 """
 import argparse
 import pathlib
@@ -236,9 +237,13 @@ def not_current(previous, head, run):
         cut = KEPT_CUT.search(paragraphs[0])
         cut_at = int(cut.group("at").replace(",", "")) if cut else None
         paragraphs = paragraphs[1:]
-    # The footer, first after the notice as this script writes it, is written again below too.
-    if paragraphs and FOOTER_WRITTEN.fullmatch(paragraphs[0]):
-        paragraphs = paragraphs[1:]
+    # The footer, first after the notice as this script writes it, is written again below too. A review that a keep
+    # had cut and that is current again carries the cut sentence at the end of its footer instead.
+    if paragraphs:
+        cut = KEPT_CUT.search(paragraphs[0])
+        if FOOTER_WRITTEN.fullmatch(paragraphs[0][:cut.start()] if cut else paragraphs[0]):
+            cut_at = int(cut.group("at").replace(",", "")) if cut else cut_at
+            paragraphs = paragraphs[1:]
     body = trim("\n\n".join(paragraphs))
     if status == "none" or not body:
         return None
@@ -253,7 +258,7 @@ def not_current(previous, head, run):
     if current:
         # A kept review of this very commit (the pull request went back to it): it is current again.
         return assemble(of_head, "review", [footer], review=body, where=KEPT_WHERE, review_limit=MAX_COMMENT,
-                        cut_at=cut_at)
+                        cut_at=cut_at, cut_in_notice=True)
     this = f"`{head[:7]}`" if head else "the last push"
     where = f" ([the run]({run}))" if run else ""
     note = (f"**Not current:** this is the review of {of}. The review of {this} did not finish with a review that "
