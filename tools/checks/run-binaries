@@ -1,0 +1,61 @@
+#!/bin/sh
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# run-binaries: runs fuzz-target binaries for the binary checks of tools/check --checks (tools/check_binaries.py), in a
+# fresh container of the toolchain image with no network, so that the binaries a pull request built never run on the
+# host itself:
+#
+#     docker run --rm --init --network=none -v <qemu-riscv64-static>:/ovc-qemu:ro -v tools/checks:/ovc:ro \
+#         -v <job>:/job:ro -v <results>:/results --entrypoint /ovc/run-binaries <toolchain image> <seconds> <total>
+#
+# /job/runs has one run on each line: <id> <binary> <input> <name>, the binary and the input relative to /job, and the
+# name the program gets as its argv[0] (the fuzz target's name). The runs are made one after the other, each as the
+# process model's environment has it: in an empty working directory, /ovb, that holds the input as input.bin, named by
+# that relative name; with an empty /tmp; with an /etc that holds only the three files below, so that no file of the
+# image's /etc decides what a run does; with no environment; and as user 65534, so that the program cannot write what
+# the next run, or the host, reads. Each run is stopped after <seconds>, and no run starts after <total> seconds.
+#
+# Each run runs qemu-riscv64 -strace under tools/checks/host-calls.c, which logs the host calls whose arguments qemu's
+# log prints in 32 bits only. For each run it writes /results/<id>.status (the exit status; 137 when it was stopped),
+# /results/<id>.out and /results/<id>.err (how many bytes it wrote to standard output and standard error),
+# /results/<id>.trace (qemu's -strace log) and /results/<id>.calls (host-calls' log). A run that did not start has no
+# status file.
+set -eu
+seconds=$1 total=$2
+end=$(($(date +%s) + total))
+guest=65534
+cc -static -O2 -o /ovc-host-calls /ovc/host-calls.c
+
+# The guest's /etc: these three files and nothing else. Docker mounts its own hosts, hostname and resolv.conf; their
+# text is replaced, in this container only. resolv.conf names no search domain, which changes what a resolver asks.
+for f in /etc/* /etc/.[!.]*; do
+  case "$f" in /etc/hosts|/etc/hostname|/etc/resolv.conf) ;; *) rm -rf -- "$f" ;; esac
+done
+printf '127.0.0.1 localhost\n::1 localhost\n' > /etc/hosts
+printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
+printf 'passwd: files\ngroup: files\nshadow: files\nhosts: files dns\nnetworks: files\nprotocols: files\nservices: files\n' \
+  > /etc/nsswitch.conf
+
+while read -r id binary input name; do
+  now=$(date +%s)
+  [ "$now" -lt "$end" ] || break
+  limit=$seconds
+  [ $((end - now)) -ge "$limit" ] || limit=$((end - now))
+  rm -rf /ovb /ovt /tmp/* /tmp/.[!.]* 2>/dev/null || true
+  mkdir /ovb /ovt
+  cp -- "/job/$input" /ovb/input.bin
+  chown -R "$guest:$guest" /ovb /ovt
+  chmod 1777 /tmp
+  status=0
+  (cd /ovb && exec timeout -s KILL "$limit" /ovc-host-calls "/results/$id.calls" "$guest" \
+     /ovc-qemu -0 "$name" -strace -D /ovt/trace "/job/$binary" input.bin) \
+    > /ovr.out 2> /ovr.err < /dev/null || status=$?
+  wc -c < /ovr.out > "/results/$id.out"
+  wc -c < /ovr.err > "/results/$id.err"
+  # The trace, which the guest's user owns: only a regular file, and at most 256 MiB of it.
+  if [ -f /ovt/trace ] && [ ! -L /ovt/trace ]; then head -c 268435456 /ovt/trace > "/results/$id.trace"; fi
+  echo "$status" > "/results/$id.status"
+done < /job/runs
+rm -rf /ovb /ovt /ovr.out /ovr.err /ovc-host-calls
+if [ -n "${OV_OWNER:-}" ]; then chown -R "$OV_OWNER" /results; fi
