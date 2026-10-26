@@ -332,7 +332,20 @@ class ReviewComment(unittest.TestCase):
                        "a <!-- keep --> b <!-- oss-verify-x --> c <!-- tail", "<!-<!--oss-verify-->- oss-verify-x -->"):
             once = review_comment.neutralize(sample)
             self.assertEqual(review_comment.neutralize(once), once, sample)
-            self.assertNotRegex(once, r"<!--[^>]*oss-verify[^>]*-->")
+            self.assertFalse(self.holds_a_complete_marker(once), sample)
+
+    def holds_a_complete_marker(self, text):
+        """Whether a complete HTML comment naming this script is left. A forward scan, not a regular expression: the
+        obvious one backtracks for minutes on 70,000 characters that hold no -->."""
+        at = 0
+        while (start := text.find("<!--", at)) != -1:
+            end = text.find("-->", start + 4)
+            if end == -1:
+                return False
+            if "oss-verify" in text[start:end + 3].lower():
+                return True
+            at = end + 3
+        return False
 
 
 class CredentialArguments(unittest.TestCase):
