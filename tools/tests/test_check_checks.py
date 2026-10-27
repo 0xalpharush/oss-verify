@@ -2027,7 +2027,8 @@ with open(root / "tokens", "a") as f:
     f.write(os.environ.get("GH_TOKEN", "") + "\n")
 path = next(x for x in a if x.startswith("repos/"))
 fields = [x for i, x in enumerate(a) if i and a[i - 1] in ("-f", "-F")]
-body = next((open(x[6:]).read() for x in fields if x.startswith("body=@")), None)
+# The body as GitHub would store it: bytes that are not UTF-8 become U+FFFD.
+body = next((open(x[6:], "rb").read().decode("utf-8", "replace") for x in fields if x.startswith("body=@")), None)
 if body is not None:
     with open(root / "bodies", "a") as f:
         f.write(body + "\0")
@@ -2197,20 +2198,34 @@ else:
         self.assertEqual(self.finding_of(bodies[0], []), "log:\ntitle: from the input\n")
 
     def test_a_line_longer_than_a_part_is_cut_between_characters(self):
-        # One 130,000-byte line of two-byte characters, with an odd prefix, so that 60,000 falls inside a character.
-        finding = "x" + "é" * 65000 + "\n"
+        # One long line of two-, three- or four-byte characters, after a prefix of 0 to 3 bytes, so that byte 60,000
+        # falls at every place inside a character. The stand-in stores bytes that are not UTF-8 as U+FFFD, as GitHub.
+        for char in ("é", "€", "😀"):
+            for prefix in range(4):
+                with self.subTest(char=char, prefix=prefix):
+                    finding = "x" * prefix + char * (130000 // len(char.encode())) + "\n"
+                    run, _, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + finding)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual(len(bodies), 3)
+                    self.assertNotIn("\ufffd", "".join(bodies))
+                    self.assertEqual(self.finding_of(bodies[0], bodies[1:]), finding)
+
+    def test_a_part_ends_at_a_line_end_when_the_line_fits(self):
+        finding = "".join(f"{i:05d} " + "y" * 994 + "\n" for i in range(130))
         run, _, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + finding)
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertEqual(len(bodies), 3)
-        self.assertNotIn("\ufffd", "".join(bodies))
-        self.assertEqual(self.finding_of(bodies[0], bodies[1:]), finding)
+        texts = [re.sub(r"\n\n\(Part 1 of \d+: the rest follows in the comments\.\)\n$", "",
+                        bodies[0].split("\n", 5)[5])] + [b.split("\n", 2)[2] for b in bodies[1:]]
+        self.assertTrue(all(t.endswith("\n") and t.split("\n")[0][:5].isdigit() for t in texts), texts[1][:20])
 
     def test_the_public_comment_is_the_bots_review_comment_of_the_pull_request(self):
         # Another user's comment with the marker, the bot's other comment, then the bot's review comment; and a comment
         # with the marker on the private repository's issue, which is not the pull request's.
         public = [("someone", "<!-- oss-verify-review -->\nfake", "https://example.test/other-user"),
                   ("oss-verify[bot]", "Thanks for the enrollment.", "https://example.test/other-bot-comment"),
-                  ("oss-verify[bot]", "<!-- oss-verify-review -->\nreview", "https://example.test/review-comment")]
+                  ("oss-verify[bot]", "Quoted: <!-- oss-verify-review -->", "https://example.test/quoting-comment"),
+                  ("oss-verify[bot]", "<!-- oss-verify-review -->\nreview", "https://example.test/review-comment"),
+                  ("oss-verify[bot]", "<!-- oss-verify-review -->\nlater", "https://example.test/later-comment")]
         run, calls, bodies = self.run_held(ReviewRun.HELD, public_comments=public,
                                            comments=["<!-- oss-verify-review -->\nprivate"])
         self.assertEqual(run.returncode, 0, run.stderr)
