@@ -946,7 +946,8 @@ class PostingStep(unittest.TestCase):
     """build.yaml's own "Post the comment" step, run with a fake gh: what it sends GitHub."""
     OLD = "Thanks.\n\n1. Fix X.\n"
 
-    def post(self, review, existing=True, previous=None, head="b" * 40, pr_head=None, served=SERVED_OK, refused=""):
+    def post(self, review, existing=True, previous=None, head="b" * 40, pr_head=None, served=SERVED_OK, refused="",
+             post_to_pr="post", summary=None):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())
         name = "Post the comment, or update the one already there"
         matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
@@ -975,14 +976,59 @@ class PostingStep(unittest.TestCase):
             (directory / "temp").mkdir()
             environment = {**os.environ, "PATH": f"{bin}:{os.environ['PATH']}", "GH_TOKEN": "x", "REPO": "o/r",
                            "PR": "8", "REVIEW": review, "CHECKS": "### new report\n", "HEAD_SHA": head,
-                           "SERVED": served, "REFUSED": refused,
+                           "SERVED": served, "REFUSED": refused, "POST_TO_PR": post_to_pr,
                            "RUN_URL": "https://github.com/o/r/actions/runs/7", "RUNNER_TEMP": str(directory / "temp"),
-                           "GITHUB_OUTPUT": str(directory / "output")}
+                           "GITHUB_OUTPUT": str(directory / "output"),
+                           "GITHUB_STEP_SUMMARY": str(directory / "summary")}
             run = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, env=environment, capture_output=True,
                                  text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
-            sent = directory / ("patch.json" if existing else "post.json")
-            return json.loads(sent.read_text())["body"] if sent.exists() else None
+            if summary is not None:
+                summary.append((directory / "summary").read_text() if (directory / "summary").exists() else "")
+            sent = [name for name in ("patch.json", "post.json") if (directory / name).exists()]
+            self.assertLessEqual(len(sent), 1, sent)
+            if sent:
+                self.assertEqual(sent[0], "patch.json" if existing else "post.json")
+            return json.loads((directory / sent[0]).read_text())["body"] if sent else None
+
+    def test_without_the_variable_it_posts_nothing_and_writes_the_draft_to_the_summary(self):
+        # OSSV_POST_REVIEW unset, or any value but post: no PATCH and no POST, with or without a comment already there,
+        # and the comment that would have been sent is in the job summary, each line indented as code.
+        for value in ("", "draft", "Post"):
+            for existing in (True, False):
+                summary = []
+                self.assertIsNone(self.post("Fix Y.\n", existing=existing, post_to_pr=value, summary=summary),
+                                  (value, existing))
+                self.assertIn("Draft of the review comment (not posted)", summary[0])
+                self.assertIn("\n    Fix Y.\n", summary[0])
+                self.assertIn(f"\n    {review_comment.MARKER}\n", summary[0])
+
+    def test_the_triage_comment_is_a_draft_without_its_variable(self):
+        # triage.yaml's own posting step: with OSSV_POST_TRIAGE anything but post, it calls gh not at all and writes the
+        # draft to the summary; with post, it posts.
+        workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "triage.yaml").read_text())
+        name = "Post the comment, or update the one already there"
+        matches = [s for s in workflow["jobs"]["comment"]["steps"] if s.get("name") == name]
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["env"]["POST_TO_PR"], "${{ vars.OSSV_POST_TRIAGE }}")
+        for value, posts in (("", False), ("draft", False), ("Post", False), ("post", True)):
+            with tempfile.TemporaryDirectory() as directory:
+                directory = pathlib.Path(directory)
+                (directory / "bin").mkdir()
+                (directory / "bin" / "gh").write_text(
+                    f'#!/bin/bash\necho "$*" >> {directory}/calls\n'
+                    f'case "$*" in *"--method POST"*) cat > {directory}/post.json ;; esac\n')
+                (directory / "bin" / "gh").chmod(0o755)
+                environment = {**os.environ, "PATH": f"{directory / 'bin'}:{os.environ['PATH']}", "GH_TOKEN": "x",
+                               "REPO": "o/r", "PR": "8", "COMMENT": "<!-- oss-verify-triage -->\n### Triage\n",
+                               "POST_TO_PR": value, "GITHUB_STEP_SUMMARY": str(directory / "summary")}
+                run = subprocess.run(["bash", "-e", "-c", matches[0]["run"]], env=environment, capture_output=True,
+                                     text=True)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual((directory / "post.json").exists(), posts, value)
+                if not posts:
+                    self.assertFalse((directory / "calls").exists(), value)
+                    self.assertIn("\n    ### Triage\n", (directory / "summary").read_text())
 
     def status(self, body):
         return review_comment.META.match(body.split("\n")[1]).group("status")
