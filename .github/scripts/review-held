@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Copyright 2026 Theorem Labs, PBC
+# SPDX-License-Identifier: Apache-2.0
+#
+# Sends each finding of one stored object to the disclosure route: one new issue for each finding, labelled
+# held-finding, in the private repository HELD_FINDINGS_REPO. Each issue's body has the line
+# `held finding key: <object> <n>`: HELD_OBJECT, the name the review job gave the object after the review ended (new
+# for each attempt, so the model cannot know it), and the finding's place in it. Run again on the same object, it sends
+# no finding that it already sent, whether that issue is open or closed; a re-run of the review stores a new object,
+# and its findings are sent. The same bug found on a later push is a new issue: the disclosure route merges them.
+# Every object is settled the first time: more than 10 findings go as one issue (key `<object> all`), an object without
+# the review job's first lines goes whole (key `<object> raw`), an object with no finding sends nothing, and a body
+# over what GitHub takes is cut. It fails only when GitHub does not answer, and then the next run tries again.
+#
+#   GH_TOKEN=<token that can write issues in HELD_FINDINGS_REPO> HELD_FINDINGS_REPO=<owner/name> REPO=<owner/name> \
+#     READ_TOKEN=<token that can read REPO's issues> HELD_OBJECT=<name> .github/scripts/review-held <directory>
+#
+# It reads <directory>/object, as build.yaml's review job stored it: six lines that the workflow wrote, not the model
+# (`oss-verify held finding v1`, then `pr:`, `head:`, `project:` and `run:`, then `---`), and then the held part of
+# the review, as review-run cut it: each finding starts with a marker line (`<!-- held finding -->`, matched as
+# review-run matches it), then `key: value` lines (`title:` is the issue's title), then free text. It prints only how
+# many findings it sent, never a finding or the repository: the job's log is public.
+#
+# .github/scripts/review-hold runs it, in build.yaml's hold job, with a token of the oss-verify App for
+# HELD_FINDINGS_REPO only, with issues: write only. The review job, which runs the model, never holds the App's key: it
+# stores the finding in a private bucket where it can only create objects, and only the hold job can read it. A
+# finding cannot pass between jobs any other way without reaching the public log: the runner prints a step's env and
+# script there, and every artifact of this repository is public.
+set -euo pipefail
+
+in=${1:?usage: review-held <directory>}
+[[ ${HELD_FINDINGS_REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && ${REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+  || { echo "review-held: HELD_FINDINGS_REPO or REPO is not owner/name" >&2; exit 2; }
+[[ ${HELD_OBJECT:-} =~ ^held/([0-9]+)/[0-9a-f]{32}$ ]] \
+  || { echo "review-held: HELD_OBJECT is not the name of a stored held finding" >&2; exit 2; }
+run_id=${BASH_REMATCH[1]}
+# Never a public or internal repository: a held finding must not reach a reader the disclosure route does not choose.
+visibility=$(gh api "repos/$HELD_FINDINGS_REPO" --jq .visibility) || visibility=""
+[ "$visibility" = private ] \
+  || { echo "review-held: the repository HELD_FINDINGS_REPO names is not private, so nothing is sent" >&2; exit 2; }
+most=10
+label="held-finding"
+# The label, made once (any colour), so the disclosure route's watcher finds the issues.
+if ! gh api "repos/$HELD_FINDINGS_REPO/labels/$label" > /dev/null 2>&1; then
+  gh api "repos/$HELD_FINDINGS_REPO/labels" -f name="$label" -f color=b60205 \
+    -f description="A finding held back from a public review, for the disclosure route" > /dev/null
+fi
+# The findings already sent: each issue of the label, open or closed, with its key, read only from the fifth line of
+# its body, the line this script writes there.
+sent_keys=$(gh api "repos/$HELD_FINDINGS_REPO/issues?labels=$label&state=all&per_page=100" --paginate \
+  --jq '.[] | [.number, ((.body // "") | split("\n") | .[4] // "")] | select(.[1] | startswith("held finding key: "))
+        | @tsv')
+parts="$in/held-findings"
+rm -rf "$parts" && mkdir -p "$parts"
+sent=0
+#   send <key> <title> <file whose text is the finding>
+# One issue, unless one with that key exists. A finding over 60,000 bytes (GitHub takes 65,536 characters in a body)
+# goes in parts: only the finding's own text is split, at line ends, so the parts are the same on every run whatever
+# the lines this script adds. A line over 60,000 bytes is cut before a UTF-8 character, never inside one, since GitHub
+# would store a cut character as U+FFFD. Part 1 is the issue, after this script's five lines; each other part is a
+# comment on it that starts `held finding part: <key> k/n`. Run again, it posts only the parts that are not there
+# yet, so the finding is whole, byte for byte, once any run finishes it.
+send() {
+  local id="$HELD_OBJECT $1" key="held finding key: $HELD_OBJECT $1" number chunks total k posted
+  rm -f "$parts"/chunk.*
+  python3 - "$3" "$parts/chunk." <<'EOF'
+import sys
+data, out, most = open(sys.argv[1], "rb").read(), sys.argv[2], 60000
+parts, start = [], 0
+while start < len(data):
+    end = min(start + most, len(data))
+    if end < len(data):
+        line_end = data.rfind(b"\n", start, end)
+        if line_end >= start:
+            end = line_end + 1
+        else:
+            while end > start and data[end] & 0xC0 == 0x80:
+                end -= 1
+            if end == start:
+                end = start + most
+    parts.append(data[start:end])
+    start = end
+for k, part in enumerate(parts or [b""]):
+    with open(f"{out}{k:03d}", "wb") as f:
+        f.write(part)
+EOF
+  mapfile -t chunks < <(find "$parts" -name 'chunk.*' | sort)
+  total=${#chunks[@]}
+  number=$(awk -F '\t' -v k="$key" '$2 == k { print $1; exit }' <<< "$sent_keys")
+  if [ -z "$number" ]; then
+    {
+      echo "enrollment PR: $REPO#${PR:-not known}"
+      echo "enrollment PR head: ${HEAD_SHA:-not known}"
+      echo "public PR comment: ${COMMENT_URL:-not known}"
+      echo "review run: ${RUN_URL:-not known}"
+      echo "$key"
+      cat "${chunks[0]}"
+      if [ "$total" -gt 1 ]; then printf '\n\n(Part 1 of %s: the rest follows in the comments.)\n' "$total"; fi
+    } > "$parts/part"
+    number=$(gh api "repos/$HELD_FINDINGS_REPO/issues" -f title="$(tr -d '[:cntrl:]' <<< "$2" | cut -c1-200)" \
+      -F body=@"$parts/part" -f "labels[]=$label" --jq .number)
+    sent=$((sent + 1))
+    posted=""
+  else
+    echo "review-held: $1 of $HELD_OBJECT was already sent"
+    [ "$total" -gt 1 ] || return 0
+    posted=$(gh api "repos/$HELD_FINDINGS_REPO/issues/$number/comments" --paginate \
+      --jq '.[] | (.body // "") | split("\n") | .[0]')
+  fi
+  for ((k = 2; k <= total; k++)); do
+    if grep -qxF "held finding part: $id $k/$total" <<< "$posted"; then continue; fi
+    { echo "held finding part: $id $k/$total"; echo; cat "${chunks[k - 1]}"; } > "$parts/part"
+    gh api "repos/$HELD_FINDINGS_REPO/issues/$number/comments" -F body=@"$parts/part" > /dev/null
+  done
+}
+
+# The object's six lines of the workflow's own, each checked, and the run it names is the run in its name. An object
+# without them (only a fault of this workflow can make one) is sent whole, as one issue, with nothing taken from it.
+header=$(head -n 6 "$in/object" 2> /dev/null) || header=""
+line() { sed -n "$1p" <<< "$header"; }
+PR=$(line 2 | sed -n 's/^pr: //p') HEAD_SHA=$(line 3 | sed -n 's/^head: //p')
+NAME=$(line 4 | sed -n 's/^project: //p') RUN_URL=$(line 5 | sed -n 's/^run: //p')
+if [ "$(line 1)" != "oss-verify held finding v1" ] || [ "$(line 6)" != --- ] || ! [[ $PR =~ ^[0-9]+$ \
+    && $HEAD_SHA =~ ^[0-9a-f]{40}$ && $NAME =~ ^[a-z0-9][a-z0-9._-]{0,62}$ \
+    && $RUN_URL == "https://github.com/$REPO/actions/runs/$run_id" ]]; then
+  PR="" HEAD_SHA="" RUN_URL=""
+  send raw "[held] not known: a stored held finding whose first lines are not the review job's" "$in/object"
+  echo "review-held: $HELD_OBJECT does not start with the lines the review job writes; sent it whole ($sent sent)"
+  exit 0
+fi
+held="$in/held-finding.md"
+tail -n +7 "$in/object" > "$held"
+# The review comment's address, when there is one already: the comment job keeps it in place.
+COMMENT_URL=$(GH_TOKEN=${READ_TOKEN:-} gh api "repos/$REPO/issues/$PR/comments" --paginate \
+  --jq '.[] | select(.user.login == "oss-verify[bot]" and (.body | startswith("<!-- oss-verify-review -->")))
+        | .html_url' | head -n 1) || COMMENT_URL=""
+COMMENT_URL=${COMMENT_URL:-not posted yet: the review comment on $REPO#$PR}
+
+# One file for each finding, without its marker line; a marker with nothing after it before the next is no finding.
+awk -v dir="$parts" \
+  'tolower($0) ~ /^[[:space:]>*+-]*<!--[[:space:]]*held[[:space:]_-]*finding[[:space:]]*-->[[:space:]]*$/ { n++; next }
+   n && NF { found[n] = 1 } n { print > (dir "/" n) }
+   END { for (i in found) print i > (dir "/found") }' "$held"
+findings=$(sort -n "$parts/found" 2> /dev/null) || findings=""
+count=$(grep -c . <<< "$findings" || true)
+if [ "$count" = 0 ]; then
+  echo "review-held: $HELD_OBJECT holds no finding after its marker: nothing to send"
+  exit 0
+fi
+if [ "$count" -gt "$most" ]; then
+  # More than one review should hold: all of them go as one issue, so that none is lost and the next run has none
+  # left to try again.
+  send all "[held] $NAME/not known: $count findings of the enrollment review of pull request #$PR, in one issue" "$held"
+  echo "review-held: $HELD_OBJECT holds $count findings, more than $most: sent them as one issue ($sent sent)"
+  exit 0
+fi
+n=0
+for part in $findings; do
+  n=$((n + 1))
+  title=$(sed -n 's/^title:[[:space:]]*//p' "$parts/$part" | head -n 1)
+  awk '!t && /^title:/ { t = 1; next } { print }' "$parts/$part" > "$parts/$part.text"
+  send "$n" "${title:-[held] $NAME/not known: a finding of the enrollment review of pull request #$PR}" "$parts/$part.text"
+done
+echo "review-held: sent $sent of $n findings for private review"

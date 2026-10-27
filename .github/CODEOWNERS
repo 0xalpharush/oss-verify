@@ -1,4 +1,7 @@
-# Adapted from OSS Scanner's .github/CODEOWNERS (https://github.com/anthropics/oss-scanner), Copyright 2026 Anthropic
-# PBC, Apache-2.0. Modified 2026 by Theorem Labs, PBC: the team.
-# Every enrollment is reviewed by the program's maintainers before it merges.
-*   @theorem-labs/engineering
+# review.md says what the enrollment review checks (.github/workflows/build.yaml reads main's copy). The ruleset of
+# main requires a code owner's approval, so a change to review.md, or to this file, which says who owns it, needs the
+# approval of a member of @theorem-labs/engineering, a team of people. No other file has an owner, so no other pull
+# request needs a code owner. These lines stay the last patterns of the file: the last pattern that matches a file
+# decides its owner.
+/review.md @theorem-labs/engineering
+/.github/CODEOWNERS @theorem-labs/engineering
