@@ -56,13 +56,34 @@ sent=0
 #   send <key> <title> <file whose text is the finding>
 # One issue, unless one with that key exists. A finding over 60,000 bytes (GitHub takes 65,536 characters in a body)
 # goes in parts: only the finding's own text is split, at line ends, so the parts are the same on every run whatever
-# the lines this script adds. Part 1 is the issue, after this script's five lines; each other part is a comment on it
-# that starts `held finding part: <key> k/n`. Run again, it posts only the parts that are not there yet, so the
-# finding is whole, byte for byte, once any run finishes it.
+# the lines this script adds. A line over 60,000 bytes is cut before a UTF-8 character, never inside one, since GitHub
+# would store a cut character as U+FFFD. Part 1 is the issue, after this script's five lines; each other part is a
+# comment on it that starts `held finding part: <key> k/n`. Run again, it posts only the parts that are not there
+# yet, so the finding is whole, byte for byte, once any run finishes it.
 send() {
   local id="$HELD_OBJECT $1" key="held finding key: $HELD_OBJECT $1" number chunks total k posted
   rm -f "$parts"/chunk.*
-  if [ -s "$3" ]; then split -C 60000 -d -a 3 "$3" "$parts/chunk."; else : > "$parts/chunk.000"; fi
+  python3 - "$3" "$parts/chunk." <<'EOF'
+import sys
+data, out, most = open(sys.argv[1], "rb").read(), sys.argv[2], 60000
+parts, start = [], 0
+while start < len(data):
+    end = min(start + most, len(data))
+    if end < len(data):
+        line_end = data.rfind(b"\n", start, end)
+        if line_end >= start:
+            end = line_end + 1
+        else:
+            while end > start and data[end] & 0xC0 == 0x80:
+                end -= 1
+            if end == start:
+                end = start + most
+    parts.append(data[start:end])
+    start = end
+for k, part in enumerate(parts or [b""]):
+    with open(f"{out}{k:03d}", "wb") as f:
+        f.write(part)
+EOF
   mapfile -t chunks < <(find "$parts" -name 'chunk.*' | sort)
   total=${#chunks[@]}
   number=$(awk -F '\t' -v k="$key" '$2 == k { print $1; exit }' <<< "$sent_keys")

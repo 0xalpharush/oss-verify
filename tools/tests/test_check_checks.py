@@ -2000,6 +2000,7 @@ def review_step():
     return matches[0]
 
 
+@unittest.skipUnless(shutil.which("jq"), "needs jq, which the gh stand-in runs the script's filters with")
 class ReviewHeld(unittest.TestCase):
     """review-held opens one private issue for each held finding, through a fake gh, and prints none of it."""
 
@@ -2015,13 +2016,15 @@ class ReviewHeld(unittest.TestCase):
     # A stand-in for `gh api`: it answers each call with the JSON GitHub would (from state.json), applies the script's
     # own --jq filter to it with the real jq, and records each call and each body it is sent. So the tests check the
     # script's filters, not a copy of them.
-    GH = r'''#!PYTHON
-import json, pathlib, subprocess, sys
-root = pathlib.Path(ROOT)
+    GH = r'''#!@@PYTHON@@
+import json, os, pathlib, subprocess, sys
+root = pathlib.Path(@@ROOT@@)
 state = json.loads((root / "state.json").read_text())
 a = sys.argv[2:]
 with open(root / "calls", "a") as f:
     f.write(json.dumps(sys.argv[1:]) + "\n")
+with open(root / "tokens", "a") as f:
+    f.write(os.environ.get("GH_TOKEN", "") + "\n")
 path = next(x for x in a if x.startswith("repos/"))
 fields = [x for i, x in enumerate(a) if i and a[i - 1] in ("-f", "-F")]
 body = next((open(x[6:]).read() for x in fields if x.startswith("body=@")), None)
@@ -2068,13 +2071,16 @@ else:
                 "public_comments": [{"user": {"login": login}, "body": b, "html_url": u}
                                     for login, b, u in public_comments]}))
             gh = root / "bin" / "gh"
-            gh.write_text(self.GH.replace("PYTHON", sys.executable).replace("ROOT", repr(str(root))))
+            gh.write_text(self.GH.replace("@@PYTHON@@", sys.executable).replace("@@ROOT@@", repr(str(root))))
             gh.chmod(0o755)
             run = subprocess.run([str(ROOT / ".github" / "scripts" / "review-held"), str(root / "review")],
                                  env={**os.environ, "PATH": f"{root / 'bin'}:{os.environ['PATH']}",
                                       "HELD_FINDINGS_REPO": variable, "REPO": "theorem-labs/oss-verify",
-                                      "READ_TOKEN": "read-not-a-secret", "HELD_OBJECT": self.OBJECT},
+                                      "GH_TOKEN": "app-not-a-secret", "READ_TOKEN": "read-not-a-secret",
+                                      "HELD_OBJECT": self.OBJECT},
                                  capture_output=True, text=True)
+            # The token of each call, in the order of calls.
+            run.tokens = (root / "tokens").read_text().splitlines() if (root / "tokens").exists() else []
             calls = [json.loads(line) for line in (root / "calls").read_text().splitlines()] \
                 if (root / "calls").exists() else []
             bodies = (root / "bodies").read_text().split("\0")[:-1] if (root / "bodies").exists() else []
@@ -2189,6 +2195,33 @@ else:
         run, _, bodies = self.run_held("<!-- held finding -->\ntitle: crash in f\nlog:\ntitle: from the input\n")
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(self.finding_of(bodies[0], []), "log:\ntitle: from the input\n")
+
+    def test_a_line_longer_than_a_part_is_cut_between_characters(self):
+        # One 130,000-byte line of two-byte characters, with an odd prefix, so that 60,000 falls inside a character.
+        finding = "x" + "é" * 65000 + "\n"
+        run, _, bodies = self.run_held("<!-- held finding -->\ntitle: big\n" + finding)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(bodies), 3)
+        self.assertNotIn("\ufffd", "".join(bodies))
+        self.assertEqual(self.finding_of(bodies[0], bodies[1:]), finding)
+
+    def test_the_public_comment_is_the_bots_review_comment_of_the_pull_request(self):
+        # Another user's comment with the marker, the bot's other comment, then the bot's review comment; and a comment
+        # with the marker on the private repository's issue, which is not the pull request's.
+        public = [("someone", "<!-- oss-verify-review -->\nfake", "https://example.test/other-user"),
+                  ("oss-verify[bot]", "Thanks for the enrollment.", "https://example.test/other-bot-comment"),
+                  ("oss-verify[bot]", "<!-- oss-verify-review -->\nreview", "https://example.test/review-comment")]
+        run, calls, bodies = self.run_held(ReviewRun.HELD, public_comments=public,
+                                           comments=["<!-- oss-verify-review -->\nprivate"])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(bodies[0].split("\n")[2], "public PR comment: https://example.test/review-comment")
+        lookups = [c for c in calls if c[1].endswith("/comments") and "-F" not in c]
+        self.assertEqual([c[1] for c in lookups], ["repos/theorem-labs/oss-verify/issues/68/comments"])
+        # It reads the public comments with the token for this repository, not the App's token for the private one,
+        # and every call to the private repository uses the App's token.
+        tokens = dict(zip(map(json.dumps, calls), run.tokens))
+        self.assertEqual(tokens[json.dumps(lookups[0])], "read-not-a-secret")
+        self.assertEqual({t for c, t in zip(calls, run.tokens) if "theorem-labs/private" in c[1]}, {"app-not-a-secret"})
 
     def test_a_loose_marker_splits_findings_as_review_run_cuts_them(self):
         run, _, bodies = self.run_held("  - <!--Held Finding-->\nproject: a\n> <!-- held_finding -->\nproject: b\n")
