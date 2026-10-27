@@ -285,15 +285,22 @@ class ThePullRequest(unittest.TestCase):
             self.assertEqual((got["decision"], got["label"]), ("none", ""), draft)
             self.assertIn("draft", got["reason"])
 
-    def test_a_draft_marked_ready_while_its_files_were_listed_sends_nothing_then_its_ready_run_sends(self):
+    def test_a_pull_request_made_a_draft_while_its_files_were_listed_sends_nothing(self):
         world = World()
         world.pulls = [World.pull(), World.pull(draft=True)]
         self.assertEqual(world.decide()["decision"], "none")
-        # Marked ready for review: build.yaml's run on ready_for_review completes at the same commit, and decides.
+
+    def test_a_draft_marked_ready_is_sent_by_its_ready_for_review_build(self):
         world = World()
+        world.pulls = [World.pull(draft=True)]
+        self.assertEqual(world.decide()["decision"], "none")
+        # Marked ready for review: build.yaml's run on ready_for_review completes at the same commit, and its record,
+        # not the draft's Build run's (made oversized here, so that reading it would label), decides.
+        world.pulls = [World.pull()]
+        world.artifacts[101] = record(sizes=sizes(plain_text=2_000_000))
         world.run(105, ".github/workflows/build.yaml", "pull_request_target")
         world.check(700, "project-builds", 105)
-        world.artifacts[105] = world.artifacts[101]
+        world.artifacts[105] = record()
         got = world.decide(run_id=105)
         self.assertEqual((got["decision"], got["pr"], got["sha"]), ("dispatch", "32", SHA), got["reason"])
 
