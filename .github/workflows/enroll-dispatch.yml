@@ -20,8 +20,10 @@
 #             take). The daily limit and the statements-queued label are the receiving workflow's, not this file's.
 #
 # Each required check's run starts this workflow, so the run of the last one to pass is the one that dispatches; a run
-# that sees a check not passed yet does nothing. A later run for the same commit (an edited title, a re-run) sends
-# it again; the enrollment workflow runs one project at a time and skips a commit whose facts it already made. A new
+# that sees a check not passed yet does nothing, and so does a run for a draft pull request: build.yaml runs again on
+# ready_for_review, and that run's completion decides once the pull request is ready. A later run for the same commit
+# (an edited title, a re-run) sends it again; the enrollment workflow runs one project at a time and skips a commit
+# whose facts it already made. A new
 # commit on the pull request is checked again, and dispatched again. To have a pull request looked at again (one
 # whose checks passed before build.yaml wrote records), a maintainer runs `gh workflow run build.yaml -f pr=<n>`: that
 # Build run's record names the pull request and its head, and its completion runs this. That run also reviews the pull

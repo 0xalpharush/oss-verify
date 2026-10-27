@@ -36,7 +36,8 @@ build.yaml's record job wrote from project-builds' outputs; every value of it is
 
 The pull request is the one the record names. It must be open, into main, from that head, with that commit as its head
 commit, and its files must all be under one projects/<name>/, the record's project; it is read again after its files,
-and a pull request whose head moved meanwhile is none (the run for the new head decides).
+and a pull request whose head moved meanwhile is none (the run for the new head decides). A draft pull request is none:
+build.yaml runs again on ready_for_review, and that run's completion decides for the pull request once it is ready.
 
 A pull request that changes a project already enrolled is sent too: its facts are made again at the new commit.
 
@@ -264,11 +265,13 @@ def the_project(files: list[dict]) -> tuple[str | None, str]:
 
 
 def open_at(pull: dict, repo: str, sha: str, head: tuple | None) -> str:
-    """Why the pull request is not open into the default branch at `sha`, from `head` (repository, branch) when it
-    is given, or ''."""
+    """Why the pull request is not open, ready for review, into the default branch at `sha`, from `head` (repository,
+    branch) when it is given, or ''."""
     base, at = pull.get("base") or {}, pull.get("head") or {}
     if pull.get("state") != "open":
         return f"it is {pull.get('state')}"
+    if pull.get("draft") is not False:
+        return "it is a draft: marking it ready for review builds it again, and that run decides"
     if base.get("ref") != DEFAULT_BRANCH or (base.get("repo") or {}).get("full_name") != repo:
         return f"it targets {base.get('ref')!r}, not {DEFAULT_BRANCH}"
     if at.get("sha") != sha:

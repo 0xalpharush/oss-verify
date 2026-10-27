@@ -114,8 +114,8 @@ class World:
 
     @staticmethod
     def pull(number=PR, sha=SHA, state="open", base="main", head_repo="FreeREAC/oss-verify",
-             branch="add-plugin-hostd"):
-        return {"number": number, "state": state,
+             branch="add-plugin-hostd", draft=False):
+        return {"number": number, "state": state, "draft": draft,
                 "head": {"sha": sha, "ref": branch, "repo": {"full_name": head_repo}, "label": f"x:{branch}"},
                 "base": {"ref": base, "repo": {"full_name": REPO}}}
 
@@ -275,6 +275,42 @@ class ThePullRequest(unittest.TestCase):
             world = World()
             world.pulls = [pull]
             self.assertEqual(world.decide()["decision"], "none", pull)
+
+    def test_a_draft_pull_request_sends_nothing(self):
+        # True, or a pull request whose draft flag the API did not give: neither is known to be ready.
+        for draft in (True, None):
+            world = World()
+            world.pulls = [World.pull(draft=draft)]
+            got = world.decide()
+            self.assertEqual((got["decision"], got["label"]), ("none", ""), draft)
+            self.assertIn("draft", got["reason"])
+
+    def test_a_pull_request_made_a_draft_while_its_files_were_listed_sends_nothing(self):
+        world = World()
+        world.pulls = [World.pull(), World.pull(draft=True)]
+        self.assertEqual(world.decide()["decision"], "none")
+
+    def test_a_draft_marked_ready_is_sent_by_its_ready_for_review_build(self):
+        world = World()
+        world.pulls = [World.pull(draft=True)]
+        self.assertEqual(world.decide()["decision"], "none")
+        # Marked ready for review: build.yaml's run on ready_for_review completes at the same commit, and its record,
+        # not the draft's Build run's (made oversized here, so that reading it would label), decides.
+        world.pulls = [World.pull()]
+        world.artifacts[101] = record(sizes=sizes(plain_text=2_000_000))
+        world.run(105, ".github/workflows/build.yaml", "pull_request_target")
+        world.check(700, "project-builds", 105)
+        world.artifacts[105] = record()
+        got = world.decide(run_id=105)
+        self.assertEqual((got["decision"], got["pr"], got["sha"]), ("dispatch", "32", SHA), got["reason"])
+
+    def test_a_draft_named_by_a_build_by_hand_sends_nothing(self):
+        world = World()
+        world.run(HAND_RUN, ".github/workflows/build.yaml", "workflow_dispatch", head_sha=MAIN, branch="main",
+                  head_repo=REPO)
+        world.artifacts[HAND_RUN] = record()
+        world.pulls = [World.pull(draft=True)]
+        self.assertEqual(world.decide(event="workflow_dispatch", run_id=HAND_RUN, sha=MAIN)["decision"], "none")
 
     def test_a_file_outside_the_records_project_sends_nothing(self):
         for files in ([{"filename": "projects/plugin-hostd/build.sh", "status": "added"},
@@ -468,6 +504,16 @@ class Jobs(unittest.TestCase):
 
     def jobs(self, name):
         return yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text())["jobs"]
+
+    def test_marking_a_draft_ready_runs_build_and_its_completion_runs_enroll_dispatch(self):
+        # A draft is never sent, so ready_for_review must start a run whose completion decides again.
+        def on(name):
+            data = yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text())
+            return data.get("on", data.get(True))
+        self.assertIn("ready_for_review", on("build.yaml")["pull_request_target"]["types"])
+        build_name = yaml.safe_load((ROOT / ".github" / "workflows" / "build.yaml").read_text())["name"]
+        self.assertIn(build_name, on("enroll-dispatch.yml")["workflow_run"]["workflows"])
+        self.assertIn("pull_request_target", dispatch.REQUIRED_SOURCES["project-builds"])
 
     def test_only_the_dispatch_job_reads_the_app_key(self):
         jobs = self.jobs("enroll-dispatch.yml")

@@ -47,6 +47,8 @@ name: "Build"
 # It runs on edited too, so that changing the base runs it again against the new base. edited is also sent when the
 # title or description is edited, and the project is then built again in full: a run that skipped its build would
 # replace an earlier result with a pass.
+# It runs on ready_for_review too: enroll-dispatch.yml starts no statements for a draft pull request, and the
+# completion of this run, when the draft is marked ready, is what has it decide again.
 # A failure is usually the project's, but it can be the runner's: GitHub's runner may run out of disk or time on a
 # build that works on a larger machine. A maintainer then reruns the failed job (gh run rerun <run> --failed). If it
 # fails again for the runner's reason, the maintainer builds the project with `tools/check --no-shell --twice <name>` on
@@ -156,7 +158,7 @@ run-name: ${{ github.event.pull_request.title || format('Pull request {0}', inpu
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, edited]
+    types: [opened, reopened, synchronize, edited, ready_for_review]
   workflow_dispatch:
     inputs:
       pr:
