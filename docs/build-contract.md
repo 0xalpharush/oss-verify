@@ -108,6 +108,12 @@ The sealed AddressSanitizer runtime has these properties, as the documentation o
 * The runtime installs no signal handlers.
 * At start, it reserves more than 100 GiB of address space. Under a limit such as `ulimit -v`, the reservation fails and the program waits forever.
 
+Its checks are the AddressSanitizer runtime's defaults: the seal pins no check, and the driver's `__asan_default_options()` sets only `allocator_may_return_null`. Measured with the `oss-fuzz-theorems-2026.10` toolchain image:
+
+* A read or write through a pointer to a local of a function that has returned is detected (stack use-after-return). `detect_stack_use_after_return` is on by default, and the builds compile in clang's default `-fsanitize-address-use-after-return=runtime` mode. At start the runtime maps one more block for this, of 11,571,200 bytes.
+* A freed block is not handed out again until about 226 MiB more has been freed after it, so a use of it is detected until then. The quarantine is 256 MiB (`quarantine_size_mb`); OSS-Fuzz's runner image sets 10 MiB.
+* These checks are off, as they are in OSS-Fuzz: `strict_string_checks` (the string functions check only the bytes they read, not the whole string), `detect_invalid_pointer_pairs` (comparing or subtracting pointers into different objects; it also needs `-fsanitize=pointer-compare,pointer-subtract`), and `check_initialization_order` (C++ dynamic initializers that read another file's global before it is initialized).
+
 The driver is compiled with no sanitizer flags in each build. The library and the fuzz targets get the flags of the build. In each build, `getenv()` returns NULL, `getpid()` and `getppid()` return 1, and `mkstemp()` and the related functions use a fixed name in the current directory. Thus a program depends only on its input file.
 
 ### Functions that the AddressSanitizer runtime wraps
